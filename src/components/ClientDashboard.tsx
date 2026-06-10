@@ -2,8 +2,11 @@ import React, { useState, useEffect } from "react";
 import { collection, doc, setDoc, deleteDoc, onSnapshot, query, where, getDoc, runTransaction } from "firebase/firestore";
 import { db, auth, handleFirestoreError, OperationType } from "../firebase";
 import { Campaign, Ticket, UserProfile } from "../types";
+import { isLotterySalesSuspended, getCampaignDrawProjection } from "../utils/validation";
 import RankingView from "./RankingView";
+import CelebrationConfetti from "./CelebrationConfetti";
 import { Ticket as TicketIcon, Search, Landmark, Copy, Check, Calendar, Trophy, AlertCircle, ShoppingBag, User as UserIcon, LogOut, ArrowRight, HelpCircle, Sparkles, ShieldCheck, Download, Printer } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
 
 export function getDiscountedPrice(
   quantity: number,
@@ -74,6 +77,7 @@ export default function ClientDashboard({ userProfile, onLogout }: ClientDashboa
   const [reserving, setReserving] = useState(false);
   const [copiedPix, setCopiedPix] = useState(false);
   const [successReserved, setSuccessReserved] = useState<string[] | null>(null);
+  const [confettiKey, setConfettiKey] = useState(0);
   const [showRulesModal, setShowRulesModal] = useState(false);
 
   // Responsive mobile states
@@ -427,6 +431,12 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
       return;
     }
 
+    const suspension = isLotterySalesSuspended();
+    if (suspension.suspended) {
+      addToast(suspension.reason || "Vendas suspensas temporariamente para o sorteio da Loteria Federal.", "error");
+      return;
+    }
+
     const reservedCount = selectedNumbers.length;
     setReserving(true);
 
@@ -499,6 +509,12 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
   };
 
   const handleToggleNumberSelection = (numberStr: string) => {
+    const suspension = isLotterySalesSuspended();
+    if (suspension.suspended) {
+      addToast(suspension.reason || "Vendas suspensas temporariamente para o sorteio da Loteria Federal.", "error");
+      return;
+    }
+
     setSelectedNumbers((prev) =>
       prev.includes(numberStr)
         ? prev.filter((n) => n !== numberStr)
@@ -529,6 +545,12 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
   };
 
   const handleQuickSelectRandom = (count: number) => {
+    const suspension = isLotterySalesSuspended();
+    if (suspension.suspended) {
+      addToast(suspension.reason || "Vendas suspensas temporariamente para o sorteio da Loteria Federal.", "error");
+      return;
+    }
+
     if (!selectedCampaign) return;
     const total = selectedCampaign.totalTickets;
     
@@ -763,6 +785,23 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
       {/* 2. MAIN CLIENT RIFAS CONTENT GRID */}
       {activeTab === "rifas" && (
         <div className="space-y-6 md:space-y-8 animate-fadeIn">
+          {/* Lottery Draw Sales Suspension Banner */}
+          {(() => {
+            const suspension = isLotterySalesSuspended();
+            if (!suspension.suspended) return null;
+            return (
+              <div id="lottery-suspended-banner" className="bg-amber-50 border border-amber-200/90 rounded-2xl p-4.5 flex gap-3 text-amber-900 animate-pulse shadow-sm">
+                <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <div className="space-y-1 text-xs">
+                  <h4 className="font-bold tracking-tight text-sm text-amber-950">Vendas Temporariamente Suspensas! ⏳</h4>
+                  <p className="text-amber-700 leading-relaxed font-medium">
+                    {suspension.reason} As cotas podem ser consultadas, porém novas pré-reservas estão bloqueadas temporariamente neste intervalo. As vendas retornarão normalmente a partir das 21:00h.
+                  </p>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Seção das Miniaturas / Thumbnail grid of all campaigns */}
           <div className="space-y-4">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
@@ -892,7 +931,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                               </div>
 
                               {/* The Trio of Info Boxes (Cotas, Vendidas, Restantes) */}
-                              <div className="grid grid-cols-3 gap-1.5 md:gap-2.5 mb-4">
+                              <div className="grid grid-cols-3 gap-1.5 md:gap-2.5 mb-3">
                                 <div className="bg-[#f0f8db]/80 border border-lime-200/60 rounded-2xl p-2 md:p-2.5 flex flex-col items-center justify-center text-center">
                                   <span className="text-emerald-700 font-extrabold text-[9px] md:text-[11px] uppercase tracking-wider">Cotas</span>
                                   <span className="text-emerald-800 font-black text-xs md:text-sm mt-0.5">{camp.totalTickets}</span>
@@ -906,6 +945,37 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                                   <span className="text-red-700 font-black text-xs md:text-sm mt-0.5">{restantes}</span>
                                 </div>
                               </div>
+
+                              {/* Dynamic Projection Box based on sales velocity */}
+                              {(() => {
+                                const proj = getCampaignDrawProjection(camp, campTickets);
+                                return (
+                                  <div className="mb-4 bg-indigo-50/50 border border-indigo-100/60 rounded-2xl p-2.5 flex flex-col justify-center space-y-1 w-full text-left">
+                                    <div className="flex justify-between items-center text-[10px]">
+                                      <span className="text-indigo-950 font-extrabold uppercase tracking-wider flex items-center gap-1">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-650 animate-pulse" />
+                                        Sorteio Provável
+                                      </span>
+                                      <span className={`font-extrabold text-[9px] px-1.5 py-0.2 rounded-md ${
+                                        proj.confidenceRating === "high" 
+                                          ? "bg-emerald-100 text-emerald-800" 
+                                          : proj.confidenceRating === "medium"
+                                            ? "bg-indigo-100 text-indigo-800"
+                                            : "bg-amber-100 text-amber-700"
+                                      }`}>
+                                        Confiança: {proj.confidenceRating === "high" ? "Alta" : proj.confidenceRating === "medium" ? "Média" : "Baixa"}
+                                      </span>
+                                    </div>
+                                    <div className="text-[11.5px] font-black text-slate-800 leading-snug tracking-tight">
+                                      {proj.formattedProbableDrawDate.split(" às ")[0]}
+                                    </div>
+                                    <div className="text-[9.5px] text-slate-500 flex items-center justify-between font-semibold">
+                                      <span>Est: ~{proj.daysRemainingEst} dias</span>
+                                      <span>Velo: {proj.salesVelocity}/dia</span>
+                                    </div>
+                                  </div>
+                                );
+                              })()}
 
                               {/* Comprar Bilhetes Button */}
                               <div className={`w-full text-center text-xs md:text-sm font-black py-2.5 md:py-3.5 px-4 rounded-2xl transition-all duration-200 border ${
@@ -1109,6 +1179,47 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                           </div>
                         </div>
                       )}
+
+                      {/* Probable Federal Lottery Draw Dynamic Prediction */}
+                      {selectedCampaign.status === "active" && (
+                        <div className="mt-3 bg-[#f3f9e4] border border-lime-300 text-emerald-950 p-3.5 rounded-xl space-y-2.5 shadow-2xs">
+                          <h4 className="text-[10.5px] uppercase tracking-wider font-extrabold text-emerald-900 flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                            <span>📈 Projeção Inteligente de Sorteio (Meta 100%)</span>
+                          </h4>
+                          {(() => {
+                            const campTicketsList = allReservations[selectedCampaign.id] || [];
+                            const proj = getCampaignDrawProjection(selectedCampaign, campTicketsList);
+                            return (
+                              <div className="space-y-1.5 text-xs text-slate-700 leading-relaxed font-semibold">
+                                <p className="flex flex-wrap items-center gap-1.5 py-0.5 text-slate-700 text-xs md:text-[13px] leading-relaxed">
+                                  Com base no ritmo de vendas atual desta campanha (<strong className="text-slate-900 font-bold bg-slate-100 border border-slate-250/70 px-1.5 py-0.5 rounded text-[11px] font-mono">{proj.salesVelocity} cotas/dia</strong>), prevemos a conclusão das reservas em aproximadamente <strong className="text-emerald-800 font-black text-sm md:text-base bg-emerald-150 border border-emerald-300 shadow-sm px-2 py-1 rounded-lg inline-flex items-center mx-0.5">{proj.daysRemainingEst} dias</strong>.
+                                </p>
+                                <div className="p-3 bg-white/95 rounded-lg border border-lime-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 shadow-3xs">
+                                  <div>
+                                    <span className="text-[9.5px] uppercase font-extrabold text-slate-450 block tracking-wider leading-none mb-1">PROVÁVEL CONCURSO LOTERIA FEDERAL</span>
+                                    <span className="text-xs md:text-[13px] font-black text-slate-800 block leading-tight">{proj.formattedProbableDrawDate}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <span className={`text-[9px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 shadow-4xs ${
+                                      proj.confidenceRating === "high" 
+                                        ? "bg-emerald-100 text-emerald-800" 
+                                        : proj.confidenceRating === "medium"
+                                          ? "bg-indigo-100 text-indigo-800"
+                                          : "bg-amber-100 text-amber-800"
+                                    }`}>
+                                      Confiança: {proj.confidenceRating === "high" ? "Alta" : proj.confidenceRating === "medium" ? "Média" : "Inicial"}
+                                    </span>
+                                  </div>
+                                </div>
+                                <p className="text-[9px] text-slate-500 font-medium italic leading-tight">
+                                  *Os sorteios pela Loteria Federal ocorrem às quartas-feiras e sábados às 19:00h (Brasília). A estimativa recalcula dinamicamente em tempo real conforme novos bilhetes são preenchidos ou liberados.
+                                </p>
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -1155,110 +1266,152 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                   {/* RESERVATION NOTIFICATIONS */}
                   {selectedCampaign.status === "active" && (
                     <div className="p-6 md:p-8 space-y-6">
-                      {successReserved && successReserved.length > 0 && (
-                        <div className="bg-indigo-55 border border-indigo-200 rounded-xl p-5 text-slate-750 animate-fadeIn space-y-4">
-                          <div className="flex items-start gap-4">
-                            <div className="flex flex-wrap gap-1 hover:max-h-none overflow-y-auto max-h-[84px] shrink-0 max-w-[160px] bg-indigo-100/50 p-1 rounded-xl border border-indigo-200/50">
-                              {successReserved.map((num) => (
-                                <div key={num} className="p-1 px-1.5 bg-indigo-600 text-white rounded-lg font-bold text-xs font-mono">
-                                  #{num}
+                      {successReserved && successReserved.length > 0 && (() => {
+                        const calc = getDiscountedPrice(successReserved.length, selectedCampaign.ticketPrice, selectedCampaign.progressiveDiscounts);
+                        return (
+                          <>
+                            <CelebrationConfetti key={confettiKey} />
+                            <div className="bg-indigo-55 border border-indigo-200 rounded-xl p-5 text-slate-750 animate-fadeIn space-y-4">
+                              <div className="flex items-start gap-4">
+                                <div className="flex flex-wrap gap-1 hover:max-h-none overflow-y-auto max-h-[84px] shrink-0 max-w-[160px] bg-indigo-100/50 p-1 rounded-xl border border-indigo-200/50">
+                                  {successReserved.map((num) => (
+                                    <div key={num} className="p-1 px-1.5 bg-indigo-600 text-white rounded-lg font-bold text-xs font-mono">
+                                      #{num}
+                                    </div>
+                                  ))}
                                 </div>
-                              ))}
-                            </div>
-                            <div className="space-y-1">
-                              <h4 className="font-bold text-slate-800 text-sm leading-none flex items-center gap-1.5 pt-1">
-                                {successReserved.length === 1 ? "Cota Reservada" : "Cotas Reservadas"} com Sucesso! 🎟️
-                              </h4>
-                              <p className="text-xs text-slate-655 leading-normal pt-1">
-                                Para efetivar a compra e torná-la oficial para o sorteio, faça o PIX de{" "}
-                                {(() => {
-                                  const calc = getDiscountedPrice(successReserved.length, selectedCampaign.ticketPrice, selectedCampaign.progressiveDiscounts);
-                                  return (
-                                    <>
-                                      <strong>R$ {calc.totalPrice.toFixed(2)}</strong> (R$ {calc.unitPrice.toFixed(2)} por cota{calc.appliedDiscount ? " - com Desconto Progressivo!" : ""}).
-                                    </>
-                                  );
-                                })()}
-                              </p>
-                            </div>
-                          </div>
- 
-                          {/* Manual Payment Step */}
-                          <div className="bg-white border border-slate-100 rounded-xl p-4 space-y-4 text-xs">
-                            <div className="font-bold text-slate-800 border-b border-slate-100 pb-2 flex items-center justify-between">
-                              <span>DADOS PARA TRANSFERÊNCIA PIX</span>
-                              <span className="text-[10px] uppercase font-bold text-indigo-600 tracking-wide">
-                                Preço Total: R$ {getDiscountedPrice(successReserved.length, selectedCampaign.ticketPrice, selectedCampaign.progressiveDiscounts).totalPrice.toFixed(2)}
-                              </span>
-                            </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                              <div className="space-y-1.5">
-                                <span className="text-[10px] text-slate-400 block font-bold uppercase tracking-wider">Chave PIX</span>
-                                <div className="flex items-center gap-2 font-mono bg-slate-50 p-2 border border-slate-200 rounded-lg justify-between text-slate-700">
-                                  <span className="truncate">{settings.pixKey}</span>
-                                  <button
-                                    onClick={handleCopyPix}
-                                    className="text-slate-500 hover:text-slate-800 p-1 bg-white border border-slate-200 rounded cursor-pointer shrink-0"
-                                    title="Copiar chave"
-                                  >
-                                    {copiedPix ? <Check className="w-3.5 h-3.5 text-indigo-600" /> : <Copy className="w-3.5 h-3.5" />}
-                                  </button>
+                                <div className="space-y-1 flex-1">
+                                  <h4 className="font-bold text-slate-800 text-sm leading-none flex items-center gap-1.5 pt-1">
+                                    {successReserved.length === 1 ? "Cota Reservada" : "Cotas Reservadas"} com Sucesso! 🎟️
+                                  </h4>
+                                  <p className="text-xs text-slate-650 leading-normal pt-1">
+                                    Sua reserva temporária de <strong className="text-slate-900">{successReserved.length} cota(s)</strong> está ativa. Faça o PIX do valor total destacado abaixo para oficializar.
+                                  </p>
                                 </div>
-                                {settings.receiverName && (
-                                  <div className="text-[10px] text-slate-500 pt-0.5 flex justify-between">
-                                    <span>Favorecido:</span>
-                                    <span className="font-semibold text-slate-700">{settings.receiverName}</span>
-                                  </div>
-                                )}
-                                {settings.bankName && (
-                                  <div className="text-[10px] text-slate-500 flex justify-between">
-                                    <span>Banco:</span>
-                                    <span className="font-semibold text-slate-700">{settings.bankName}</span>
-                                  </div>
-                                )}
                               </div>
-                              <div className="space-y-1">
-                                <span className="text-[10px] text-slate-400 block font-bold uppercase tracking-wider">Como Confirmar?</span>
-                                <p className="text-slate-650 leading-normal">
-                                  Envie o comprovante para o suporte ou simplesmente aguarde! O sistema revisará o extrato buscando o CPF/cadastro <strong>{userProfile.cpf}</strong> em até <strong>{settings.expirationHours} horas</strong> para validar seus números.
-                                </p>
-                              </div>
-                            </div>
-                          </div>
 
-                          <div className="flex flex-col sm:flex-row justify-end gap-2 text-xs">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const tempTickets = successReserved.map(num => ({
-                                  id: num,
-                                  number: num,
-                                  status: "reserved" as const,
-                                  buyerUid: userProfile.uid,
-                                  buyerName: userProfile.name,
-                                  buyerPhone: userProfile.phone || "",
-                                  buyerCpf: userProfile.cpf,
-                                  buyerEmail: userProfile.email,
-                                  reservedAt: new Date().toISOString(),
-                                }));
-                                handleWhatsAppRedirect(tempTickets, selectedCampaign);
-                              }}
-                              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg cursor-pointer flex items-center justify-center gap-1.5 transition-colors shadow-sm"
-                            >
-                              <svg className="w-4 h-4 shrink-0 fill-current" viewBox="0 0 24 24">
-                                <path d="M12.012 2c-5.506 0-9.989 4.478-9.99 9.984a9.96 9.96 0 0 0 1.335 4.978L2 22l5.133-1.343a9.894 9.894 0 0 0 4.873 1.344h.004c5.507 0 9.99-4.478 9.99-9.984a9.97 9.97 0 0 0-2.926-7.064A9.923 9.923 0 0 0 12.012 2zm5.794 13.978c-.244.685-1.22 1.258-1.685 1.31-.415.048-.954.072-1.554-.12a14.2 14.2 0 0 1-5.323-3.26c-1.423-1.416-2.5-3.155-2.775-3.626-.275-.471-.03-.725.207-.962.214-.213.473-.553.71-.83.235-.276.314-.471.472-.786.158-.314.079-.588-.04-.844-.118-.256-.944-2.274-1.298-3.125-.347-.831-.699-.718-.959-.731-.248-.013-.532-.016-.816-.016-.284 0-.749.106-1.14.53-.393.424-1.5 1.464-1.5 3.568 0 2.102 1.533 4.133 1.747 4.419.215.285 3.018 4.606 7.311 6.467 1.02.443 1.815.707 2.437.904 1.025.326 1.958.28 2.696.17.822-.123 2.533-1.035 2.89-2.035.356-1 .356-1.857.248-2.035-.108-.178-.396-.285-.84-.508z" />
-                              </svg>
-                              <span>Confirmar no WhatsApp</span>
-                            </button>
-                            <button
-                              onClick={() => setSuccessReserved(null)}
-                              className="px-4 py-2 bg-slate-900 text-white font-bold rounded-lg cursor-pointer hover:bg-slate-800"
-                            >
-                              Concluir e Voltar
-                            </button>
-                          </div>
-                        </div>
-                      )}
+                              {/* DESTAQUE PRINCIPAL DO VALOR TOTAL */}
+                              <div className="bg-gradient-to-br from-indigo-600 to-indigo-750 text-white rounded-2xl p-5 shadow-md border border-indigo-500/20 text-center space-y-1 relative overflow-hidden">
+                                <div className="absolute top-0 right-0 w-24 h-24 bg-white/5 rounded-full translate-x-8 -translate-y-8 select-none pointer-events-none" />
+                                <div className="absolute bottom-0 left-0 w-20 h-20 bg-black/10 rounded-full -translate-x-6 translate-y-6 select-none pointer-events-none" />
+                                <span className="text-[10px] md:text-xs font-black uppercase tracking-widest text-indigo-200/90">Valor Total a Pagar</span>
+                                <div className="text-3xl md:text-4xl font-extrabold tracking-tight font-sans text-white">
+                                  R$ {calc.totalPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </div>
+                                <span className="inline-block text-[11px] md:text-xs text-indigo-100/95 font-medium bg-indigo-800/40 border border-indigo-500/30 px-3 py-1 rounded-full">
+                                  {successReserved.length} cota(s) • R$ {calc.unitPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} cada {calc.appliedDiscount ? "(Desconto Progressivo Aplicado!)" : ""}
+                                </span>
+                              </div>
+
+                              {/* Manual Payment Step */}
+                              <div className="bg-indigo-50/50 border border-indigo-100 rounded-2xl p-5 space-y-4">
+                                <div className="font-extrabold text-slate-900 border-b border-indigo-100/60 pb-3 flex items-center justify-between">
+                                  <span className="text-xs uppercase tracking-wider flex items-center gap-1.5 text-indigo-850">
+                                    <Landmark className="w-4 h-4 text-indigo-600" /> Dados de Pagamento
+                                  </span>
+                                  <span className="text-xs font-black text-indigo-700 bg-indigo-100/80 border border-indigo-200 px-3 py-1 rounded-full">
+                                    Total: R$ {calc.totalPrice.toFixed(2)}
+                                  </span>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
+                                  {/* PIX Key highlight column */}
+                                  <div className="md:col-span-7 space-y-2.5 bg-white border border-indigo-100/80 p-4 rounded-xl shadow-xs">
+                                    <span className="text-[11px] text-indigo-700 font-extrabold uppercase tracking-wider block">Chave PIX Oficial para Transferência</span>
+                                    <div className="flex items-center gap-2 font-mono bg-indigo-50/70 p-3.5 border border-indigo-100 rounded-xl justify-between text-indigo-950 font-bold text-sm md:text-base shadow-inner">
+                                      <span className="select-all truncate">{settings.pixKey}</span>
+                                      <button
+                                        onClick={handleCopyPix}
+                                        className="text-indigo-600 hover:text-indigo-800 p-2 bg-white border border-indigo-200 shadow-xs hover:border-indigo-400 rounded-lg cursor-pointer shrink-0 transition-all flex items-center gap-1 shrink-0"
+                                        title="Copiar chave"
+                                      >
+                                        {copiedPix ? (
+                                          <>
+                                            <Check className="w-4 h-4 text-emerald-600" />
+                                            <span className="text-[10px] font-sans font-bold text-emerald-600">Copiada</span>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <Copy className="w-4 h-4" />
+                                            <span className="text-[10px] font-sans font-bold">Copiar</span>
+                                          </>
+                                        )}
+                                      </button>
+                                    </div>
+                                    
+                                    {/* Favorecido and Banco detail inside the payment card */}
+                                    <div className="pt-3 mt-3 border-t border-indigo-50/80 space-y-2">
+                                      {settings.receiverName && (
+                                        <div className="flex justify-between items-center bg-slate-50/80 p-2.5 rounded-lg border border-slate-100">
+                                          <span className="text-slate-500 font-bold text-[11px] uppercase tracking-wider">Favorecido:</span>
+                                          <span className="font-extrabold text-slate-900 text-sm">{settings.receiverName}</span>
+                                        </div>
+                                      )}
+                                      {settings.bankName && (
+                                        <div className="flex justify-between items-center bg-slate-50/80 p-2.5 rounded-lg border border-slate-100">
+                                          <span className="text-slate-500 font-bold text-[11px] uppercase tracking-wider">Banco:</span>
+                                          <span className="font-extrabold text-slate-900 text-sm">{settings.bankName}</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* Instructions */}
+                                  <div className="md:col-span-5 flex flex-col justify-between space-y-3 bg-indigo-900/5 border border-indigo-950/5 p-4 rounded-xl text-xs text-indigo-950">
+                                    <div className="space-y-1.5">
+                                      <span className="text-[11px] text-indigo-950 font-black uppercase tracking-wider block">Como Confirmar?</span>
+                                      <p className="leading-relaxed text-slate-700">
+                                        Envie o comprovante para o suporte ou simplesmente aguarde! O sistema revisará o extrato buscando o CPF/cadastro <strong className="text-indigo-900 font-extrabold">{userProfile.cpf}</strong> em até <strong>{settings.expirationHours} horas</strong> para validar seus números.
+                                      </p>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="flex flex-col sm:flex-row justify-end gap-2 text-xs">
+                                <button
+                                  type="button"
+                                  onClick={() => setConfettiKey((prev) => prev + 1)}
+                                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg cursor-pointer flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+                                  title="Disparar confete comemorativo"
+                                >
+                                  <span>Celebrar! 🎉</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const tempTickets = successReserved.map(num => ({
+                                      id: num,
+                                      number: num,
+                                      status: "reserved" as const,
+                                      buyerUid: userProfile.uid,
+                                      buyerName: userProfile.name,
+                                      buyerPhone: userProfile.phone || "",
+                                      buyerCpf: userProfile.cpf,
+                                      buyerEmail: userProfile.email,
+                                      reservedAt: new Date().toISOString(),
+                                    }));
+                                    handleWhatsAppRedirect(tempTickets, selectedCampaign);
+                                    setConfettiKey((prev) => prev + 1); // trigger some more confetti on whatsapp redirection!
+                                  }}
+                                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg cursor-pointer flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+                                >
+                                  <svg className="w-4 h-4 shrink-0 fill-current" viewBox="0 0 24 24">
+                                    <path d="M12.012 2c-5.506 0-9.989 4.478-9.99 9.984a9.96 9.96 0 0 0 1.335 4.978L2 22l5.133-1.343a9.894 9.894 0 0 0 4.873 1.344h.004c5.507 0 9.99-4.478 9.99-9.984a9.97 9.97 0 0 0-2.926-7.064A9.923 9.923 0 0 0 12.012 2zm5.794 13.978c-.244.685-1.22 1.258-1.685 1.31-.415.048-.954.072-1.554-.12a14.2 14.2 0 0 1-5.323-3.26c-1.423-1.416-2.5-3.155-2.775-3.626-.275-.471-.03-.725.207-.962.214-.213.473-.553.71-.83.235-.276.314-.471.472-.786.158-.314.079-.588-.04-.844-.118-.256-.944-2.274-1.298-3.125-.347-.831-.699-.718-.959-.731-.248-.013-.016-.284 0-.749.106-1.14.53-.393.424-1.5 1.464-1.5 3.568 0 2.102 1.533 4.133 1.747 4.419.215.285 3.018 4.606 7.311 6.467 1.02.443 1.815.707 2.437.904 1.025.326 1.958.28 2.696.17.822-.123 2.533-1.035 2.89-2.035.356-1 .356-1.857.248-2.035-.108-.178-.396-.285-.84-.508z" />
+                                  </svg>
+                                  <span>Confirmar no WhatsApp</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setSuccessReserved(null)}
+                                  className="px-4 py-2 bg-slate-900 text-white font-bold rounded-lg cursor-pointer hover:bg-slate-800"
+                                >
+                                  Concluir e Voltar
+                                </button>
+                              </div>
+                            </div>
+                          </>
+                        );
+                      })()}
 
                       {/* ACTIVE RESERVATION SELECTION CARD */}
                       {selectedNumbers.length > 0 && (
@@ -1276,14 +1429,42 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                                 </span>
                               ))}
                             </div>
-                             Ao confirmar, estes números serão temporariamente reservados sob seu nome por 24 horas. Para mantê-los, você deve realizar a transferência manual via PIX. O valor total é {" "}
-                             {(() => {
-                               const calc = getDiscountedPrice(selectedNumbers.length, selectedCampaign.ticketPrice, selectedCampaign.progressiveDiscounts);
-                               return (
-                                 <strong>R$ {calc.totalPrice.toFixed(2)}{calc.appliedDiscount ? ` (cada cota sai por R$ ${calc.unitPrice.toFixed(2)}!)` : ""}</strong>
-                               );
-                             })()}.
+                            Ao confirmar, estes números serão temporariamente reservados sob seu nome por 2(Duas) horas. Para garanti-los, você deve realizar a transferência manual via PIX.
                           </div>
+
+                          {/* DESTACADO VALOR TOTAL DA RESERVA SELECIONADA */}
+                          <div className="bg-gradient-to-br from-amber-50 to-amber-100/50 border-2 border-amber-300 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
+                            <div className="space-y-1">
+                              <span className="text-[10px] text-amber-850 font-black uppercase tracking-widest block leading-none">VALOR TOTAL DO PEDIDO</span>
+                              {(() => {
+                                const calc = getDiscountedPrice(selectedNumbers.length, selectedCampaign.ticketPrice, selectedCampaign.progressiveDiscounts);
+                                return (
+                                  <div className="space-y-1.5">
+                                    <strong className="text-3xl md:text-4xl font-extrabold text-amber-950 font-sans block leading-none">
+                                      R$ {calc.totalPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </strong>
+                                    <span className="text-xs text-amber-800 font-semibold block leading-none">
+                                      {selectedNumbers.length} cota(s) • R$ {calc.unitPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} cada {calc.appliedDiscount ? "(Desconto Progressivo!)" : ""}
+                                    </span>
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                            {(() => {
+                              const calc = getDiscountedPrice(selectedNumbers.length, selectedCampaign.ticketPrice, selectedCampaign.progressiveDiscounts);
+                              return (
+                                <div className="flex flex-col items-end gap-1 shrink-0">
+                                  {calc.appliedDiscount && (
+                                    <span className="text-[9px] bg-emerald-600 text-white font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider shadow-4xs animate-pulse">
+                                      Melhor Desconto Ativo! 🏷️
+                                    </span>
+                                  )}
+                                  <span className="text-3xl filter drop-shadow select-none hidden sm:inline">💎</span>
+                                </div>
+                              );
+                            })()}
+                          </div>
+
                           <div className="flex gap-2 justify-end text-xs pt-1">
                             <button
                               onClick={() => setSelectedNumbers([])}
@@ -1305,6 +1486,22 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
 
                       {/* INTERACTIVE GRID SECTION */}
                       <div className="space-y-4">
+                        {(() => {
+                          const suspension = isLotterySalesSuspended();
+                          if (!suspension.suspended) return null;
+                          return (
+                            <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl p-4 flex gap-3 text-xs leading-relaxed animate-pulse shadow-sm">
+                              <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                              <div className="space-y-1">
+                                <h5 className="font-extrabold text-[13px] text-amber-950 uppercase tracking-tight">Vendas Temporariamente Bloqueadas</h5>
+                                <p className="font-medium text-amber-700">
+                                  {suspension.reason} As cotas encontram-se travadas para transações de compra ou reserva, mas você pode visualizá-las normalmente nesta tela.
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        })()}
+
                         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                           <div>
                             <h3 className="font-bold text-slate-800 text-sm uppercase tracking-wider flex items-center gap-1.5">
@@ -1597,35 +1794,72 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                         <Landmark className="w-4 h-4 text-amber-600 shrink-0" />
                         <span>Transferência Pix Pendente</span>
                       </div>
+
+                      {/* VALOR TOTAL PENDENTE COM GRANDE VISIBILIDADE */}
+                      {(() => {
+                        let totalSum = 0;
+                        let countSum = 0;
+                        (Object.entries(myTickets) as [string, Ticket[]][]).forEach(([campaignId, tList]) => {
+                          const pCount = tList.filter(t => t.status === "reserved").length;
+                          if (pCount > 0) {
+                            const camp = campaigns.find(c => c.id === campaignId);
+                            if (camp) {
+                              const calc = getDiscountedPrice(pCount, camp.ticketPrice, camp.progressiveDiscounts);
+                              totalSum += calc.totalPrice;
+                              countSum += pCount;
+                            }
+                          }
+                        });
+                        return (
+                          <div className="bg-amber-500 text-white rounded-xl p-3.5 text-center flex flex-col justify-center items-center shadow-sm space-y-0.5 border border-amber-450">
+                            <span className="text-[9px] uppercase font-bold tracking-wider text-amber-100">Valor Total Devido (PIX)</span>
+                            <span className="text-2xl font-black font-sans leading-none">R$ {totalSum.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                            <span className="text-[10px] text-amber-50 font-medium">{countSum} cota(s) aguardando pagamento</span>
+                          </div>
+                        );
+                      })()}
+
                       <p className="text-[11px] leading-relaxed text-slate-600">
-                        Para confirmar suas reservas, por favor faça a transferência total via PIX das suas cotas pendentes nos dados abaixo:
+                        Faça a transferência acima via PIX das suas cotas pendentes nos dados abaixo para confirmar suas reservas:
                       </p>
-                      <div className="space-y-1.5 bg-white border border-amber-200/55 rounded-xl p-2.5 shadow-xs">
-                        <div className="flex items-center justify-between gap-1.5 font-mono text-[11px] text-slate-800">
-                          <div>
-                            <span className="text-[9px] text-slate-400 block font-sans">CHAVE PIX</span>
-                            <span className="truncate block font-bold">{settings.pixKey}</span>
+                      <div className="space-y-3 bg-amber-50/60 border border-amber-200 rounded-xl p-4 shadow-xs">
+                        <div className="bg-white border border-amber-100 rounded-lg p-3 flex items-center justify-between gap-1.5 font-mono text-[11px] text-slate-800 shadow-2xs">
+                          <div className="flex-1 min-w-0">
+                            <span className="text-[9px] text-amber-800 font-extrabold block font-sans tracking-wide uppercase">CHAVE PIX</span>
+                            <span className="truncate block font-extrabold text-[13px] text-indigo-950 font-mono select-all">{settings.pixKey}</span>
                           </div>
                           <button
                             onClick={handleCopyPix}
-                            className="text-slate-500 hover:text-slate-800 p-1.5 bg-slate-55 hover:bg-slate-100 border border-slate-200 rounded-lg cursor-pointer shrink-0"
+                            className="text-amber-700 hover:text-amber-900 p-2 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg cursor-pointer shrink-0 transition-all flex items-center gap-1 select-none"
                             title="Copiar chave PIX"
                           >
-                            {copiedPix ? <Check className="w-3.5 h-3.5 text-indigo-600" /> : <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" /></svg>}
+                            {copiedPix ? (
+                              <>
+                                <Check className="w-3.5 h-3.5 text-emerald-600 animate-scaleIn" />
+                                <span className="text-[9px] font-sans font-black text-emerald-600">Copiada</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3.5 h-3.5" />
+                                <span className="text-[9px] font-sans font-black">Copiar</span>
+                              </>
+                            )}
                           </button>
                         </div>
-                        {settings.receiverName && (
-                          <div className="text-[10px] text-slate-500 border-t border-slate-100 pt-1 flex justify-between font-sans">
-                            <span>Favorecido:</span>
-                            <strong className="text-slate-750">{settings.receiverName}</strong>
-                          </div>
-                        )}
-                        {settings.bankName && (
-                          <div className="text-[10px] text-slate-500 flex justify-between font-sans">
-                            <span>Banco:</span>
-                            <strong className="text-slate-750">{settings.bankName}</strong>
-                          </div>
-                        )}
+                        <div className="space-y-2 text-xs">
+                          {settings.receiverName && (
+                            <div className="text-[11px] text-slate-650 bg-white/80 border border-slate-100/50 p-2 rounded-lg flex justify-between items-center font-sans">
+                              <span className="font-bold text-slate-400 text-[10px] uppercase tracking-wider">Favorecido:</span>
+                              <strong className="text-slate-905 font-black text-sm">{settings.receiverName}</strong>
+                            </div>
+                          )}
+                          {settings.bankName && (
+                            <div className="text-[11px] text-slate-650 bg-white/80 border border-slate-100/50 p-2 rounded-lg flex justify-between items-center font-sans">
+                              <span className="font-bold text-slate-400 text-[10px] uppercase tracking-wider">Banco:</span>
+                              <strong className="text-slate-905 font-black text-sm">{settings.bankName}</strong>
+                            </div>
+                          )}
+                        </div>
                       </div>
                       <p className="text-[10px] text-slate-500 leading-normal bg-white/40 p-1.5 rounded-lg border border-slate-200/10">
                         💡 Realize o pagamento em até <strong>{settings.expirationHours} horas</strong>. Buscaremos no extrato pelo seu CPF <strong>{userProfile.cpf}</strong> para validar os números!
@@ -1752,35 +1986,76 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                   <Landmark className="w-4 h-4 text-amber-600 shrink-0" />
                   <span>Transferência Pix Pendente</span>
                 </div>
-                <p className="text-[11px] leading-relaxed text-slate-650">
-                  Para confirmar suas reservas, por favor faça a transferência total via PIX das suas cotas pendentes nos dados abaixo:
+
+                {/* VALOR TOTAL PENDENTE COM GRANDE VISIBILIDADE */}
+                {(() => {
+                  let totalSum = 0;
+                  let countSum = 0;
+                  (Object.entries(myTickets) as [string, Ticket[]][]).forEach(([campaignId, tList]) => {
+                    const pCount = tList.filter(t => t.status === "reserved").length;
+                    if (pCount > 0) {
+                      const camp = campaigns.find(c => c.id === campaignId);
+                      if (camp) {
+                        const calc = getDiscountedPrice(pCount, camp.ticketPrice, camp.progressiveDiscounts);
+                        totalSum += calc.totalPrice;
+                        countSum += pCount;
+                      }
+                    }
+                  });
+                  return (
+                    <div className="bg-gradient-to-br from-amber-500 to-amber-600 text-white rounded-2xl p-5 text-center flex flex-col justify-center items-center shadow-md space-y-1 border border-amber-400">
+                      <span className="text-[10px] uppercase font-black tracking-widest text-amber-100/95">VALOR TOTAL DO PIX A SER PAGO</span>
+                      <span className="text-3xl font-extrabold font-sans tracking-tight leading-none">
+                        R$ {totalSum.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-700/30 rounded-full border border-amber-400/20 text-xs text-amber-50 font-semibold mt-1">
+                        <span>🎟️ {countSum} cota{countSum > 1 ? "s" : ""} reservada{countSum > 1 ? "s" : ""}</span>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                <p className="text-[11px] leading-relaxed text-slate-655">
+                  Faça a transferência acima via PIX das suas cotas pendentes nos dados abaixo para confirmar suas reservas:
                 </p>
-                <div className="space-y-1.5 bg-white border border-amber-200/55 rounded-xl p-2.5 shadow-xs">
-                  <div className="flex items-center justify-between gap-1.5 font-mono text-[11px] text-slate-800">
-                    <div>
-                      <span className="text-[9px] text-slate-400 block font-sans">CHAVE PIX</span>
-                      <span className="truncate block font-bold">{settings.pixKey}</span>
+                <div className="space-y-3 bg-amber-50/60 border border-amber-200 rounded-xl p-4 shadow-xs">
+                  <div className="bg-white border border-amber-100 rounded-lg p-3 flex items-center justify-between gap-1.5 font-mono text-[11px] text-slate-800 shadow-2xs">
+                    <div className="flex-1 min-w-0">
+                      <span className="text-[9px] text-amber-800 font-extrabold block font-sans tracking-wide uppercase">CHAVE PIX</span>
+                      <span className="truncate block font-extrabold text-[13px] text-indigo-950 font-mono select-all">{settings.pixKey}</span>
                     </div>
                     <button
                       onClick={handleCopyPix}
-                      className="text-slate-505 hover:text-slate-800 p-1.5 bg-slate-55 hover:bg-slate-100 border border-slate-200 rounded-lg cursor-pointer shrink-0"
+                      className="text-amber-700 hover:text-amber-900 p-2 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg cursor-pointer shrink-0 transition-all flex items-center gap-1 select-none"
                       title="Copiar chave PIX"
                     >
-                      {copiedPix ? <Check className="w-3.5 h-3.5 text-indigo-600" /> : <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" /></svg>}
+                      {copiedPix ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-emerald-600 animate-scaleIn" />
+                          <span className="text-[9px] font-sans font-black text-emerald-600">Copiada</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5" />
+                          <span className="text-[9px] font-sans font-black">Copiar</span>
+                        </>
+                      )}
                     </button>
                   </div>
-                  {settings.receiverName && (
-                    <div className="text-[10px] text-slate-500 border-t border-slate-100 pt-1 flex justify-between font-sans">
-                      <span>Favorecido:</span>
-                      <strong className="text-slate-705">{settings.receiverName}</strong>
-                    </div>
-                  )}
-                  {settings.bankName && (
-                    <div className="text-[10px] text-slate-500 flex justify-between font-sans">
-                      <span>Banco:</span>
-                      <strong className="text-slate-705">{settings.bankName}</strong>
-                    </div>
-                  )}
+                  <div className="space-y-2 text-xs">
+                    {settings.receiverName && (
+                      <div className="text-[11px] text-slate-650 bg-white/80 border border-slate-100/50 p-2 rounded-lg flex justify-between items-center font-sans">
+                        <span className="font-bold text-slate-400 text-[10px] uppercase tracking-wider">Favorecido:</span>
+                        <strong className="text-slate-905 font-black text-sm">{settings.receiverName}</strong>
+                      </div>
+                    )}
+                    {settings.bankName && (
+                      <div className="text-[11px] text-slate-650 bg-white/80 border border-slate-100/50 p-2 rounded-lg flex justify-between items-center font-sans">
+                        <span className="font-bold text-slate-400 text-[10px] uppercase tracking-wider">Banco:</span>
+                        <strong className="text-slate-905 font-black text-sm">{settings.bankName}</strong>
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <p className="text-[10px] text-slate-505 leading-normal bg-white/40 p-1.5 rounded-lg border border-slate-200/10">
                   💡 Realize o pagamento em até <strong>{settings.expirationHours} horas</strong>. Buscaremos no extrato pelo seu CPF <strong>{userProfile.cpf}</strong> para validar os números!
@@ -1799,19 +2074,30 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
 
             {/* FLOAT CHECKOUT POP-IN ON MOBILE SCENARIOS */}
             {selectedCampaign && selectedNumbers.length > 0 && (
-              <div className="fixed bottom-16 left-0 right-0 z-45 px-4 py-3 bg-white/95 backdrop-blur-md border-t border-slate-200/60 shadow-[0_-8px_24px_rgba(0,0,0,0.12)] flex lg:hidden items-center justify-between animate-slideUp select-none">
+              <div className="fixed bottom-16 left-0 right-0 z-45 px-4 py-3 bg-indigo-950 text-white shadow-[0_-8px_24px_rgba(0,0,0,0.22)] flex lg:hidden items-center justify-between animate-slideUp select-none rounded-t-2xl border-t border-indigo-800">
                 <div className="space-y-0.5">
-                  <span className="text-[9px] text-indigo-650 font-black uppercase tracking-wider block">Reservar Bilhetes</span>
-                  <div className="flex items-baseline gap-1">
-                    <strong className="text-sm font-black text-slate-850">
+                  <span className="text-[9px] text-indigo-200 font-extrabold uppercase tracking-widest block">TOTAL DO PEDIDO</span>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <strong className="text-xs font-black text-indigo-100 bg-indigo-850 border border-indigo-700/50 px-1.5 py-0.5 rounded">
                       {selectedNumbers.length} {selectedNumbers.length === 1 ? "cota" : "cotas"}
                     </strong>
-                    <span className="text-xs text-indigo-600 font-extrabold">
-                      • R$ {(() => {
+                    <span className="text-base font-black text-emerald-400 font-mono">
+                      R$ {(() => {
                         const calc = getDiscountedPrice(selectedNumbers.length, selectedCampaign.ticketPrice, selectedCampaign.progressiveDiscounts);
-                        return calc.totalPrice.toFixed(2);
+                        return calc.totalPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                       })()}
                     </span>
+                    {(() => {
+                      const calc = getDiscountedPrice(selectedNumbers.length, selectedCampaign.ticketPrice, selectedCampaign.progressiveDiscounts);
+                      if (calc.appliedDiscount) {
+                        return (
+                          <span className="text-[8px] bg-emerald-600 text-white font-black px-1.5 py-0.5 rounded-full uppercase tracking-wider scale-90">
+                            Desconto!
+                          </span>
+                        );
+                      }
+                      return null;
+                    })()}
                   </div>
                 </div>
                 <div className="flex gap-2">
@@ -1885,46 +2171,59 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
       )}
 
       {/* GLOBAL RULES / REGULAMENTO MODAL */}
-      {showRulesModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/45 backdrop-blur-xs select-none">
-          <div className="bg-white rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh] animate-fadeIn">
-            {/* Header */}
-            <div className="bg-slate-900 px-6 py-5 text-white flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <HelpCircle className="w-5 h-5 text-indigo-400" />
-                <div>
-                  <h3 className="font-extrabold text-base tracking-tight">Instruções e Regulamento</h3>
-                  <span className="text-[10px] text-slate-400 block -mt-0.5 font-bold uppercase tracking-wide">Rifas de Formatura Oficial</span>
+      <AnimatePresence>
+        {showRulesModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/45 backdrop-blur-xs select-none"
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 15, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.95, y: 15, opacity: 0 }}
+              transition={{ type: "spring", duration: 0.3 }}
+              className="bg-white rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh]"
+            >
+              {/* Header */}
+              <div className="bg-slate-900 px-6 py-5 text-white flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <HelpCircle className="w-5 h-5 text-indigo-400" />
+                  <div>
+                    <h3 className="font-extrabold text-base tracking-tight">Instruções e Regulamento</h3>
+                    <span className="text-[10px] text-slate-400 block -mt-0.5 font-bold uppercase tracking-wide">Rifas de Formatura Oficial</span>
+                  </div>
                 </div>
+                <button
+                  onClick={() => setShowRulesModal(false)}
+                  className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 transition flex items-center justify-center text-white text-sm font-extrabold cursor-pointer"
+                >
+                  ✕
+                </button>
               </div>
-              <button
-                onClick={() => setShowRulesModal(false)}
-                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 transition flex items-center justify-center text-white text-sm font-extrabold cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
 
-            {/* Content body */}
-            <div className="p-6 md:p-8 overflow-y-auto flex-1 select-text space-y-4">
-              <div 
-                className="text-slate-705 text-sm leading-relaxed rich-text-content"
-                dangerouslySetInnerHTML={{ __html: settings.rulesText || "Nenhum regulamento cadastrado no momento." }}
-              />
-            </div>
+              {/* Content body */}
+              <div className="p-6 md:p-8 overflow-y-auto flex-1 select-text space-y-4">
+                <div 
+                  className="text-slate-705 text-sm leading-relaxed rich-text-content"
+                  dangerouslySetInnerHTML={{ __html: settings.rulesText || "Nenhum regulamento cadastrado no momento." }}
+                />
+              </div>
 
-            {/* Footer buttons */}
-            <div className="bg-slate-50 border-t border-slate-150 p-4 flex justify-end">
-              <button
-                onClick={() => setShowRulesModal(false)}
-                className="bg-indigo-600 hover:bg-indigo-750 text-white font-bold text-xs px-6 py-2.5 rounded-xl transition cursor-pointer shadow-xs"
-              >
-                Entendi, Fechar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+              {/* Footer buttons */}
+              <div className="bg-slate-50 border-t border-slate-150 p-4 flex justify-end">
+                <button
+                  onClick={() => setShowRulesModal(false)}
+                  className="bg-indigo-600 hover:bg-indigo-750 text-white font-bold text-xs px-6 py-2.5 rounded-xl transition cursor-pointer shadow-xs"
+                >
+                  Entendi, Fechar
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* LGPD USER COMPLIANCE / PRIVACY RIGHTS CENTER MODAL */}
       {showLgpdModal && (

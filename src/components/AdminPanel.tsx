@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, query, where, getDocs } from "firebase/firestore";
 import { db, handleFirestoreError, OperationType } from "../firebase";
 import { Campaign, Ticket, UserProfile } from "../types";
-import { validateCPF, formatCPF, formatPhone, validatePhone } from "../utils/validation";
+import { validateCPF, formatCPF, formatPhone, validatePhone, getCampaignDrawProjection } from "../utils/validation";
 import RichTextEditor from "./RichTextEditor";
 import { getDiscountedPrice } from "./ClientDashboard";
 import DashboardOverview from "./DashboardOverview";
@@ -30,8 +30,7 @@ import {
   Coins,
   Edit,
   Database,
-  Download,
-  Music
+  Download
 } from "lucide-react";
 
 interface AdminPanelProps {
@@ -54,8 +53,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
     receiverName: "Comissão de Formatura Integrada",
     expirationHours: 24,
     supportContact: "51999999999",
-    rulesText: "Os bilhetes reservados têm prazo de validade. Caso a transferência via PIX não seja comprovada, a cota retornará à disponibilidade geral automaticamente.",
-    bgMusicUrl: ""
+    rulesText: "Os bilhetes reservados têm prazo de validade. Caso a transferência via PIX não seja comprovada, a cota retornará à disponibilidade geral automaticamente."
   });
 
   const [groupReservationsByBuyer, setGroupReservationsByBuyer] = useState(false);
@@ -446,14 +444,31 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
   const handleDeleteClient = async (client: UserProfile) => {
     const confirmDelete = window.confirm(
       `ATENÇÃO: Você tem certeza de que deseja EXCLUIR o perfil do cliente "${client.name}"?\n` +
-      `Esta ação removerá o cadastro dele permanentemente e não pode ser desfeita.`
+      `Esta ação removerá o cadastro dele permanentemente e liberará todos os seus bilhetes associados.`
     );
     if (!confirmDelete) return;
 
     try {
+      // 1. Delete all subcollection tickets associated with this client to prevent orphaned entries in Firebase
+      const deletePromises: Promise<void>[] = [];
+      Object.keys(allReservations).forEach((campaignId) => {
+        const list = allReservations[campaignId] || [];
+        list.forEach((t) => {
+          if (t.buyerUid === client.uid) {
+            const ticketRef = doc(db, "campaigns", campaignId, "tickets", t.number);
+            deletePromises.push(deleteDoc(ticketRef));
+          }
+        });
+      });
+
+      if (deletePromises.length > 0) {
+        await Promise.all(deletePromises);
+      }
+
+      // 2. Delete user profile
       const ref = doc(db, "users", client.uid);
       await deleteDoc(ref);
-      alert(`O perfil do cliente "${client.name}" foi removido do Firestore.`);
+      alert(`O perfil de "${client.name}" e todas as suas cotas associadas foram permanentemente removidos do Firestore.`);
     } catch (err: any) {
       handleFirestoreError(err, OperationType.DELETE, `users/${client.uid}`);
     }
@@ -835,7 +850,19 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
     if (!window.confirm("Deseja realmente deletar esta campanha? Todos os ingressos associados serão apagados permanentemente.")) return;
 
     try {
+      // 1. Delete all subcollection tickets under campaigns/{id}/tickets to avoid orphaned documents in Firebase
+      const ticketsList = allReservations[id] || [];
+      if (ticketsList.length > 0) {
+        const deletePromises = ticketsList.map(async (t) => {
+          const ticketRef = doc(db, "campaigns", id, "tickets", t.number);
+          await deleteDoc(ticketRef);
+        });
+        await Promise.all(deletePromises);
+      }
+
+      // 2. Delete the campaign document itself
       await deleteDoc(doc(db, "campaigns", id));
+      alert("Campanha e todas as suas cotas associadas foram permanentemente removidas do Firebase.");
     } catch (err) {
       console.error("Error deleting campaign:", err);
       handleFirestoreError(err, OperationType.DELETE, `campaigns/${id}`);
@@ -1768,76 +1795,6 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                 />
               </div>
 
-              {/* MÚSICA DE FUNDO */}
-              <div className="space-y-3.5 md:col-span-2 border-t border-slate-200/80 pt-5 mt-2">
-                <div className="flex items-center gap-2">
-                  <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg">
-                    <Music className="w-4 h-4 animate-pulse" />
-                  </div>
-                  <div>
-                    <h3 className="font-extrabold text-slate-850 text-sm">Música de Fundo para o Aplicativo</h3>
-                    <p className="text-[10px] text-slate-400">Adicione uma atmosfera sonora de fundo ao sistema para criar um clima festivo para os compradores.</p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 gap-4 bg-white border border-slate-200/60 p-4 rounded-xl">
-                  {/* Link Direto */}
-                  <div className="space-y-1.5">
-                    <label className="block font-bold text-slate-700">Link Direto do Áudio (URL externa)</label>
-                    <input
-                      type="url"
-                      value={settings.bgMusicUrl || ""}
-                      onChange={(e) => {
-                        setSettings({
-                          ...settings,
-                          bgMusicUrl: e.target.value,
-                        });
-                      }}
-                      className="w-full bg-slate-50 p-2.5 border border-slate-300 rounded-lg text-xs"
-                      placeholder="Ex: https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"
-                    />
-                    <span className="text-[10px] text-slate-400 block">Pode ser qualquer link direto público de hospedagem ou CDN terminado em .mp3, .ogg, .wav, .aac ou similar, sem restrições de tamanho de arquivo.</span>
-                  </div>
-
-                  {/* Visualizer & Tester */}
-                  <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 bg-slate-50/50 p-3 rounded-lg">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></div>
-                      <span className="text-[11px] text-slate-600 font-semibold">
-                        {settings.bgMusicUrl ? "🔗 Áudio Carregado via URL externa" : "🔇 Nenhuma trilha sonora ativa"}
-                      </span>
-                    </div>
-
-                    {settings.bgMusicUrl && (
-                      <div className="flex items-center gap-2">
-                        {/* Audio Preview Element */}
-                        <audio 
-                          id="admin-bg-audio-preview" 
-                          src={settings.bgMusicUrl || undefined} 
-                          controls 
-                          className="h-7 max-w-xs scale-90 origin-right"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSettings({
-                              ...settings,
-                              bgMusicUrl: "",
-                            });
-                            const previewEl = document.getElementById("admin-bg-audio-preview") as HTMLAudioElement;
-                            if (previewEl) previewEl.pause();
-                          }}
-                          className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 font-bold rounded-lg transition-all text-[11px] cursor-pointer flex items-center gap-1.5"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          <span>Remover</span>
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
 
             </div>
 
@@ -2203,18 +2160,26 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                             {ca.status === "active" ? "Ativa" : ca.status === "paused" ? "Pausada" : "Sorteada"}
                           </span>
                         </td>
-                        <td className="py-4 px-4 text-slate-500">
+                         <td className="py-4 px-4 text-slate-500">
                           {ca.status === "drawn" ? (
-                            <div className="flex items-center gap-1.5 text-indigo-800 bg-indigo-50 px-2 py-1 rounded inline-flex font-mono">
+                            <div className="flex items-center gap-1.5 text-indigo-800 bg-indigo-50 px-2.5 py-1 rounded-xl inline-flex font-mono text-[10px] font-extrabold">
                               <Trophy className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                               <span>Nº: {ca.winningNumber}</span>
                             </div>
-                          ) : (
-                            <div>
-                              <span className="block font-medium">Extração: {ca.federalLotteryDrawId || "-"}</span>
-                              <span className="text-[10px] block">{ca.drawDate || "Sem data"}</span>
-                            </div>
-                          )}
+                          ) : (() => {
+                            const proj = getCampaignDrawProjection(ca, tRegistered);
+                            return (
+                              <div className="space-y-1">
+                                <span className="block font-medium">Extração: {ca.federalLotteryDrawId || "-"}</span>
+                                <div className="text-[9.5px] font-extrabold text-slate-700 bg-indigo-50 border border-indigo-100/50 rounded-lg px-2 py-0.5 w-max">
+                                  🔮 Prev: {proj.formattedProbableDrawDate.split(" às ")[0]}
+                                </div>
+                                <span className="text-[9px] text-slate-400 block font-medium">
+                                  Ritmo: {proj.salesVelocity} cotas/dia (~{proj.daysRemainingEst} d. rest.)
+                                </span>
+                              </div>
+                            );
+                          })()}
                         </td>
                         <td className="py-4 px-4 text-right">
                           <div className="flex items-center justify-end gap-1.5">
@@ -2315,12 +2280,23 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                           <span>Ganhador Federal: <strong className="font-mono text-indigo-700">#{ca.winningNumber}</strong></span>
                         </div>
                       ) : (
-                        <div className="flex justify-between items-center bg-white p-2.5 border border-slate-200/60 rounded-xl shadow-xs">
-                          <div>
-                            <span className="text-[9px] text-slate-400 block font-semibold uppercase leading-none">Loteria Extração</span>
-                            <span className="font-medium">{ca.federalLotteryDrawId || "A definir"}</span>
+                        <div className="flex flex-col gap-1.5 bg-white p-2.5 border border-slate-200/60 rounded-xl shadow-xs">
+                          <div className="flex justify-between items-center">
+                            <div>
+                              <span className="text-[9px] text-slate-400 block font-semibold uppercase leading-none">Loteria Extração</span>
+                              <span className="font-medium text-slate-700">{ca.federalLotteryDrawId || "A definir"}</span>
+                            </div>
+                            <span className="text-[10px] font-semibold text-slate-500">{ca.drawDate || "Sem data"}</span>
                           </div>
-                          <span className="text-[10px] font-semibold text-slate-505">{ca.drawDate || "Sem data"}</span>
+                          {(() => {
+                            const proj = getCampaignDrawProjection(ca, tRegistered);
+                            return (
+                              <div className="pt-2 border-t border-dashed border-slate-100 flex flex-col gap-0.5">
+                                <span className="text-[10px] font-extrabold text-indigo-700">🔮 Previsão: {proj.formattedProbableDrawDate.split(" às ")[0]}</span>
+                                <span className="text-[9px] text-slate-405 leading-none">Ritmo: {proj.salesVelocity} c/dia (~{proj.daysRemainingEst} d. rest.)</span>
+                              </div>
+                            );
+                          })()}
                         </div>
                       )}
                     </div>

@@ -1,3 +1,5 @@
+import { Campaign, Ticket } from "../types";
+
 /**
  * Brazilian CPF validation and formatting helper functions.
  */
@@ -77,3 +79,142 @@ export function validatePhone(phoneRaw: string): boolean {
 
   return true;
 }
+
+/**
+ * Checks if ticket sales are suspended due to the Federal Lottery draw.
+ * Drawings happen on Wednesdays and Saturdays at 19:00 Brasilia Time.
+ * Sales must be suspended between 18:45 and 21:00 Brasilia Time on these days.
+ */
+export function isLotterySalesSuspended(): { suspended: boolean; reason?: string } {
+  // Get current date/time on UTC and apply Brasilia Time offset (UTC-3)
+  const now = new Date();
+  const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+  const brTime = new Date(utc - (3 * 3600000));
+
+  const day = brTime.getDay(); // 0 = Sunday, 1 = Monday, ..., 3 = Wednesday, ..., 6 = Saturday
+  const hours = brTime.getHours();
+  const minutes = brTime.getMinutes();
+  const totalMinutes = hours * 60 + minutes;
+
+  if (day === 3 || day === 6) {
+    const startMinutes = 18 * 60 + 45; // 18:45 -> 1125
+    const endMinutes = 21 * 60;        // 21:00 -> 1260
+
+    if (totalMinutes >= startMinutes && totalMinutes < endMinutes) {
+      return {
+        suspended: true,
+        reason: `Vendas suspensas temporariamente das 18:45 às 21:00 devido ao sorteio da Loteria Federal de hoje (${day === 3 ? "quarta-feira" : "sábado"}).`
+      };
+    }
+  }
+
+  return { suspended: false };
+}
+
+export interface DrawProjection {
+  currentProgressPercent: number;
+  totalSoldTickets: number;
+  elapsedDays: number;
+  salesVelocity: number;
+  daysRemainingEst: number;
+  probableDrawDateBr: Date;
+  formattedProbableDrawDate: string;
+  confidenceRating: "low" | "medium" | "high";
+  hasEnoughData: boolean;
+}
+
+/**
+ * Calculates the probable draw date based on sales flow/velocity.
+ * Federal lottery drawings always happen on Wednesdays and Saturdays at 19:00 Brasilia Time (UTC-3).
+ */
+export function getCampaignDrawProjection(campaign: Campaign, campaignTickets: Ticket[]): DrawProjection {
+  const total = campaign.totalTickets || 100;
+  
+  // count both reserved and confirmed as sales flow
+  const soldCount = campaignTickets.filter(t => t.status === "confirmed" || t.status === "reserved").length;
+  const currentProgressPercent = total > 0 ? parseFloat(((soldCount / total) * 100).toFixed(1)) : 0;
+
+  // calculate elapsed days since creation
+  const createdDate = campaign.createdAt ? new Date(campaign.createdAt) : new Date(Date.now() - 3 * 24 * 3600000);
+  const diffTime = Math.abs(Date.now() - createdDate.getTime());
+  // Ensure a minimum of 0.5 days (12 hours) so early sales don't trigger massive velocity spikes
+  const elapsedDays = Math.max(0.5, diffTime / (24 * 60 * 60 * 1000));
+  
+  // Velocity = tickets sold per day
+  const salesVelocity = parseFloat((soldCount / elapsedDays).toFixed(2));
+
+  let daysRemainingEst = 0;
+  const hasEnoughData = soldCount >= 3; // At least 3 sold tickets to provide a somewhat stable rating
+  
+  if (soldCount === 0) {
+    // Speculative: if zero tickets sold, we estimate custom baseline (e.g. 1.5 tickets per day)
+    daysRemainingEst = total / 1.5;
+  } else {
+    const remaining = Math.max(0, total - soldCount);
+    const computedVelocity = salesVelocity > 0 ? salesVelocity : 0.2; 
+    daysRemainingEst = Math.min(365, remaining / computedVelocity);
+  }
+
+  // Target date for completing sales
+  const targetCompletedDate = new Date(Date.now() + daysRemainingEst * 24 * 60 * 60 * 1000);
+
+  // Find subsequent Wednesday (3) or Saturday (6) at 19:00 Brasilia Time (UTC-3)
+  const targetCompletedUtc = targetCompletedDate.getTime() + (targetCompletedDate.getTimezoneOffset() * 60000);
+  const brTarget = new Date(targetCompletedUtc - (3 * 3600000));
+
+  let drawBr = new Date(brTarget);
+  drawBr.setMinutes(0);
+  drawBr.setSeconds(0);
+  drawBr.setMilliseconds(0);
+
+  let iterations = 0;
+  while (iterations < 100) {
+    const day = drawBr.getDay(); // 0 = Sun, 1 = Mon, ..., 3 = Wed, 6 = Sat
+    if (day === 3 || day === 6) {
+      const isSameDay = drawBr.toDateString() === brTarget.toDateString();
+      if (isSameDay) {
+        if (brTarget.getHours() < 19) {
+          drawBr.setHours(19, 0, 0, 0);
+          break;
+        } else {
+          drawBr.setDate(drawBr.getDate() + 1);
+          continue;
+        }
+      } else {
+        drawBr.setHours(19, 0, 0, 0);
+        break;
+      }
+    }
+    drawBr.setDate(drawBr.getDate() + 1);
+    iterations++;
+  }
+
+  // Confidence based on sales percentage & sample size
+  let confidenceRating: "low" | "medium" | "high" = "low";
+  if (soldCount >= total * 0.4 && soldCount >= 10) {
+    confidenceRating = "high";
+  } else if (soldCount >= total * 0.15 && soldCount >= 4) {
+    confidenceRating = "medium";
+  }
+
+  const weekdayNamesBr = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
+  const formattedDayOfWeek = weekdayNamesBr[drawBr.getDay()] || "";
+  
+  const dStr = String(drawBr.getDate()).padStart(2, "0");
+  const mStr = String(drawBr.getMonth() + 1).padStart(2, "0");
+  const yStr = drawBr.getFullYear();
+  const formattedProbableDrawDate = `${formattedDayOfWeek}, ${dStr}/${mStr}/${yStr} às 19:00h`;
+
+  return {
+    currentProgressPercent,
+    totalSoldTickets: soldCount,
+    elapsedDays: parseFloat(elapsedDays.toFixed(1)),
+    salesVelocity,
+    daysRemainingEst: Math.round(daysRemainingEst),
+    probableDrawDateBr: drawBr,
+    formattedProbableDrawDate,
+    confidenceRating,
+    hasEnoughData
+  };
+}
+

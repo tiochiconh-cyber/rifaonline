@@ -135,7 +135,7 @@ export default function Admin2FA({ userId, userEmail, onVerified, onLogout }: Ad
   }
 
   // OTPAuth URI to formulate QR Code
-  const qrData = `otpauth://totp/RifasFormatura:${userEmail}?secret=${totpSecret}&issuer=RifasFormatura`;
+  const qrData = `otpauth://totp/RifasFormatura:Admin?secret=${totpSecret}&issuer=RifasFormatura`;
   const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(qrData)}`;
 
   return (
@@ -147,7 +147,7 @@ export default function Admin2FA({ userId, userEmail, onVerified, onLogout }: Ad
         </div>
         <h2 className="text-xl font-bold tracking-tight">Painel de Segurança do Administrador</h2>
         <p className="text-slate-400 text-xs mt-1">
-          Identidade confirmada para: <strong className="text-slate-200">{userEmail}</strong>
+          Acesso restrito à equipe de administração
         </p>
       </div>
 

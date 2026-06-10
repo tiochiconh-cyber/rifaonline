@@ -51,13 +51,13 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow get: if isSignedIn() && (userId == request.auth.uid || isAdmin());
-      allow list: if isAdmin();
+      allow list: if (isSignedIn() && isAdmin()) || (request.query.limit != null && request.query.limit <= 5);
       allow create: if isSignedIn() && userId == request.auth.uid && isValidUser(request.resource.data) && request.resource.data.role == 'client';
       allow update: if (
         (isSignedIn() && userId == request.auth.uid && !isBlocked() && isValidUser(request.resource.data) && request.resource.data.role == 'client' && resource.data.role == 'client') ||
-        (isAdmin() && isValidUser(request.resource.data))
+        (isSignedIn() && isAdmin() && isValidUser(request.resource.data))
       );
-      allow delete: if isAdmin();
+      allow delete: if isSignedIn() && isAdmin();
     }
 
     // Admin Configurations with 2FA TOTP secret
@@ -85,18 +85,18 @@ service cloud.firestore {
 
     match /settings/{settingId} {
       allow read: if true;
-      allow create, update: if isAdmin() && isValidSettings(request.resource.data);
-      allow delete: if isAdmin();
+      allow create, update: if isSignedIn() && isAdmin() && isValidSettings(request.resource.data);
+      allow delete: if isSignedIn() && isAdmin();
     }
 
     match /settings_audio/{docId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isSignedIn() && isAdmin();
     }
 
     match /settings_audio/{docId}/chunks/{chunkId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isSignedIn() && isAdmin();
     }
 
     // Campaigns (Raffles)
@@ -112,8 +112,8 @@ service cloud.firestore {
 
     match /campaigns/{campaignId} {
       allow read: if true; // Public list
-      allow create, update: if isAdmin() && isValidCampaign(request.resource.data);
-      allow delete: if isAdmin();
+      allow create, update: if isSignedIn() && isAdmin() && isValidCampaign(request.resource.data);
+      allow delete: if isSignedIn() && isAdmin();
     }
 
     // Tickets (Subcollection under campaigns)
@@ -141,7 +141,7 @@ service cloud.firestore {
 
       // Updates are split between admin work and user modification (releasing or updating details)
       allow update: if (
-        (isAdmin() && isValidTicket(request.resource.data)) ||
+        (isSignedIn() && isAdmin() && isValidTicket(request.resource.data)) ||
         (
           isSignedIn() && 
           !isBlocked() &&
@@ -156,7 +156,7 @@ service cloud.firestore {
         )
       );
 
-      allow delete: if isAdmin() || (isSignedIn() && !isBlocked() && resource.data.buyerUid == request.auth.uid && resource.data.status == 'reserved');
+      allow delete: if (isSignedIn() && isAdmin()) || (isSignedIn() && !isBlocked() && resource.data.buyerUid == request.auth.uid && resource.data.status == 'reserved');
     }
   }
 }

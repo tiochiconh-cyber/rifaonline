@@ -7,7 +7,7 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword
 } from "firebase/auth";
-import { doc, getDoc, setDoc, collection, getDocs, query, where } from "firebase/firestore";
+import { doc, getDoc, setDoc, collection, getDocs, query, where, limit } from "firebase/firestore";
 import { auth, db, handleFirestoreError, OperationType } from "../firebase";
 import { validateCPF, formatCPF, formatPhone, validatePhone } from "../utils/validation";
 import { 
@@ -303,8 +303,8 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
     try {
       // Check for duplicate CPF or Phone Number
       const usersRef = collection(db, "users");
-      const cpfQuery = query(usersRef, where("cpf", "==", cleanCpf));
-      const phoneQuery = query(usersRef, where("phone", "==", cleanPhone));
+      const cpfQuery = query(usersRef, where("cpf", "==", cleanCpf), limit(1));
+      const phoneQuery = query(usersRef, where("phone", "==", cleanPhone), limit(1));
 
       const [cpfSnap, phoneSnap] = await Promise.all([
         getDocs(cpfQuery),
@@ -403,8 +403,8 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
     try {
       // Check for duplicate CPF or Phone (excluding current user UID)
       const usersRef = collection(db, "users");
-      const cpfQuery = query(usersRef, where("cpf", "==", cleanCpf));
-      const phoneQuery = query(usersRef, where("phone", "==", cleanPhone));
+      const cpfQuery = query(usersRef, where("cpf", "==", cleanCpf), limit(2));
+      const phoneQuery = query(usersRef, where("phone", "==", cleanPhone), limit(2));
 
       const [cpfSnap, phoneSnap] = await Promise.all([
         getDocs(cpfQuery),
@@ -671,58 +671,75 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
       </div>
 
       {/* Action right panel: Auth choices or Profile Form */}
-      <div className="md:col-span-7 p-6 md:p-10 flex flex-col justify-center bg-slate-50">
-        {!showRegisterForm ? (
-          /* Sign-in + Registration prompt block */
-          <div className="max-w-md mx-auto w-full space-y-5">
-            <div className="space-y-1 text-center md:text-left">
-              <h2 className="text-2xl font-extrabold tracking-tight text-slate-800">Participar de Rifas</h2>
-              <p className="text-slate-500 text-xs">
-                Para ter acesso às campanhas e reservar seus bilhetes de forma segura.
-              </p>
-            </div>
-
-            {/* Custom Tabs with visual elegance */}
-            <div className="flex border border-slate-200/80 bg-slate-100/60 p-1 rounded-2xl">
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab("login");
-                  setFormError("");
-                }}
-                className={`flex-1 text-center py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition ${
-                  activeTab === "login"
-                    ? "bg-white text-indigo-600 shadow-sm border border-slate-100"
-                    : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/40"
-                }`}
-              >
-                Entrar / Login
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab("register");
-                  setFormError("");
-                }}
-                className={`flex-1 text-center py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition ${
-                  activeTab === "register"
-                    ? "bg-white text-indigo-600 shadow-sm border border-slate-100"
-                    : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/40"
-                }`}
-              >
-                Cadastrar-se
-              </button>
-            </div>
-
-            {formError && (
-              <div className="p-3.5 bg-red-50 text-red-700 rounded-xl border border-red-100 text-xs leading-relaxed font-medium">
-                {formError}
+      <div className="md:col-span-7 p-6 md:p-10 flex flex-col justify-center bg-slate-50 overflow-hidden">
+        <AnimatePresence mode="wait">
+          {!showRegisterForm ? (
+            /* Sign-in + Registration prompt block */
+            <motion.div
+              key="auth-choices-panel"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              transition={{ duration: 0.25, ease: "easeOut" }}
+              className="max-w-md mx-auto w-full space-y-5"
+            >
+              <div className="space-y-1 text-center md:text-left">
+                <h2 className="text-2xl font-extrabold tracking-tight text-slate-800">Participar de Rifas</h2>
+                <p className="text-slate-500 text-xs">
+                  Para ter acesso às campanhas e reservar seus bilhetes de forma segura.
+                </p>
               </div>
-            )}
 
-            {activeTab === "login" ? (
-              /* TAB: LOGIN FOR CLIENTS */
-              <form onSubmit={handleEmailLogin} className="space-y-4">
+              {/* Custom Tabs with visual elegance */}
+              <div className="flex border border-slate-200/80 bg-slate-100/60 p-1 rounded-2xl">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab("login");
+                    setFormError("");
+                  }}
+                  className={`flex-1 text-center py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition ${
+                    activeTab === "login"
+                      ? "bg-white text-indigo-600 shadow-sm border border-slate-100"
+                      : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/40"
+                  }`}
+                >
+                  Entrar / Login
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab("register");
+                    setFormError("");
+                  }}
+                  className={`flex-1 text-center py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition ${
+                    activeTab === "register"
+                      ? "bg-white text-indigo-600 shadow-sm border border-slate-100"
+                      : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/40"
+                  }`}
+                >
+                  Cadastrar-se
+                </button>
+              </div>
+
+              {formError && (
+                <div className="p-3.5 bg-red-50 text-red-700 rounded-xl border border-red-100 text-xs leading-relaxed font-medium">
+                  {formError}
+                </div>
+              )}
+
+              <AnimatePresence mode="wait">
+                {activeTab === "login" ? (
+                  /* TAB: LOGIN FOR CLIENTS */
+                  <motion.form
+                    key="login-form-tab"
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -12 }}
+                    transition={{ duration: 0.2 }}
+                    onSubmit={handleEmailLogin}
+                    className="space-y-4"
+                  >
                 <div>
                   <label className="block text-[10px] font-bold tracking-wider text-slate-500 uppercase mb-1">
                     Endereço de E-mail
@@ -775,10 +792,18 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
                     </>
                   )}
                 </button>
-              </form>
+              </motion.form>
             ) : (
               /* TAB: REGISTRATION FOR CLIENTS */
-              <form onSubmit={handleEmailRegister} className="space-y-3.5 max-h-[480px] overflow-y-auto pr-1">
+              <motion.form
+                key="registration-form-tab"
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -12 }}
+                transition={{ duration: 0.2 }}
+                onSubmit={handleEmailRegister}
+                className="space-y-3.5 max-h-[480px] overflow-y-auto pr-1"
+              >
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[10px] font-bold tracking-wider text-slate-500 uppercase mb-1">
@@ -951,17 +976,25 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
                     </>
                   )}
                 </button>
-              </form>
+              </motion.form>
             )}
+            </AnimatePresence>
 
             <div className="flex items-center gap-2 text-xs text-slate-400 justify-center pt-2">
               <ShieldCheck className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
               <span className="text-[10px] font-semibold text-slate-400">Banco de dados 100% Protegido em conformidade</span>
             </div>
-          </div>
+          </motion.div>
         ) : (
           /* Profile completion registration form (typically for first-time Google sign-ins) */
-          <div className="max-w-md mx-auto w-full space-y-5">
+          <motion.div
+            key="google-profile-panel"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.25, ease: "easeOut" }}
+            className="max-w-md mx-auto w-full space-y-5"
+          >
             <div className="space-y-1">
               <div className="flex items-center gap-1.5 text-indigo-600 font-semibold text-xs tracking-wider uppercase mb-1">
                 <Sparkles className="w-4.5 h-4.5" />
@@ -1151,119 +1184,146 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
                 </button>
               </div>
             </form>
-          </div>
+          </motion.div>
         )}
+        </AnimatePresence>
       </div>
 
       {/* Dynamic Terms of Use Modal */}
-      {showTermsModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/45 backdrop-blur-xs select-none animate-fadeIn">
-          <div className="bg-white rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[80vh]">
-            <div className="bg-slate-900 px-6 py-5 text-white flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <svg className="w-5 h-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                <div>
-                  <h3 className="font-extrabold text-base tracking-tight text-white">Termos de Uso</h3>
-                  <span className="text-[10px] text-indigo-300 block -mt-0.5 font-bold uppercase tracking-wide">Minha Formatura & Rifa Solidária</span>
+      <AnimatePresence>
+        {showTermsModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/45 backdrop-blur-xs select-none"
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 15, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.95, y: 15, opacity: 0 }}
+              transition={{ type: "spring", duration: 0.3 }}
+              className="bg-white rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[80vh]"
+            >
+              <div className="bg-slate-900 px-6 py-5 text-white flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <svg className="w-5 h-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  <div>
+                    <h3 className="font-extrabold text-base tracking-tight text-white">Termos de Uso</h3>
+                    <span className="text-[10px] text-indigo-300 block -mt-0.5 font-bold uppercase tracking-wide">Minha Formatura & Rifa Solidária</span>
+                  </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setShowTermsModal(false)}
+                  className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 transition flex items-center justify-center text-white text-sm font-extrabold cursor-pointer"
+                >
+                  ✕
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowTermsModal(false)}
-                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 transition flex items-center justify-center text-white text-sm font-extrabold cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="p-6 md:p-8 overflow-y-auto flex-1 select-text space-y-4 text-xs md:text-sm text-slate-600 leading-relaxed">
-              <h4 className="font-bold text-slate-800 text-sm">1. Introdução e Objetivo do Serviço</h4>
-              <p>O presente sistema regulamenta a pré-reserva, controle e verificação beneficente de cotas para a campanha estudantil <strong>Rifa Solidária de Formatura</strong>. Todo o saldo arrecadado reverte estritamente ao financiamento das festividades, diplomas e celebrações formais de formatura do aluno organizador.</p>
-              
-              <h4 className="font-bold text-slate-800 text-sm">2. Pré-Reserva e Regras de Cancelamento</h4>
-              <p>Ao realizar a escolha dos bilhetes, o sistema efetua uma pré-reserva em nome do participante. O participante tem o período estabelecido de tempo (ex: 24h) para efetuar o pagamento correspondente via transferência PIX e enviar a comprovação se necessário. Cotas não validadas ou confirmadas dentro desse prazo serão devolvidas ao estoque livre automaticamente, sem aviso prévio.</p>
-              
-              <h4 className="font-bold text-slate-800 text-sm">3. Regulação e Identificação dos Participantes</h4>
-              <p>Para garantir a isonomia, transparência e cumprimento legal, os participantes devem fornecer dados válidos de identificação pessoal (Nome completo, CPF autêntico, Cidade e WhatsApp). Dados incorretos, incompletos ou fraudulentos acarretarão a nulidade imediata das cotas selecionadas e o impedimento de retirada de qualquer item ofertado.</p>
+              <div className="p-6 md:p-8 overflow-y-auto flex-1 select-text space-y-4 text-xs md:text-sm text-slate-600 leading-relaxed">
+                <h4 className="font-bold text-slate-800 text-sm">1. Introdução e Objetivo do Serviço</h4>
+                <p>O presente sistema regulamenta a pré-reserva, controle e verificação beneficente de cotas para a campanha estudantil <strong>Rifa Solidária de Formatura</strong>. Todo o saldo arrecadado reverte estritamente ao financiamento das festividades, diplomas e celebrações formais de formatura do aluno organizador.</p>
+                
+                <h4 className="font-bold text-slate-800 text-sm">2. Pré-Reserva e Regras de Cancelamento</h4>
+                <p>Ao realizar a escolha dos bilhetes, o sistema efetua uma pré-reserva em nome do participante. O participante tem o período estabelecido de tempo (ex: 24h) para efetuar o pagamento correspondente via transferência PIX e enviar a comprovação se necessário. Cotas não validadas ou confirmadas dentro desse prazo serão devolvidas ao estoque livre automaticamente, sem aviso prévio.</p>
+                
+                <h4 className="font-bold text-slate-800 text-sm">3. Regulação e Identificação dos Participantes</h4>
+                <p>Para garantir a isonomia, transparência e cumprimento legal, os participantes devem fornecer dados válidos de identificação pessoal (Nome completo, CPF autêntico, Cidade e WhatsApp). Dados incorretos, incompletos ou fraudulentos acarretarão a nulidade imediata das cotas selecionadas e o impedimento de retirada de qualquer item ofertado.</p>
 
-              <h4 className="font-bold text-slate-800 text-sm">4. Da Extração e Entrega do Prêmio</h4>
-              <p>A extração do número vencedor baseia-se nos prêmios oficiais da Loteria Federal (Caixa Econômica Federal), conforme instruções específicas detalhadas no Regulamento de cada prêmio individualizado.</p>
-            </div>
-            <div className="bg-slate-50 border-t border-slate-150 p-4 flex justify-end">
-              <button
-                type="button"
-                onClick={() => setShowTermsModal(false)}
-                className="bg-indigo-600 hover:bg-indigo-750 text-white font-bold text-xs px-6 py-2.5 rounded-xl transition cursor-pointer shadow-xs"
-              >
-                Fechar Termos
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+                <h4 className="font-bold text-slate-800 text-sm">4. Da Extração e Entrega do Prêmio</h4>
+                <p>A extração do número vencedor baseia-se nos prêmios oficiais da Loteria Federal (Caixa Econômica Federal), conforme instruções específicas detalhadas no Regulamento de cada prêmio individualizado.</p>
+              </div>
+              <div className="bg-slate-50 border-t border-slate-150 p-4 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setShowTermsModal(false)}
+                  className="bg-indigo-600 hover:bg-indigo-750 text-white font-bold text-xs px-6 py-2.5 rounded-xl transition cursor-pointer shadow-xs"
+                >
+                  Fechar Termos
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Dynamic Privacy Policy Modal */}
-      {showPrivacyModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/45 backdrop-blur-xs select-none animate-fadeIn">
-          <div className="bg-white rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[80vh]">
-            <div className="bg-slate-900 px-6 py-5 text-white flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <svg className="w-5 h-5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                </svg>
-                <div>
-                  <h3 className="font-extrabold text-base tracking-tight text-white">Política de Privacidade (LGPD)</h3>
-                  <span className="text-[10px] text-emerald-300 block -mt-0.5 font-bold uppercase tracking-wide">Tratamento de Dados Pessoais</span>
+      <AnimatePresence>
+        {showPrivacyModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/45 backdrop-blur-xs select-none"
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 15, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.95, y: 15, opacity: 0 }}
+              transition={{ type: "spring", duration: 0.3 }}
+              className="bg-white rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[80vh]"
+            >
+              <div className="bg-slate-900 px-6 py-5 text-white flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <svg className="w-5 h-5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                  </svg>
+                  <div>
+                    <h3 className="font-extrabold text-base tracking-tight text-white">Política de Privacidade (LGPD)</h3>
+                    <span className="text-[10px] text-emerald-300 block -mt-0.5 font-bold uppercase tracking-wide">Tratamento de Dados Pessoais</span>
+                  </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setShowPrivacyModal(false)}
+                  className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 transition flex items-center justify-center text-white text-sm font-extrabold cursor-pointer"
+                >
+                  ✕
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowPrivacyModal(false)}
-                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 transition flex items-center justify-center text-white text-sm font-extrabold cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="p-6 md:p-8 overflow-y-auto flex-1 select-text space-y-4 text-xs md:text-sm text-slate-600 leading-relaxed">
-              <p className="font-semibold text-slate-800">Esta política explica, nos termos da Lei Geral de Proteção de Dados (LGPD - Lei nº 13.709/18), como coletamos, armazenamos e protegemos seus dados pessoais de forma transparente.</p>
+              <div className="p-6 md:p-8 overflow-y-auto flex-1 select-text space-y-4 text-xs md:text-sm text-slate-600 leading-relaxed">
+                <p className="font-semibold text-slate-800">Esta política explica, nos termos da Lei Geral de Proteção de Dados (LGPD - Lei nº 13.709/18), como coletamos, armazenamos e protegemos seus dados pessoais de forma transparente.</p>
 
-              <h4 className="font-bold text-slate-800 text-sm">1. Quais dados pessoais são coletados?</h4>
-              <p>Tratamos apenas os dados essenciais fornecidos voluntariamente por você ao criar sua conta:</p>
-              <ul className="list-disc pl-5 space-y-1 text-slate-605">
-                <li><strong>Nome Completo:</strong> Para individualizar o participante das cotas.</li>
-                <li><strong>E-mail:</strong> Para autenticação do seu painel e comunicação de avisos.</li>
-                <li><strong>CPF (Cadastro de Pessoas Físicas):</strong> Utilizado estritamente para a finalidade de validação unívoca do ganhador de sorteio beneficente, mitigação de fraudes de reservas falsas e prevenção a prejuízo operacionais.</li>
-                <li><strong>Telefone (WhatsApp):</strong> Para contato urgente em caso de expiração iminente da cota reservada ou confirmação do envio do PIX.</li>
-                <li><strong>Cidade e Estado:</strong> Dados geográficos genéricos para relatórios operacionais do sorteio.</li>
-              </ul>
+                <h4 className="font-bold text-slate-800 text-sm">1. Quais dados pessoais são coletados?</h4>
+                <p>Tratamos apenas os dados essenciais fornecidos voluntariamente por você ao criar sua conta:</p>
+                <ul className="list-disc pl-5 space-y-1 text-slate-605">
+                  <li><strong>Nome Completo:</strong> Para individualizar o participante das cotas.</li>
+                  <li><strong>E-mail:</strong> Para autenticação do seu painel e comunicação de avisos.</li>
+                  <li><strong>CPF (Cadastro de Pessoas Físicas):</strong> Utilizado estritamente para a finalidade de validação unívoca do ganhador de sorteio beneficente, mitigação de fraudes de reservas falsas e prevenção a prejuízo operacionais.</li>
+                  <li><strong>Telefone (WhatsApp):</strong> Para contato urgente em caso de expiração iminente da cota reservada ou confirmação do envio do PIX.</li>
+                  <li><strong>Cidade e Estado:</strong> Dados geográficos genéricos para relatórios operacionais do sorteio.</li>
+                </ul>
 
-              <h4 className="font-bold text-slate-800 text-sm">2. Segurança e Tecnologia de Armazenamento</h4>
-              <p>Seus dados pessoais coletados são armazenados em nuvem sob o serviço de alto desempenho <strong>Google Firebase (Firestore e Authentication)</strong>, contando com camadas rigorosas de segurança, controle de acessos (Security Rules) e criptografia de ponta.</p>
+                <h4 className="font-bold text-slate-800 text-sm">2. Segurança e Tecnologia de Armazenamento</h4>
+                <p>Seus dados pessoais coletados são armazenados em nuvem sob o serviço de alto desempenho <strong>Google Firebase (Firestore e Authentication)</strong>, contando com camadas rigorosas de segurança, controle de acessos (Security Rules) e criptografia de ponta.</p>
 
-              <h4 className="font-bold text-slate-800 text-sm">3. Prazo de Retenção</h4>
-              <p>Os seus dados permanecem armazenados pelo tempo de existência da campanha e auditoria das extrações correspondentes, ou até que você solicite formalmente a exclusão da sua conta, exercendo seu Direito ao Esquecimento.</p>
+                <h4 className="font-bold text-slate-800 text-sm">3. Prazo de Retenção</h4>
+                <p>Os seus dados permanecem armazenados pelo tempo de existência da campanha e auditoria das extrações correspondentes, ou até que você solicite formalmente a exclusão da sua conta, exercendo seu Direito ao Esquecimento.</p>
 
-              <h4 className="font-bold text-slate-800 text-sm">4. Direitos do Titular (Art. 18 LGPD)</h4>
-              <p>Como titular dos dados, você pode exercer gratuitamente os seguintes direitos logado na plataforma:</p>
-              <ul className="list-disc pl-5 space-y-1 text-slate-605">
-                <li>Acessar e auditar seus dados pessoais.</li>
-                <li>Exportar seus dados em formato portátil (JSON).</li>
-                <li>Solicitar a revogação do consentimento e exclusão permanente dos seus dados do nosso banco de dados.</li>
-              </ul>
-            </div>
-            <div className="bg-slate-50 border-t border-slate-150 p-4 flex justify-end">
-              <button
-                type="button"
-                onClick={() => setShowPrivacyModal(false)}
-                className="bg-indigo-600 hover:bg-indigo-750 text-white font-bold text-xs px-6 py-2.5 rounded-xl transition cursor-pointer shadow-xs"
-              >
-                Entendi, Fechar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+                <h4 className="font-bold text-slate-800 text-sm">4. Direitos do Titular (Art. 18 LGPD)</h4>
+                <p>Como titular dos dados, você pode exercer gratuitamente os seguintes direitos logado na plataforma:</p>
+                <ul className="list-disc pl-5 space-y-1 text-slate-605">
+                  <li>Acessar e auditar seus dados pessoais.</li>
+                  <li>Exportar seus dados em formato portátil (JSON).</li>
+                  <li>Solicitar a revogação do consentimento e exclusão permanente dos seus dados do nosso banco de dados.</li>
+                </ul>
+              </div>
+              <div className="bg-slate-50 border-t border-slate-150 p-4 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setShowPrivacyModal(false)}
+                  className="bg-indigo-600 hover:bg-indigo-750 text-white font-bold text-xs px-6 py-2.5 rounded-xl transition cursor-pointer shadow-xs"
+                >
+                  Entendi, Fechar
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {showSecretModal && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-[100] p-4 font-sans">
