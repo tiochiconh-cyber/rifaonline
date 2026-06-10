@@ -43,11 +43,6 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<"login" | "register">("login");
 
-  // Secret Google Login bypass password check states
-  const [showSecretModal, setShowSecretModal] = useState(false);
-  const [secretPassword, setSecretPassword] = useState("");
-  const [secretError, setSecretError] = useState("");
-
   // Authentication & Profile states
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -196,30 +191,6 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
       setFormError("Não foi possível conectar com o Google. Certifique-se de autorizar popups e tente novamente.");
     } finally {
       setLoading(false);
-    }
-  };
-
-  const hashString = async (str: string): Promise<string> => {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(str);
-    const hashBuffer = await window.crypto.subtle.digest("SHA-256", data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
-  };
-
-  const handleVerifySecret = async () => {
-    try {
-      const hashed = await hashString(secretPassword);
-      if (hashed === "2a337a851d12f199c57f6951fd7ad5f404a0e0c6b4ea93368d1dcda76797c539") {
-        setShowSecretModal(false);
-        setSecretPassword("");
-        setSecretError("");
-        handleGoogleLogin();
-      } else {
-        setSecretError("Senha incorreta. Acesso negado.");
-      }
-    } catch (err) {
-      setSecretError("Erro ao processar validação segura.");
     }
   };
 
@@ -603,25 +574,6 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
         <div className="text-[10px] text-indigo-100/40 pt-3 border-t border-white/5 mt-4 relative">
           © {new Date().getFullYear()} Campanhas de Formatura. Todos os direitos reservados.
         </div>
-
-        {/* Discreet secret Google trigger in bottom-left */}
-        <button
-          type="button"
-          onClick={() => {
-            setSecretPassword("");
-            setSecretError("");
-            setShowSecretModal(true);
-          }}
-          className="absolute bottom-2.5 left-2.5 w-6 h-6 rounded-md hover:bg-white/5 flex items-center justify-center transition-all cursor-pointer opacity-15 hover:opacity-100 z-50 text-indigo-200"
-          title="Autenticação Oculta"
-        >
-          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v3.92h6.6c-.3 1.55-1.15 2.86-2.45 3.75v3.13h3.95c2.3-2.12 3.64-5.25 3.64-8.73z" />
-            <path d="M12 24c3.24 0 5.97-1.08 7.96-2.91l-3.95-3.13c-1.1.74-2.5 1.18-4.01 1.18-3.08 0-5.69-2.08-6.62-4.88H1.31v3.23c2 3.98 6.1 6.6 10.69 6.6z" />
-            <path d="M5.38 14.26c-.24-.71-.38-1.47-.38-2.26s.14-1.55.38-2.26V6.51H1.31C.47 8.2.0 10.05.0 12s.47 3.8 1.31 5.49l4.07-3.23z" />
-            <path d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.22.0 12 .0 7.41.0 3.31 2.62 1.31 6.6l4.07 3.23c.93-2.8 3.54-4.88 6.62-4.88z" />
-          </svg>
-        </button>
       </div>
 
       {/* Action right panel: Auth choices or Profile Form */}
@@ -728,6 +680,40 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
                       <ArrowRight className="w-4 h-4" />
                     </>
                   )}
+                </button>
+
+                <div className="relative flex py-1 items-center">
+                  <div className="flex-grow border-t border-slate-200"></div>
+                  <span className="flex-shrink mx-3 text-[10px] font-bold tracking-widest text-slate-400 uppercase">OU</span>
+                  <div className="flex-grow border-t border-slate-200"></div>
+                </div>
+
+                {/* Google access is still premium and easy */}
+                <button
+                  type="button"
+                  onClick={handleGoogleLogin}
+                  disabled={loading}
+                  className="w-full flex items-center justify-center gap-2.5 bg-white hover:bg-slate-50 text-slate-700 font-bold py-3 px-5 border border-slate-200 rounded-xl shadow-sm transition hover:shadow-md cursor-pointer disabled:opacity-50"
+                >
+                  <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                    <path
+                      fill="#4285F4"
+                      d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v3.92h6.6c-.3 1.55-1.15 2.86-2.45 3.75v3.13h3.95c2.3-2.12 3.64-5.25 3.64-8.73z"
+                    />
+                    <path
+                      fill="#34A853"
+                      d="M12 24c3.24 0 5.97-1.08 7.96-2.91l-3.95-3.13c-1.1.74-2.5 1.18-4.01 1.18-3.08 0-5.69-2.08-6.62-4.88H1.31v3.23c2 3.98 6.1 6.6 10.69 6.6z"
+                    />
+                    <path
+                      fill="#FBBC05"
+                      d="M5.38 14.26c-.24-.71-.38-1.47-.38-2.26s.14-1.55.38-2.26V6.51H1.31C.47 8.2.0 10.05.0 12s.47 3.8 1.31 5.49l4.07-3.23z"
+                    />
+                    <path
+                      fill="#EA4335"
+                      d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.22.0 12 .0 7.41.0 3.31 2.62 1.31 6.6l4.07 3.23c.93-2.8 3.54-4.88 6.62-4.88z"
+                    />
+                  </svg>
+                  <span className="text-xs">Entrar rapidamente com o Google</span>
                 </button>
               </form>
             ) : (
@@ -1216,64 +1202,6 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
               </button>
             </div>
           </div>
-        </div>
-      )}
-
-      {showSecretModal && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-[100] p-4 font-sans">
-          <motion.div 
-            initial={{ scale: 0.95, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="bg-slate-900 border border-slate-800 rounded-2xl p-6 w-full max-w-sm shadow-2xl text-slate-100 space-y-4"
-          >
-            <div className="space-y-1">
-              <h3 className="text-sm font-extrabold uppercase tracking-wider text-indigo-400">Acesso Restrito</h3>
-              <p className="text-xs text-slate-400">Insira a chave de liberação secreta para entrar com o Google:</p>
-            </div>
-            
-            <div className="space-y-2">
-              <input
-                type="password"
-                value={secretPassword}
-                onChange={(e) => {
-                  setSecretPassword(e.target.value);
-                  setSecretError("");
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    handleVerifySecret();
-                  }
-                }}
-                placeholder="Digitar senha..."
-                className="w-full text-center tracking-widest font-mono text-xs px-3 py-2.5 bg-slate-950 border border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-white"
-                autoFocus
-              />
-              {secretError && (
-                <p className="text-[11px] text-rose-500 font-medium text-center">{secretError}</p>
-              )}
-            </div>
-
-            <div className="flex gap-2 text-xs pt-1">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowSecretModal(false);
-                  setSecretPassword("");
-                  setSecretError("");
-                }}
-                className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 font-bold transition cursor-pointer text-slate-300"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={handleVerifySecret}
-                className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition cursor-pointer"
-              >
-                Confirmar
-              </button>
-            </div>
-          </motion.div>
         </div>
       )}
     </div>
