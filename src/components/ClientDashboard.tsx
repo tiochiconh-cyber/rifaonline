@@ -742,20 +742,22 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
           )}
         </button>
 
-        <button
-          onClick={() => {
-            setActiveTab("ranking");
-            setSuccessReserved(null);
-          }}
-          className={`flex-1 text-center py-3 rounded-xl font-bold transition-all duration-150 cursor-pointer flex items-center justify-center gap-2 ${
-            activeTab === "ranking" 
-              ? "bg-white text-slate-900 shadow-sm" 
-              : "text-slate-500 hover:text-slate-850"
-          }`}
-        >
-          <Trophy className="w-4 h-4 text-amber-500 animate-pulse" />
-          <span>Ranking</span>
-        </button>
+        {userProfile.role === "admin" && (
+          <button
+            onClick={() => {
+              setActiveTab("ranking");
+              setSuccessReserved(null);
+            }}
+            className={`flex-1 text-center py-3 rounded-xl font-bold transition-all duration-150 cursor-pointer flex items-center justify-center gap-2 ${
+              activeTab === "ranking" 
+                ? "bg-white text-slate-900 shadow-sm" 
+                : "text-slate-500 hover:text-slate-850"
+            }`}
+          >
+            <Trophy className="w-4 h-4 text-amber-500 animate-pulse" />
+            <span>Ranking</span>
+          </button>
+        )}
       </div>
 
       {/* 2. MAIN CLIENT RIFAS CONTENT GRID */}
@@ -845,7 +847,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                               }`}
                             >
                               {/* Thumbnail Image Container ("Foto da Campanha") */}
-                              <div className="relative aspect-[4/3] w-full overflow-hidden bg-slate-50 rounded-2xl border border-slate-100 shrink-0 mb-4">
+                              <div className="relative aspect-square w-full overflow-hidden bg-slate-50 rounded-2xl border border-slate-100 shrink-0 mb-4">
                                 {camp.imageUrl ? (
                                    <img
                                      src={camp.imageUrl}
@@ -963,7 +965,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                               }`}
                             >
                               {/* Thumbnail Image Container ("Foto da Campanha" - Concluido) */}
-                              <div className="relative aspect-[4/3] w-full overflow-hidden bg-slate-50 rounded-2xl border border-slate-100 shrink-0 mb-4 grayscale group-hover:grayscale-0 transition-all duration-350">
+                              <div className="relative aspect-square w-full overflow-hidden bg-slate-50 rounded-2xl border border-slate-100 shrink-0 mb-4 grayscale group-hover:grayscale-0 transition-all duration-350">
                                 {camp.imageUrl ? (
                                    <img
                                      src={camp.imageUrl}
@@ -1863,18 +1865,20 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                 )}
               </button>
 
-              <button
-                onClick={() => {
-                  setActiveTab("ranking");
-                  setSuccessReserved(null);
-                }}
-                className={`flex flex-col items-center justify-center py-1 px-4 rounded-xl transition-all cursor-pointer ${
-                  activeTab === "ranking" ? "text-indigo-650 font-black scale-105" : "text-slate-450 hover:text-slate-755"
-                }`}
-              >
-                <Trophy className={`w-4.5 h-4.5 mb-1 ${activeTab === "ranking" ? "text-amber-500" : "text-slate-400"}`} />
-                <span className="text-[9.5px]">Ranking</span>
-              </button>
+              {userProfile.role === "admin" && (
+                <button
+                  onClick={() => {
+                    setActiveTab("ranking");
+                    setSuccessReserved(null);
+                  }}
+                  className={`flex flex-col items-center justify-center py-1 px-4 rounded-xl transition-all cursor-pointer ${
+                    activeTab === "ranking" ? "text-indigo-650 font-black scale-105" : "text-slate-450 hover:text-slate-755"
+                  }`}
+                >
+                  <Trophy className={`w-4.5 h-4.5 mb-1 ${activeTab === "ranking" ? "text-amber-500" : "text-slate-400"}`} />
+                  <span className="text-[9.5px]">Ranking</span>
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -2268,7 +2272,7 @@ Acompanhe os resultados no link de nossa plataforma.
         </div>
       )}
 
-      {activeTab === "ranking" && (
+      {activeTab === "ranking" && userProfile.role === "admin" && (
         <RankingView
           campaigns={campaigns}
           allReservations={allReservations}
