@@ -7,7 +7,7 @@ import LoginForm from "./components/LoginForm";
 import ClientDashboard from "./components/ClientDashboard";
 import Admin2FA from "./components/Admin2FA";
 import AdminPanel from "./components/AdminPanel";
-import { Loader2, GraduationCap, Sparkles, LogIn, Lock } from "lucide-react";
+import { Loader2, GraduationCap, Sparkles, LogIn, Lock, BookOpen, Clock, ShieldCheck, Trophy, AlertCircle, DollarSign, Calendar } from "lucide-react";
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -15,10 +15,11 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [admin2FAVerified, setAdmin2FAVerified] = useState(false);
 
-  // LGPD Banner and Modals states
+  // LGPD Banner, Modals and Rules states
   const [showLgpdBanner, setShowLgpdBanner] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
+  const [showRules, setShowRules] = useState(false);
 
   useEffect(() => {
     const consent = localStorage.getItem("lgpd_consent_accepted");
@@ -165,6 +166,34 @@ export default function App() {
         <Sparkles className="w-4 h-4 text-indigo-300 animate-pulse shrink-0" />
         <span>Toda a arrecadação das rifas será destinada ao financiamento da minha <strong>formatura de graduação!</strong></span>
       </div>
+
+      {/* Modern, elegant main branding and regulations navbar header */}
+      <header className="max-w-7xl mx-auto px-4 md:px-8 pt-4 md:pt-6 flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-slate-200/60 pb-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 bg-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-600/20">
+            <GraduationCap className="w-6 h-6" />
+          </div>
+          <div>
+            <h1 className="font-black text-lg text-slate-800 tracking-tight">
+              Rifas de Formatura
+            </h1>
+            <p className="text-[11px] text-slate-400 font-bold uppercase tracking-wider">
+              Apoie meu sonho de colar grau! 🎓
+            </p>
+          </div>
+        </div>
+        
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowRules(true)}
+            className="flex items-center gap-1.5 px-4 md:px-5 py-2.5 bg-indigo-50 hover:bg-indigo-100 active:scale-95 text-indigo-700 font-extrabold text-xs rounded-xl shadow-xs border border-indigo-150 transition cursor-pointer"
+          >
+            <BookOpen className="w-4 h-4" />
+            <span>Ver Regulamento da Rifa</span>
+          </button>
+        </div>
+      </header>
 
       <main className="max-w-7xl mx-auto p-4 md:p-8 shrink-0">
         {!user ? (
@@ -335,7 +364,7 @@ export default function App() {
               </ul>
 
               <h4 className="font-bold text-slate-800 text-sm">2. Segurança e Tecnologia de Armazenamento</h4>
-              <p>Seus dados pessoais coletados são armazenados em nuvem sob o serviço de alto desempenho **Google Firebase (Firestore e Authentication)**, contando com camadas rigorosas de segurança, controle de acessos (Security Rules) e autenticação emcriptada.</p>
+              <p>Seus dados pessoais coletados são armazenados em nuvem sob o serviço de alto desempenho <strong>Google Firebase (Firestore e Authentication)</strong>, contando com camadas rigorosas de segurança, controle de acessos (Security Rules) e criptografia de ponta.</p>
 
               <h4 className="font-bold text-slate-800 text-sm">3. Prazo de Retenção</h4>
               <p>Os seus dados permanecem armazenados pelo tempo de existência da campanha e auditoria das extrações correspondentes, ou até que você solicite formalmente a exclusão da sua conta, exercendo seu Direito ao Esquecimento físico.</p>
@@ -352,6 +381,163 @@ export default function App() {
                 Entendi, Fechar
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Global Rules / Regulation Modal - Formatação Avançada e Prêmio */}
+      {showRules && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-md select-none animate-fadeIn">
+          <div className="bg-slate-50 rounded-[32px] w-full max-w-2xl overflow-hidden shadow-2xl border border-slate-200/50 flex flex-col max-h-[85vh]">
+            
+            {/* Modal Header Premium */}
+            <div className="bg-gradient-to-r from-indigo-950 via-indigo-900 to-indigo-800 px-6 md:px-8 py-6 text-white flex items-center justify-between relative overflow-hidden">
+              <div className="absolute right-0 top-0 translate-x-12 -translate-y-8 w-44 h-44 bg-indigo-500/10 rounded-full blur-2xl" />
+              <div className="absolute left-1/3 bottom-0 w-32 h-32 bg-indigo-600/10 rounded-full blur-xl" />
+              
+              <div className="flex items-center gap-4 relative z-10">
+                <div className="p-3 bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl shadow-inner text-indigo-300">
+                  <BookOpen className="w-5 h-5 text-indigo-300" />
+                </div>
+                <div>
+                  <h3 className="font-black text-lg md:text-xl tracking-tight text-white flex items-center gap-2">
+                    Regulamento Oficial
+                    <Sparkles className="w-4 h-4 text-amber-300 fill-amber-300" />
+                  </h3>
+                  <span className="text-[10px] text-indigo-200 block mt-0.5 font-extrabold uppercase tracking-widest">
+                    Diretrizes de transparência e apoio beneficente
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowRules(false)}
+                className="w-10 h-10 rounded-xl bg-white/10 hover:bg-white/20 active:scale-90 transition flex items-center justify-center text-white text-base font-extrabold cursor-pointer border border-white/10 relative z-10"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Content Elegant */}
+            <div className="p-6 md:p-8 overflow-y-auto flex-1 select-text space-y-6 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
+              
+              {/* Propósito Solidário Card */}
+              <div className="p-5 bg-gradient-to-br from-indigo-50 to-indigo-100/50 border border-indigo-150/70 rounded-2xl relative overflow-hidden shadow-xs">
+                <div className="absolute top-0 right-0 p-3 text-indigo-300 opacity-20 pointer-events-none">
+                  <GraduationCap className="w-16 h-16" />
+                </div>
+                <div className="flex items-start gap-3.5 relative z-10">
+                  <span className="text-2xl mt-0.5 select-none font-sans">🎓</span>
+                  <div className="space-y-1">
+                    <h4 className="font-extrabold text-indigo-950 text-xs uppercase tracking-widest">Propósito Social Beneficente</h4>
+                    <p className="text-xs text-indigo-900 leading-relaxed font-medium">
+                      Esta é uma iniciativa inteiramente beneficente e de cunho privado. Toda a arrecadação obtida através da aquisição dos bilhetes será 100% destinada ao custeio de taxas administrativas, materiais didáticos e solenidades da minha <strong>formatura de graduação</strong>. Ao adquirir um bilhete, você torna-se um apoiador desse sonho acadêmico!
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Steps/Rules Grid & Cards */}
+              <div className="space-y-4">
+                <h5 className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-3 block">Regras de participação passo a passo:</h5>
+                
+                <div className="grid grid-cols-1 gap-4">
+                  
+                  {/* Step 1 */}
+                  <div className="flex gap-4 p-4.5 bg-white border border-slate-150 hover:border-slate-250 transition-all duration-200 rounded-2xl shadow-xs group">
+                    <div className="h-10 w-10 sm:h-11 sm:w-11 rounded-1.5xl bg-amber-50 border border-amber-100 text-amber-600 flex items-center justify-center font-bold text-sm shrink-0 shadow-xs group-hover:scale-105 transition-transform">
+                      <DollarSign className="w-5 h-5 text-amber-600" />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">PASSO 1</span>
+                        <h4 className="font-extrabold text-slate-800 text-sm">Reserva de Cotas Simples</h4>
+                      </div>
+                      <p className="text-xs text-slate-500 leading-relaxed font-medium">
+                        Navegue pela grade de bilhetes ativos na página inicial, selecione seus números desejados e prossiga para a reserva confirmando seus dados cadastrais (nome, CPF e contato ativo).
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Step 2 */}
+                  <div className="flex gap-4 p-4.5 bg-white border border-slate-150 hover:border-slate-250 transition-all duration-200 rounded-2xl shadow-xs group">
+                    <div className="h-10 w-10 sm:h-11 sm:w-11 rounded-1.5xl bg-rose-50 border border-rose-100 text-rose-600 flex items-center justify-center font-bold text-sm shrink-0 shadow-xs group-hover:scale-105 transition-transform">
+                      <Clock className="w-5 h-5 text-rose-600" />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">PASSO 2</span>
+                        <h4 className="font-extrabold text-slate-800 text-sm">Prazo de Pagamento via PIX</h4>
+                      </div>
+                      <p className="text-xs text-slate-500 leading-relaxed font-medium">
+                        As cotas reservadas deverão ser pagas em até <strong className="text-slate-800 font-extrabold">{settings.expirationHours} horas</strong>. Caso o comprovante ou transferência via PIX não seja registrado ou confirmado dentro deste prazo, o sistema realizará a <strong className="text-rose-600">liberação automática</strong> dos números para a lista de números livres.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Step 3 */}
+                  <div className="flex gap-4 p-4.5 bg-white border border-slate-150 hover:border-slate-250 transition-all duration-200 rounded-2xl shadow-xs group">
+                    <div className="h-10 w-10 sm:h-11 sm:w-11 rounded-1.5xl bg-emerald-50 border border-emerald-100 text-emerald-600 flex items-center justify-center font-bold text-sm shrink-0 shadow-xs group-hover:scale-105 transition-transform">
+                      <Trophy className="w-5 h-5 text-emerald-600" />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">PASSO 3</span>
+                        <h4 className="font-extrabold text-slate-800 text-sm">Sorteio Baseado na Loteria Federal</h4>
+                      </div>
+                      <p className="text-xs text-slate-500 leading-relaxed font-medium">
+                        A extração e identificação dos bilhetes contemplados são lastreadas de forma auditável e transparente com base nos resultados da <strong className="text-slate-800 font-extrabold">Loteria Federal da Caixa Econômica Federal</strong> na data estipulada em cada campanha.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Step 4 */}
+                  <div className="flex gap-4 p-4.5 bg-white border border-slate-150 hover:border-slate-250 transition-all duration-200 rounded-2xl shadow-xs group">
+                    <div className="h-10 w-10 sm:h-11 sm:w-11 rounded-1.5xl bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-sm shrink-0 shadow-xs group-hover:scale-105 transition-transform">
+                      <ShieldCheck className="w-5 h-5 text-indigo-600" />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">PASSO 4</span>
+                        <h4 className="font-extrabold text-slate-800 text-sm">Garantias & Identificação Confiável</h4>
+                      </div>
+                      <p className="text-xs text-slate-500 leading-relaxed font-medium">
+                        Para o recebimento da premiação, é imprescindível que os dados informados sejam rigorosamente reais e verificáveis. Cadastros intencionalmente falsificados ou com dados incorretos anularão o respectivo herdeiro da cota sorteada.
+                      </p>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+
+              {/* Informative Additional Alert Box */}
+              {settings.rulesText && (
+                <div className="p-5 bg-amber-50/60 border border-amber-250/60 rounded-2.5xl space-y-2.5 relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-amber-200/5 rounded-full" />
+                  <h5 className="font-extrabold text-[10px] text-amber-800 uppercase tracking-widest flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                    ⚠️ Notas Importantes & Comunicado:
+                  </h5>
+                  <div 
+                    className="text-xs text-amber-950 leading-relaxed font-semibold font-sans pl-6 border-l-2 border-amber-400 rich-text-content"
+                    dangerouslySetInnerHTML={{ __html: settings.rulesText }}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer Elegant */}
+            <div className="bg-slate-100 border-t border-slate-200/80 p-4 shrink-0 flex items-center justify-between px-6 md:px-8">
+              <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider hidden sm:block">Plataforma Auditada e Confiável</span>
+              <button
+                type="button"
+                onClick={() => setShowRules(false)}
+                className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 active:scale-98 text-white font-black text-xs px-8 py-3.5 rounded-2xl transition shadow-md shadow-indigo-600/10 cursor-pointer text-center font-sans uppercase tracking-widest"
+              >
+                Entendi as Regras
+              </button>
+            </div>
+
           </div>
         </div>
       )}

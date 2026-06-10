@@ -1179,7 +1179,7 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
               </ul>
 
               <h4 className="font-bold text-slate-800 text-sm">2. Segurança e Tecnologia de Armazenamento</h4>
-              <p>Seus dados pessoais coletados são armazenados em nuvem sob o serviço de alto desempenho **Google Firebase (Firestore e Authentication)**, contando com camadas rigorosas de segurança, controle de acessos (Security Rules) e autenticação emcriptada.</p>
+              <p>Seus dados pessoais coletados são armazenados em nuvem sob o serviço de alto desempenho <strong>Google Firebase (Firestore e Authentication)</strong>, contando com camadas rigorosas de segurança, controle de acessos (Security Rules) e criptografia de ponta.</p>
 
               <h4 className="font-bold text-slate-800 text-sm">3. Prazo de Retenção</h4>
               <p>Os seus dados permanecem armazenados pelo tempo de existência da campanha e auditoria das extrações correspondentes, ou até que você solicite formalmente a exclusão da sua conta, exercendo seu Direito ao Esquecimento.</p>
