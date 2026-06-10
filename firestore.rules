@@ -1,0 +1,152 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper: Is Signed In
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Helper: Is Admin check
+    function isAdmin() {
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        (request.auth.token != null && 
+         request.auth.token.email != null && 
+         request.auth.token.email == "tio.chico.nh@gmail.com") ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin")
+      );
+    }
+
+    // Helper: Valid document ID
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\\\-]+$');
+    }
+
+    // Default Lockout rule
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // User Profile Rules
+    function isValidUser(u) {
+      return u.uid is string && u.uid.size() <= 128 &&
+             u.name is string && u.name.size() > 0 && u.name.size() <= 200 &&
+             u.email is string && u.email.size() > 0 && u.email.size() <= 200 &&
+             u.cpf is string && u.cpf.size() >= 11 && u.cpf.size() <= 15 &&
+             u.city is string && u.city.size() > 0 && u.city.size() <= 100 &&
+             u.phone is string && u.phone.size() > 0 && u.phone.size() <= 30 &&
+             u.role in ['client', 'admin'] &&
+             (!u.keys().hasAny(['isBlocked']) || u.isBlocked is bool);
+    }
+
+    match /users/{userId} {
+      allow get: if isSignedIn() && (userId == request.auth.uid || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isSignedIn() && userId == request.auth.uid && isValidUser(request.resource.data) && request.resource.data.role == 'client';
+      allow update: if (
+        (isSignedIn() && userId == request.auth.uid && isValidUser(request.resource.data) && request.resource.data.role == 'client' && resource.data.role == 'client') ||
+        (isAdmin() && isValidUser(request.resource.data))
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Admin Configurations with 2FA TOTP secret
+    function isValidAdminConfig(a) {
+      return a.uid is string && a.uid.size() <= 128 &&
+             a.totpSecret is string && a.totpSecret.size() >= 10 && a.totpSecret.size() <= 64 &&
+             a.totpEnabled is bool;
+    }
+
+    match /admins/{adminId} {
+      allow read: if isSignedIn() && request.auth.token != null && request.auth.token.email == "tio.chico.nh@gmail.com";
+      allow write: if isSignedIn() && request.auth.token != null && request.auth.token.email == "tio.chico.nh@gmail.com" && isValidAdminConfig(request.resource.data);
+    }
+
+    // Global settings validation and operations
+    function isValidSettings(s) {
+      return s.pixKey is string && s.pixKey.size() > 0 && s.pixKey.size() <= 500 &&
+             s.bankName is string && s.bankName.size() <= 500 &&
+             s.receiverName is string && s.receiverName.size() <= 1000 &&
+             (s.expirationHours is int || s.expirationHours is float) && s.expirationHours >= 1 && s.expirationHours <= 10000 &&
+             s.supportContact is string && s.supportContact.size() <= 100 &&
+             s.rulesText is string && s.rulesText.size() <= 100000 &&
+             (!s.keys().hasAny(['backgroundAudioUrl']) || s.backgroundAudioUrl is string);
+    }
+
+    match /settings/{settingId} {
+      allow read: if true;
+      allow create, update: if isAdmin() && isValidSettings(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /settings_audio/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /settings_audio/{docId}/chunks/{chunkId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Campaigns (Raffles)
+    function isValidCampaign(c) {
+      return c.id is string && c.id.size() <= 128 &&
+             c.title is string && c.title.size() > 0 && c.title.size() <= 200 &&
+             c.description is string && c.description.size() <= 100000 &&
+             (c.ticketPrice is int || c.ticketPrice is float) && c.ticketPrice > 0 &&
+             (c.totalTickets is int || c.totalTickets is float) && c.totalTickets > 0 && c.totalTickets <= 10000 &&
+             c.status in ['active', 'paused', 'drawn'] &&
+             (!c.keys().hasAny(['progressiveDiscounts']) || c.progressiveDiscounts is list);
+    }
+
+    match /campaigns/{campaignId} {
+      allow read: if true; // Public list
+      allow create, update: if isAdmin() && isValidCampaign(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    // Tickets (Subcollection under campaigns)
+    function isValidTicket(t) {
+      return t.id is string && t.id.size() <= 10 &&
+             t.number is string && t.number.size() <= 10 &&
+             t.status in ['available', 'reserved', 'confirmed'] &&
+             (t.buyerUid == "" || t.buyerUid is string) &&
+             (t.buyerName == "" || t.buyerName is string) &&
+             (t.buyerPhone == "" || t.buyerPhone is string) &&
+             (t.buyerCpf == "" || t.buyerCpf is string) &&
+             (t.buyerEmail == "" || t.buyerEmail is string);
+    }
+
+    match /campaigns/{campaignId}/tickets/{ticketId} {
+      allow read: if true; // Public check of status
+      
+      // Client reserving a ticket
+      allow create: if isSignedIn() && 
+                    isValidTicket(request.resource.data) && 
+                    request.resource.data.buyerUid == request.auth.uid && 
+                    request.resource.data.status == 'reserved' &&
+                    get(/databases/$(database)/documents/campaigns/$(campaignId)).data.status == 'active';
+
+      // Updates are split between admin work and user modification (releasing or updating details)
+      allow update: if (
+        (isAdmin() && isValidTicket(request.resource.data)) ||
+        (
+          isSignedIn() && 
+          isValidTicket(request.resource.data) && 
+          resource.data.buyerUid == request.auth.uid &&
+          (
+            // Release/cancel reservation
+            (request.resource.data.status == 'available' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'buyerUid', 'buyerName', 'buyerPhone', 'buyerCpf', 'buyerEmail'])) ||
+            // Maintain reservation but update contact info
+            (request.resource.data.status == 'reserved' && resource.data.status == 'reserved' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['buyerName', 'buyerPhone', 'buyerCpf', 'buyerEmail']))
+          )
+        )
+      );
+
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.buyerUid == request.auth.uid && resource.data.status == 'reserved');
+    }
+  }
+}

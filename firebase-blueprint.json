@@ -1,0 +1,269 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with CPF, city, and telephone for validation",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Authentication User ID"
+        },
+        "name": {
+          "type": "string",
+          "description": "Full name of the user"
+        },
+        "email": {
+          "type": "string",
+          "description": "Email address of the user"
+        },
+        "cpf": {
+          "type": "string",
+          "description": "CPF number used for validation"
+        },
+        "city": {
+          "type": "string",
+          "description": "City of the user"
+        },
+        "phone": {
+          "type": "string",
+          "description": "Telephone number for contact/validation"
+        },
+        "role": {
+          "type": "string",
+          "enum": ["client", "admin"],
+          "description": "User role: client or admin"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when user was created"
+        }
+      },
+      "required": ["uid", "name", "email", "cpf", "city", "phone", "role"]
+    },
+    "Campaign": {
+      "title": "Campaign",
+      "description": "Raffle campaign details",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Campaign document ID"
+        },
+        "title": {
+          "type": "string",
+          "description": "Title of the raffle campaign"
+        },
+        "description": {
+          "type": "string",
+          "description": "Full description of the raffle details"
+        },
+        "ticketPrice": {
+          "type": "number",
+          "description": "Price of each ticket in BRL"
+        },
+        "totalTickets": {
+          "type": "number",
+          "description": "Total number of tickets available (e.g., 100, 1000)"
+        },
+        "imageUrl": {
+          "type": "string",
+          "description": "URL of the campaign picture"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "paused", "drawn"],
+          "description": "Campaign status"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when campaign was created"
+        },
+        "drawDate": {
+          "type": "string",
+          "description": "Scheduled date or reference of the Federal Lottery draw"
+        },
+        "federalLotteryDrawId": {
+          "type": "string",
+          "description": "ID of the Federal Lottery draw"
+        },
+        "winningNumber": {
+          "type": "string",
+          "description": "The drawn winning ticket number"
+        },
+        "progressiveDiscounts": {
+          "type": "array",
+          "description": "Progressive discount tiers based on quantity purchased",
+          "items": {
+            "type": "object",
+            "properties": {
+              "minQuantity": {
+                "type": "number"
+              },
+              "discountPrice": {
+                "type": "number"
+              }
+            },
+            "required": ["minQuantity", "discountPrice"]
+          }
+        }
+      },
+      "required": ["id", "title", "description", "ticketPrice", "totalTickets", "status"]
+    },
+    "Ticket": {
+      "title": "Ticket",
+      "description": "Reserved or confirmed raffle ticket",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Ticket document ID (equals ticket number, padded like '042')"
+        },
+        "number": {
+          "type": "string",
+          "description": "Padded ticket number as string (e.g. '08')"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["available", "reserved", "confirmed"],
+          "description": "Status of the ticket ticket"
+        },
+        "buyerUid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the buyer"
+        },
+        "buyerName": {
+          "type": "string",
+          "description": "Name of the buyer (copied for security rules sync)"
+        },
+        "buyerPhone": {
+          "type": "string",
+          "description": "Phone number of the buyer"
+        },
+        "buyerCpf": {
+          "type": "string",
+          "description": "CPF of the buyer"
+        },
+        "buyerEmail": {
+          "type": "string",
+          "description": "Email of the buyer"
+        },
+        "reservedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the ticket was reserved"
+        },
+        "confirmedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When payment was confirmed manually by admin"
+        }
+      },
+      "required": ["id", "number", "status"]
+    },
+    "AdminConfig": {
+      "title": "AdminConfig",
+      "description": "Admin 2FA configurations",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Admin Firebase Auth UID"
+        },
+        "totpSecret": {
+          "type": "string",
+          "description": "Base32 TOTP Secret for 2FA Auth"
+        },
+        "totpEnabled": {
+          "type": "boolean",
+          "description": "Whether two-factor authentication is configured"
+        }
+      },
+      "required": ["uid", "totpSecret", "totpEnabled"]
+    },
+    "GlobalSettings": {
+      "title": "GlobalSettings",
+      "description": "Global dynamical variables for payments and support",
+      "type": "object",
+      "properties": {
+        "pixKey": {
+          "type": "string"
+        },
+        "bankName": {
+          "type": "string"
+        },
+        "receiverName": {
+          "type": "string"
+        },
+        "expirationHours": {
+          "type": "number"
+        },
+        "supportContact": {
+          "type": "string"
+        },
+        "rulesText": {
+          "type": "string"
+        },
+        "backgroundAudioUrl": {
+          "type": "string",
+          "description": "Optional background audio URL for ambience"
+        }
+      },
+      "required": ["pixKey", "bankName", "receiverName", "expirationHours", "supportContact", "rulesText"]
+    },
+    "AudioMeta": {
+      "title": "AudioMeta",
+      "description": "Metadata of larger background audio files",
+      "type": "object",
+      "properties": {
+        "totalChunks": {
+          "type": "number"
+        }
+      },
+      "required": ["totalChunks"]
+    },
+    "AudioChunk": {
+      "title": "AudioChunk",
+      "description": "A single base64 chunk of background audio",
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "string"
+        }
+      },
+      "required": ["data"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "Collection of all client profiles"
+    },
+    "campaigns/{campaignId}": {
+      "schema": "Campaign",
+      "description": "Collection of concurrent raffle campaigns"
+    },
+    "campaigns/{campaignId}/tickets/{ticketId}": {
+      "schema": "Ticket",
+      "description": "Subcollection under each campaign containing reserved or purchased numbers"
+    },
+    "settings/{settingId}": {
+      "schema": "GlobalSettings",
+      "description": "Collection containing global application state settings"
+    },
+    "settings_audio/{docId}": {
+      "schema": "AudioMeta",
+      "description": "Collection storing audio chunk details"
+    },
+    "settings_audio/{docId}/chunks/{chunkId}": {
+      "schema": "AudioChunk",
+      "description": "Subcollection containing the base64 chunks"
+    },
+    "admins/{adminId}": {
+      "schema": "AdminConfig",
+      "description": "Administrative records mapping uids to TOTP 2FA secret"
+    }
+  }
+}

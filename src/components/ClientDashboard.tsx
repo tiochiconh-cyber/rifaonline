@@ -1,0 +1,2348 @@
+import React, { useState, useEffect } from "react";
+import { collection, doc, setDoc, deleteDoc, onSnapshot, query, where, getDoc, runTransaction } from "firebase/firestore";
+import { db, auth, handleFirestoreError, OperationType } from "../firebase";
+import { Campaign, Ticket, UserProfile } from "../types";
+import RankingView from "./RankingView";
+import { Ticket as TicketIcon, Search, Landmark, Copy, Check, Calendar, Trophy, AlertCircle, ShoppingBag, User as UserIcon, LogOut, ArrowRight, HelpCircle, Sparkles, ShieldCheck, Download, Printer } from "lucide-react";
+
+export function getDiscountedPrice(
+  quantity: number,
+  ticketPrice: number,
+  discounts?: { minQuantity: number; discountPrice: number; discountPercentage?: number }[]
+) {
+  if (!discounts || discounts.length === 0) {
+    return { unitPrice: ticketPrice, totalPrice: ticketPrice * quantity, appliedDiscount: false, discountPercentage: 0 };
+  }
+  const sortedDiscounts = [...discounts].sort((a, b) => b.minQuantity - a.minQuantity);
+  const matchingTier = sortedDiscounts.find(tier => quantity >= tier.minQuantity);
+  if (matchingTier) {
+    const finalPct = matchingTier.discountPercentage !== undefined
+      ? matchingTier.discountPercentage
+      : matchingTier.discountPrice > 0 && ticketPrice > 0
+        ? Math.max(0, Math.round((1 - matchingTier.discountPrice / ticketPrice) * 100))
+        : 0;
+
+    const finalUnitPrice = matchingTier.discountPercentage !== undefined
+      ? ticketPrice * (1 - matchingTier.discountPercentage / 100)
+      : matchingTier.discountPrice;
+
+    return {
+      unitPrice: finalUnitPrice,
+      totalPrice: finalUnitPrice * quantity,
+      appliedDiscount: true,
+      discountPercentage: finalPct
+    };
+  }
+  return { unitPrice: ticketPrice, totalPrice: ticketPrice * quantity, appliedDiscount: false, discountPercentage: 0 };
+}
+
+export function stripHtml(html: string): string {
+  if (!html) return "";
+  return html
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+interface ClientDashboardProps {
+  userProfile: UserProfile;
+  onLogout: () => void;
+}
+
+export default function ClientDashboard({ userProfile, onLogout }: ClientDashboardProps) {
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  
+  const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
+  const [tickets, setTickets] = useState<{ [id: string]: Ticket }>({});
+  const [myTickets, setMyTickets] = useState<{ [campaignId: string]: Ticket[] }>({});
+  const [loadingCampaigns, setLoadingCampaigns] = useState(true);
+  const [loadingTickets, setLoadingTickets] = useState(false);
+
+  // Ticket grid rendering controls
+  const [ticketSearch, setTicketSearch] = useState("");
+  const [ticketPage, setTicketPage] = useState(0);
+  const TICKETS_PER_PAGE = 300;
+
+  // Reservation Flow
+  const [activeTab, setActiveTab] = useState<"rifas" | "compras" | "ranking">("rifas");
+
+  // Rankings state and listener
+  const [allReservations, setAllReservations] = useState<{ [campaignId: string]: Ticket[] }>({});
+  const [loadingAllReservations, setLoadingAllReservations] = useState(true);
+  const [selectedNumbers, setSelectedNumbers] = useState<string[]>([]);
+  const [reserving, setReserving] = useState(false);
+  const [copiedPix, setCopiedPix] = useState(false);
+  const [successReserved, setSuccessReserved] = useState<string[] | null>(null);
+  const [showRulesModal, setShowRulesModal] = useState(false);
+
+  // Responsive mobile states
+  const [gridFilter, setGridFilter] = useState<"all" | "available" | "mine" | "selected">("all");
+  const [showFullDescriptionMobile, setShowFullDescriptionMobile] = useState(false);
+
+  // LGPD Privacy hooks
+  const [showLgpdModal, setShowLgpdModal] = useState(false);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+
+  // Toast notifications state
+  const [toasts, setToasts] = useState<{ id: string; message: string; type: "success" | "info" | "warning" | "error" }[]>([]);
+
+  const addToast = (message: string, type: "success" | "info" | "warning" | "error" = "success") => {
+    const id = Math.random().toString(36).substring(2, 9);
+    setToasts((prev) => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 4500);
+  };
+
+  // Ticket Generation State
+  const [ticketModalConfig, setTicketModalConfig] = useState<{
+    campaign: Campaign;
+    tickets: Ticket[];
+  } | null>(null);
+
+  // LGPD - Export Stored Personal Data (Data Portability)
+  const handleExportMyData = () => {
+    try {
+      const dataToExport = {
+        lgpd_compliance: "Lei Geral de Proteção de Dados (Lei nº 13.709/2018) - Brasil",
+        export_date: new Date().toISOString(),
+        user_profile: {
+          uid: userProfile.uid,
+          name: userProfile.name,
+          email: userProfile.email,
+          cpf: userProfile.cpf,
+          city: userProfile.city,
+          phone: userProfile.phone,
+          role: userProfile.role,
+          createdAt: userProfile.createdAt,
+        },
+        reserved_tickets: Object.keys(myTickets).reduce((acc, campaignId) => {
+          const ticketsList = myTickets[campaignId] || [];
+          if (ticketsList.length > 0) {
+            acc[campaignId] = ticketsList.map(t => ({
+              ticketId: t.id,
+              number: t.number,
+              status: t.status,
+              reservedAt: t.reservedAt,
+            }));
+          }
+          return acc;
+        }, {} as any)
+      };
+
+      const jsonStr = JSON.stringify(dataToExport, null, 2);
+      const blob = new Blob([jsonStr], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `meus_dados_lgpd_${userProfile.cpf}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      addToast("Seus dados pessoais foram exportados com sucesso!", "success");
+    } catch (err) {
+      console.error("Error exporting LGPD data:", err);
+      addToast("Não foi possível gerar a exportação dos dados no momento.", "error");
+    }
+  };
+
+  // LGPD - Right to be forgotten (Direito ao Esquecimento) - Account elimination
+  const handleDeleteMyDataAndAccount = async () => {
+    const confirmation1 = window.confirm(
+      "DIREITO AO ESQUECIMENTO (LGPD):\n\n" +
+      "Deseja realmente solicitar a eliminação definitiva dos seus dados pessoais?\n" +
+      "Esta ação apagará totalmente o seu cadastro em nosso banco de dados."
+    );
+    if (!confirmation1) return;
+
+    const confirmation2 = window.confirm(
+      "CONFIRMAÇÃO FINAL DE SEGURANÇA:\n\n" +
+      "Atenção: Isso cancelará e liberará todos os bilhetes que estejam reservados em seu nome.\n" +
+      "Deseja prosseguir com a exclusão?"
+    );
+    if (!confirmation2) return;
+
+    setIsDeletingAccount(true);
+
+    try {
+      // 1. Release / delete all tickets reserved across all campaigns
+      const deletePromises: Promise<void>[] = [];
+      Object.keys(myTickets).forEach((campaignId) => {
+        const list = myTickets[campaignId] || [];
+        list.forEach((t) => {
+          const ticketRef = doc(db, "campaigns", campaignId, "tickets", t.id);
+          deletePromises.push(deleteDoc(ticketRef));
+        });
+      });
+
+      if (deletePromises.length > 0) {
+        await Promise.all(deletePromises);
+      }
+
+      // 2. Delete user profile document under 'users/{uid}'
+      const userProfileRef = doc(db, "users", userProfile.uid);
+      await deleteDoc(userProfileRef);
+
+      // 3. Inform and sign out
+      alert("Seu cadastro de dados pessoais foi permanentemente excluído (Art. 16, LGPD).");
+      onLogout();
+    } catch (err) {
+      console.error("Error performing right to be forgotten:", err);
+      try {
+        handleFirestoreError(err, OperationType.DELETE, `users/${userProfile.uid}`);
+      } catch (mappedErr) {
+        addToast("Ocorreu um erro ao excluir seus dados. Limite de segurança excedido.", "error");
+      }
+    } finally {
+      setIsDeletingAccount(false);
+      setShowLgpdModal(false);
+    }
+  };
+
+  // Load all campaigns
+  useEffect(() => {
+    const q = query(collection(db, "campaigns"));
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const campaignList: Campaign[] = [];
+        snapshot.forEach((docSnap) => {
+          campaignList.push({ id: docSnap.id, ...docSnap.data() } as Campaign);
+        });
+        setCampaigns(campaignList);
+        setLoadingCampaigns(false);
+
+        // Auto-select first active campaign if none selected
+        if (campaignList.length > 0 && !selectedCampaign) {
+          const active = campaignList.find(c => c.status === "active") || campaignList[0];
+          setSelectedCampaign(active);
+        }
+      },
+      (error) => {
+        console.error("Error watching campaigns:", error);
+        setLoadingCampaigns(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [selectedCampaign]);
+
+  // Load tickets for selected campaign
+  useEffect(() => {
+    if (!selectedCampaign) {
+      setTickets({});
+      return;
+    }
+
+    setLoadingTickets(true);
+    const ticketsCollectionRef = collection(db, "campaigns", selectedCampaign.id, "tickets");
+
+    const unsubscribe = onSnapshot(
+      ticketsCollectionRef,
+      (snapshot) => {
+        const ticketMap: { [id: string]: Ticket } = {};
+        snapshot.forEach((docSnap) => {
+          ticketMap[docSnap.id] = docSnap.data() as Ticket;
+        });
+        setTickets(ticketMap);
+        setLoadingTickets(false);
+      },
+      (error) => {
+        console.error("Error watching campaign tickets:", error);
+        setLoadingTickets(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [selectedCampaign]);
+
+  // Listen to active user's tickets across all registered campaigns to assemble "Minhas Compras" tab
+  useEffect(() => {
+    if (!userProfile.uid || campaigns.length === 0) return;
+
+    const unsubscribes = campaigns.map((campaign) => {
+      const ticketsRef = collection(db, "campaigns", campaign.id, "tickets");
+      const userTicketsQuery = query(ticketsRef, where("buyerUid", "==", userProfile.uid));
+
+      return onSnapshot(userTicketsQuery, (snapshot) => {
+        const userTicketList: Ticket[] = [];
+        snapshot.forEach((docSnap) => {
+          userTicketList.push(docSnap.data() as Ticket);
+        });
+        setMyTickets((prev) => ({
+          ...prev,
+          [campaign.id]: userTicketList,
+        }));
+      });
+    });
+
+    return () => {
+      unsubscribes.forEach((unsub) => unsub());
+    };
+  }, [userProfile.uid, campaigns]);
+
+  // Listen to tickets across all campaigns for real-time buyer rankings
+  useEffect(() => {
+    if (campaigns.length === 0) {
+      setLoadingAllReservations(false);
+      return;
+    }
+
+    setLoadingAllReservations(true);
+    let loadedCount = 0;
+    const totalCampaigns = campaigns.length;
+
+    const unsubscribes = campaigns.map((camp) => {
+      const ref = collection(db, "campaigns", camp.id, "tickets");
+      return onSnapshot(
+        ref,
+        (snapshot) => {
+          const ticketList: Ticket[] = [];
+          snapshot.forEach((d) => {
+            ticketList.push(d.data() as Ticket);
+          });
+
+          setAllReservations((prev) => ({
+            ...prev,
+            [camp.id]: ticketList,
+          }));
+
+          loadedCount++;
+          if (loadedCount >= totalCampaigns) {
+            setLoadingAllReservations(false);
+          }
+        },
+        (error) => {
+          console.error(`Error loading ranking tickets for ${camp.id}:`, error);
+          loadedCount++;
+          if (loadedCount >= totalCampaigns) {
+            setLoadingAllReservations(false);
+          }
+        }
+      );
+    });
+
+    return () => unsubscribes.forEach((unsub) => unsub());
+  }, [campaigns]);
+
+  // Dynamic settings state
+  const [settings, setSettings] = useState({
+    pixKey: "formaturapix@suaformatura.com",
+    bankName: "Banco Central",
+    receiverName: "Comissão de Formatura Integrada",
+    expirationHours: 24,
+    supportContact: "51999999999",
+    rulesText: "Os bilhetes reservados têm prazo de validade. Caso a transferência via PIX não seja comprovada, a cota retornará à disponibilidade geral automaticamente.",
+    backgroundAudioUrl: "",
+  });
+
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, "settings", "global"), (d) => {
+      if (d.exists()) {
+        setSettings(d.data() as any);
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  const handleCopyPix = () => {
+    navigator.clipboard.writeText(settings.pixKey);
+    setCopiedPix(true);
+    addToast("Chave PIX copiada com sucesso para área de transferência!", "success");
+    setTimeout(() => setCopiedPix(false), 2000);
+  };
+
+  const handleWhatsAppRedirect = (targetTickets?: Ticket[], camp?: Campaign) => {
+    const cleanPhone = settings.supportContact ? settings.supportContact.replace(/\D/g, "") : "";
+    if (!cleanPhone) {
+      addToast("O contato da comissão de formatura não foi cadastrado pelo administrador.", "warning");
+      return;
+    }
+
+    let billsText = "";
+    let totalValue = 0;
+
+    if (targetTickets && camp) {
+      const numbers = targetTickets.map(t => `#${t.number}`).join(", ");
+      const calc = getDiscountedPrice(targetTickets.length, camp.ticketPrice, camp.progressiveDiscounts);
+      totalValue = calc.totalPrice;
+      billsText = `📋 *Rifa:* ${camp.title}\n🎫 *Números Reservados:* ${numbers}\n💰 *Valor Total:* R$ ${totalValue.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
+    } else {
+      const reservedListByCampaign: { campaign: Campaign; tickets: Ticket[] }[] = [];
+      (Object.entries(myTickets) as [string, Ticket[]][]).forEach(([campaignId, tList]) => {
+        const campaignReserved = tList.filter(t => t.status === "reserved");
+        if (campaignReserved.length > 0) {
+          const matchingCamp = campaigns.find(c => c.id === campaignId);
+          if (matchingCamp) {
+            reservedListByCampaign.push({ campaign: matchingCamp, tickets: campaignReserved });
+          }
+        }
+      });
+
+      if (reservedListByCampaign.length === 0) {
+        addToast("Você não possui nenhuma reserva pendente no momento.", "info");
+        return;
+      }
+
+      billsText = reservedListByCampaign
+        .map(({ campaign, tickets }) => {
+          const numbers = tickets.map(t => `#${t.number}`).join(", ");
+          const calc = getDiscountedPrice(tickets.length, campaign.ticketPrice, campaign.progressiveDiscounts);
+          totalValue += calc.totalPrice;
+          return `📋 *Rifa:* ${campaign.title}\n🎫 *Números:* ${numbers}\n💰 *Valor:* R$ ${calc.totalPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
+        })
+        .join("\n\n");
+    }
+
+    const message = `Olá Comissão de Formatura! 🎓✨
+
+Gostaria de solicitar a validação manual do comprovante para a minha reserva.
+
+👤 *Apoiador:* ${userProfile.name}
+🆔 *CPF:* ${userProfile.cpf}
+📞 *Telefone:* ${userProfile.phone || "Não informado"}
+
+---
+*DETALHES DA RESERVA:*
+${billsText}
+
+*VALOR TOTAL A CONFIRMAR:* R$ ${totalValue.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+---
+
+Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem para mim assim que possível! Muito obrigado! 🙏`;
+
+    const encodedMessage = encodeURIComponent(message);
+    const whatsappUrl = `https://wa.me/${cleanPhone.startsWith("55") ? cleanPhone : "55" + cleanPhone}?text=${encodedMessage}`;
+
+    window.open(whatsappUrl, "_blank");
+  };
+
+  const handleReserveTickets = async () => {
+    if (!selectedCampaign || selectedNumbers.length === 0) return;
+    
+    if (userProfile.isBlocked) {
+      addToast("Sua conta está suspensa ou bloqueada. Por favor, entre em contato com o suporte.", "error");
+      return;
+    }
+
+    const reservedCount = selectedNumbers.length;
+    setReserving(true);
+
+    try {
+      // Execute as a secure atomic transaction to prevent double reservation of any slot
+      await runTransaction(db, async (transaction) => {
+        const ticketReads = await Promise.all(
+          selectedNumbers.map(async (numberStr) => {
+            const ticketRef = doc(db, "campaigns", selectedCampaign.id, "tickets", numberStr);
+            const ticketDoc = await transaction.get(ticketRef);
+            return {
+              numberStr,
+              ticketRef,
+              exists: ticketDoc.exists(),
+              data: ticketDoc.data() as Ticket | undefined,
+            };
+          })
+        );
+
+        // Filter out any tickets that are already reserved/confirmed by another user
+        const occupied = ticketReads.filter(
+          (t) => t.exists && t.data && t.data.status !== "available" && t.data.buyerUid !== userProfile.uid
+        );
+
+        if (occupied.length > 0) {
+          const occupiedNumStr = occupied.map((o) => o.numberStr).join(", ");
+          throw new Error(`Algumas das cotas escolhidas acabam de ser reservadas ou confirmadas por outro usuário: ${occupiedNumStr}`);
+        }
+
+        // Apply reservations inside the transaction
+        ticketReads.forEach((t) => {
+          const ticketData: Ticket = {
+            id: t.numberStr,
+            number: t.numberStr,
+            status: "reserved",
+            buyerUid: userProfile.uid,
+            buyerName: userProfile.name,
+            buyerPhone: userProfile.phone,
+            buyerCpf: userProfile.cpf,
+            buyerEmail: userProfile.email,
+            reservedAt: new Date().toISOString(),
+          };
+          transaction.set(t.ticketRef, ticketData);
+        });
+      });
+
+      setSuccessReserved([...selectedNumbers]);
+      setSelectedNumbers([]);
+      addToast(`Reserva realizada com sucesso! (${reservedCount} cota${reservedCount > 1 ? "s" : ""} reservada${reservedCount > 1 ? "s" : ""})`, "success");
+      
+      // Delay the warning slightly so the user perceives both milestones clearly
+      setTimeout(() => {
+        addToast("Atenção: Seu pagamento está com status pendente de homologação via PIX.", "warning");
+      }, 700);
+    } catch (err: any) {
+      console.error("Failed to reserve tickets:", err);
+      const errMsg = err?.message || String(err);
+      if (errMsg.includes("acabam de ser reservadas ou confirmadas")) {
+        addToast(errMsg, "error");
+      } else {
+        try {
+          handleFirestoreError(err, OperationType.WRITE, `campaigns/${selectedCampaign.id}/tickets`);
+        } catch (mappedErr: any) {
+          addToast("Limite de vagas excedido ou algumas das cotas já foram reservadas por outro participante.", "error");
+        }
+      }
+    } finally {
+      setReserving(false);
+    }
+  };
+
+  const handleToggleNumberSelection = (numberStr: string) => {
+    setSelectedNumbers((prev) =>
+      prev.includes(numberStr)
+        ? prev.filter((n) => n !== numberStr)
+        : [...prev, numberStr].sort((a, b) => Number(a) - Number(b))
+    );
+  };
+
+  const handleCancelReservation = async (campaignId: string, ticketId: string) => {
+    if (!window.confirm(`Deseja realmente cancelar esta reserva de bilhete #${ticketId}?`)) return;
+
+    try {
+      const ticketRef = doc(db, "campaigns", campaignId, "tickets", ticketId);
+      await deleteDoc(ticketRef);
+      addToast(`Reserva do bilhete #${ticketId} cancelada com sucesso.`, "info");
+    } catch (err) {
+      console.error("Error canceling ticket:", err);
+      try {
+        handleFirestoreError(err, OperationType.DELETE, `campaigns/${campaignId}/tickets/${ticketId}`);
+      } catch (mappedErr) {
+        addToast("Sem autorização para cancelar a reserva.", "error");
+      }
+    }
+  };
+
+  const padNumber = (num: number, limit: number): string => {
+    const padLength = limit > 1000 ? 4 : limit > 100 ? 3 : 2;
+    return num.toString().padStart(padLength, "0");
+  };
+
+  const handleQuickSelectRandom = (count: number) => {
+    if (!selectedCampaign) return;
+    const total = selectedCampaign.totalTickets;
+    
+    // Find all available numbers in the current campaign
+    const availableNumbers: string[] = [];
+    for (let idx = 0; idx < total; idx++) {
+      const numStr = padNumber(idx, total);
+      if (!tickets[numStr]) {
+        availableNumbers.push(numStr);
+      }
+    }
+    
+    if (availableNumbers.length === 0) {
+      addToast("Nenhuma cota se encontra livre neste momento.", "error");
+      return;
+    }
+    
+    // Shuffle the available numbers
+    const shuffled = [...availableNumbers].sort(() => 0.5 - Math.random());
+    const selected = shuffled.slice(0, Math.min(count, shuffled.length));
+    
+    setSelectedNumbers(selected);
+    
+    if (selected.length < count) {
+      addToast(`Apenas ${selected.length} cotas estavam disponíveis e foram selecionadas.`, "info");
+    } else {
+      addToast(`${count} cotas aleatórias foram selecionadas com sucesso!`, "success");
+    }
+  };
+
+  useEffect(() => {
+    setTicketPage(0);
+  }, [ticketSearch, gridFilter]);
+
+  const filteredIndices = React.useMemo(() => {
+    if (!selectedCampaign) return [];
+    const total = selectedCampaign.totalTickets;
+    let indices = Array.from({ length: total }, (_, i) => i);
+
+    // Filter by tickets status gridFilter criteria
+    if (gridFilter === "available") {
+      indices = indices.filter((idx) => {
+        const numStr = padNumber(idx, total);
+        return !tickets[numStr];
+      });
+    } else if (gridFilter === "mine") {
+      indices = indices.filter((idx) => {
+        const numStr = padNumber(idx, total);
+        return tickets[numStr]?.buyerUid === userProfile.uid;
+      });
+    } else if (gridFilter === "selected") {
+      indices = indices.filter((idx) => {
+        const numStr = padNumber(idx, total);
+        return selectedNumbers.includes(numStr);
+      });
+    }
+
+    if (!ticketSearch.trim()) return indices;
+    const cleanSearch = ticketSearch.trim();
+    const padLength = total > 1050 ? 4 : total > 100 ? 3 : 2;
+    return indices.filter((idx) => {
+      const numStr = idx.toString().padStart(padLength, "0");
+      return numStr.includes(cleanSearch);
+    });
+  }, [selectedCampaign, ticketSearch, gridFilter, tickets, selectedNumbers]);
+
+  const paginatedIndices = React.useMemo(() => {
+    const start = ticketPage * TICKETS_PER_PAGE;
+    return filteredIndices.slice(start, start + TICKETS_PER_PAGE);
+  }, [filteredIndices, ticketPage, TICKETS_PER_PAGE]);
+
+  const totalPages = Math.ceil(filteredIndices.length / TICKETS_PER_PAGE);
+
+  // Helper calculating total reserved and confirmed count
+  const myTotalTicketsCount = Object.values(myTickets).flat().length;
+
+  return (
+    <div className="space-y-6 md:space-y-8 pb-16 pt-safe">
+      {/* Client Header bar - DESKTOP ONLY */}
+      <header className="hidden lg:flex bg-slate-900 rounded-3xl p-8 text-white shadow-lg border border-slate-800 justify-between items-center gap-6">
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-2">
+            <GraduationCapIcon className="w-6 h-6 text-indigo-400 shrink-0" />
+            <h1 className="text-xl font-extrabold tracking-tight">Rifa Formatura</h1>
+          </div>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-400">
+            <span>Cliente: <strong className="text-slate-100">{userProfile.name}</strong></span>
+            <span className="text-slate-700">|</span>
+            <span>CPF: <strong className="text-slate-100">{userProfile.cpf}</strong></span>
+            <span className="text-slate-700">|</span>
+            <span>Cidade: <strong className="text-slate-100">{userProfile.city}</strong></span>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          {myTotalTicketsCount > 0 && (
+            <div className="bg-indigo-500/15 border border-indigo-500/30 text-indigo-400 px-3.5 py-2 rounded-2xl flex items-center gap-2 text-xs font-semibold shrink-0">
+              <ShoppingBag className="w-4 h-4" />
+              <span>{myTotalTicketsCount} Bilhete(s)</span>
+            </div>
+          )}
+          <button
+            onClick={() => setShowRulesModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-750 text-white rounded-2xl text-xs font-bold shadow-md shadow-indigo-500/10 cursor-pointer transition-all hover:scale-[1.02]"
+          >
+            <HelpCircle className="w-3.5 h-3.5 text-indigo-200" />
+            <span>Regulamento</span>
+          </button>
+          <button
+            onClick={() => setShowLgpdModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-bold shadow-md shadow-emerald-500/10 cursor-pointer transition-all hover:scale-[1.02]"
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-250" />
+            <span>Meus Dados (LGPD)</span>
+          </button>
+          <button
+            onClick={onLogout}
+            className="flex items-center gap-2 px-4 py-2 bg-slate-850 hover:bg-slate-800 text-slate-300 hover:text-white rounded-2xl text-xs font-medium border border-slate-700/50 transition cursor-pointer"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            <span>Sair</span>
+          </button>
+        </div>
+      </header>
+
+      {/* Client Header bar - MOBILE ONLY */}
+      <header className="flex lg:hidden flex-col gap-4 bg-gradient-to-br from-slate-900 to-indigo-950 p-4 rounded-3xl border border-slate-800/80 text-white shadow-md">
+        <div className="flex items-center justify-between w-full">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-550 to-indigo-650 border border-indigo-400/30 text-white flex items-center justify-center font-extrabold text-sm shadow-md shrink-0">
+              {userProfile.name ? userProfile.name.slice(0, 2).toUpperCase() : "U"}
+            </div>
+            <div className="space-y-0.5">
+              <span className="text-[9px] text-slate-400 uppercase tracking-widest font-black leading-none block">Bem-vindo(a) Apoio</span>
+              <h2 className="text-sm font-black text-white leading-tight truncate max-w-[140px]">{userProfile.name}</h2>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowRulesModal(true)}
+              className="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-750 flex items-center justify-center text-slate-300 hover:text-white cursor-pointer transition-colors border border-slate-700/40"
+              title="Regulamento"
+            >
+              <HelpCircle className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setShowLgpdModal(true)}
+              className="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-750 flex items-center justify-center text-emerald-400 hover:text-emerald-300 cursor-pointer transition-colors border border-slate-700/40"
+              title="Meus Dados (LGPD)"
+            >
+              <ShieldCheck className="w-4 h-4" />
+            </button>
+            <button
+              onClick={onLogout}
+              className="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-750 flex items-center justify-center text-rose-400 hover:text-rose-300 cursor-pointer transition-colors border border-slate-700/40"
+              title="Sair"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Compact statistics metadata row */}
+        <div className="bg-slate-950/40 rounded-2xl p-2.5 px-3 flex justify-between items-center text-[10px] text-slate-300 font-medium font-sans border border-white/5">
+          <span>CPF: <strong className="text-white">{userProfile.cpf}</strong></span>
+          <span className="w-1 h-1 rounded-full bg-slate-700" />
+          <span>Local: <strong className="text-white">{userProfile.city}</strong></span>
+          {myTotalTicketsCount > 0 && (
+            <>
+              <span className="w-1 h-1 rounded-full bg-slate-700" />
+              <span className="text-indigo-400 font-bold">🎟️ {myTotalTicketsCount} Cota(s)</span>
+            </>
+          )}
+        </div>
+      </header>
+
+      {/* Navigation tabs selector - DESKTOP ONLY */}
+      <div className="hidden lg:flex bg-slate-100 border border-slate-200/40 rounded-2xl p-1 gap-1.5 shadow-sm text-xs w-full max-w-2xl mx-auto">
+        <button
+          onClick={() => {
+            setActiveTab("rifas");
+            setSuccessReserved(null);
+          }}
+          className={`flex-1 text-center py-3 rounded-xl font-bold transition-all duration-150 cursor-pointer flex items-center justify-center gap-2 ${
+            activeTab === "rifas" 
+              ? "bg-white text-slate-900 shadow-sm" 
+              : "text-slate-500 hover:text-slate-850"
+          }`}
+        >
+          <TicketIcon className="w-4 h-4 text-indigo-600" />
+          <span>Rifas & Cotas</span>
+        </button>
+
+        <button
+          onClick={() => {
+            setActiveTab("compras");
+            setSuccessReserved(null);
+          }}
+          className={`flex-1 text-center py-3 rounded-xl font-bold transition-all duration-150 cursor-pointer flex items-center justify-center gap-2 relative ${
+            activeTab === "compras" 
+              ? "bg-white text-slate-900 shadow-sm" 
+              : "text-slate-500 hover:text-slate-850"
+          }`}
+        >
+          <ShoppingBag className="w-4 h-4 text-indigo-600" />
+          <span>Minhas Reservas</span>
+          {myTotalTicketsCount > 0 && (
+            <span className="absolute top-1/2 -translate-y-1/2 right-3.5 bg-indigo-600 text-white font-extrabold text-[10px] h-[18px] min-w-[18px] px-1 rounded-full flex items-center justify-center border-2 border-slate-100">
+              {myTotalTicketsCount}
+            </span>
+          )}
+        </button>
+
+        <button
+          onClick={() => {
+            setActiveTab("ranking");
+            setSuccessReserved(null);
+          }}
+          className={`flex-1 text-center py-3 rounded-xl font-bold transition-all duration-150 cursor-pointer flex items-center justify-center gap-2 ${
+            activeTab === "ranking" 
+              ? "bg-white text-slate-900 shadow-sm" 
+              : "text-slate-500 hover:text-slate-850"
+          }`}
+        >
+          <Trophy className="w-4 h-4 text-amber-500 animate-pulse" />
+          <span>Ranking</span>
+        </button>
+      </div>
+
+      {/* 2. MAIN CLIENT RIFAS CONTENT GRID */}
+      {activeTab === "rifas" && (
+        <div className="space-y-6 md:space-y-8 animate-fadeIn">
+          {/* Seção das Miniaturas / Thumbnail grid of all campaigns */}
+          <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+              <div>
+                <h2 className="text-lg md:text-xl font-extrabold text-slate-800 tracking-tight flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-indigo-550 shrink-0" />
+                  <span>Prêmios & Rifas Ativas</span>
+                </h2>
+                <p className="text-slate-500 text-xs">
+                  Selecione uma das rifas de formatura abaixo para verificar o regulamento e escolher seus números premiados!
+                </p>
+              </div>
+              <span className="text-xs bg-indigo-50/70 text-indigo-700 font-bold px-3 py-1 rounded-full border border-indigo-100 flex items-center gap-1.5 shrink-0">
+                <span>🎓</span> {campaigns.length} Campanhas
+              </span>
+            </div>
+
+            {loadingCampaigns ? (
+              <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6">
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className="h-48 bg-slate-100 animate-pulse rounded-2xl border border-slate-150 animate-pulse"></div>
+                ))}
+              </div>
+            ) : campaigns.length === 0 ? (
+              <div className="text-center p-12 bg-white rounded-2xl border border-dashed border-slate-200">
+                <TicketIcon className="w-10 h-10 mx-auto text-slate-300 mb-2" />
+                <h4 className="text-slate-700 font-bold text-sm">Nenhuma rifa cadastrada</h4>
+                <p className="text-slate-400 text-xs mt-1">Nenhum prêmio ou rifa ativa no momento.</p>
+              </div>
+            ) : (() => {
+              const activeCampaigns = campaigns.filter(c => c.status !== "drawn");
+              const closedCampaigns = campaigns.filter(c => c.status === "drawn");
+
+              return (
+                <div className="space-y-10">
+                  {/* --- CAMPANHAS ATIVAS --- */}
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                      <h3 className="text-xs md:text-sm font-black uppercase tracking-wider text-slate-500">
+                        Disponíveis para Compra ({activeCampaigns.length})
+                      </h3>
+                    </div>
+                    {activeCampaigns.length === 0 ? (
+                      <div className="text-center p-8 bg-slate-50 rounded-2xl border border-dashed border-slate-200/80">
+                        <TicketIcon className="w-8 h-8 mx-auto text-slate-300 mb-1.5" />
+                        <h4 className="text-slate-650 font-bold text-xs">Nenhuma rifa ativa no momento</h4>
+                        <p className="text-slate-400 text-[10px] mt-0.5">Em breve teremos novas oportunidades! Fique de olho.</p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 animate-fadeIn">
+                        {activeCampaigns.map((camp) => {
+                          const isSelected = selectedCampaign?.id === camp.id;
+                          const userTicketsCount = myTickets[camp.id]?.length || 0;
+                          
+                          // Calculate real-time tickets metrics
+                          const campTickets = allReservations[camp.id] || [];
+                          const vendidas = campTickets.filter(t => t.status === "confirmed").length;
+                          const restantes = Math.max(0, camp.totalTickets - campTickets.length);
+
+                          return (
+                            <button
+                              key={camp.id}
+                              onClick={() => {
+                                setSelectedCampaign(camp);
+                                setSuccessReserved(null);
+                                setSelectedNumbers([]);
+                                setTicketSearch("");
+                                setTicketPage(0);
+                                setGridFilter("all");
+                                setShowFullDescriptionMobile(false);
+                                
+                                const boardEl = document.getElementById("quadro-bilhetes");
+                                if (boardEl) {
+                                  boardEl.scrollIntoView({ behavior: "smooth", block: "start" });
+                                }
+                              }}
+                              className={`group relative flex flex-col text-left bg-white rounded-3xl border overflow-hidden p-4 md:p-5 transition-all duration-300 cursor-pointer w-full ${
+                                isSelected
+                                  ? "border-emerald-500 ring-4 ring-emerald-500/15 shadow-lg transform scale-[1.01]"
+                                  : "border-slate-200 hover:border-slate-350 hover:shadow-lg hover:-translate-y-0.5"
+                              }`}
+                            >
+                              {/* Thumbnail Image Container ("Foto da Campanha") */}
+                              <div className="relative aspect-[4/3] w-full overflow-hidden bg-slate-50 rounded-2xl border border-slate-100 shrink-0 mb-4">
+                                {camp.imageUrl ? (
+                                   <img
+                                     src={camp.imageUrl}
+                                     alt={camp.title}
+                                     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                     referrerPolicy="no-referrer"
+                                   />
+                                ) : (
+                                  <div className="w-full h-full bg-gradient-to-tr from-slate-900 via-indigo-950 to-indigo-900 flex flex-col items-center justify-center p-2 text-center">
+                                    <span className="text-2xl md:text-3xl.5 filter drop-shadow">🎓</span>
+                                    <span className="text-[8px] md:text-[9px] text-indigo-300 font-bold tracking-widest uppercase mt-1 font-mono">Formandos</span>
+                                  </div>
+                                )}
+
+                                {/* Floating Price Tag ("Valor Cota") */}
+                                <div className="absolute top-2.5 left-2.5 bg-[#82C943] text-white font-black text-xs md:text-sm px-3.5 py-1.5 rounded-xl shadow-lg border border-white/10 flex items-center justify-center">
+                                  R$ {camp.ticketPrice.toFixed(2)}
+                                </div>
+
+                                {/* Floating status badges */}
+                                <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5">
+                                  {userTicketsCount > 0 && (
+                                    <span className="bg-indigo-600 text-white text-[8px] md:text-[9px] font-black px-2 py-0.5 rounded-full shadow-md">
+                                      {userTicketsCount} Reservado(s)
+                                    </span>
+                                  )}
+                                  <span className="bg-slate-950/75 backdrop-blur-sm text-white px-2 py-0.5 md:px-2.5 md:py-1 text-[8px] md:text-[9.5px] font-bold rounded-full flex items-center gap-1 border border-white/10">
+                                    <span className="w-1 md:w-1.5 h-1 md:h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                    Ativa
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Title and Description */}
+                              <div className="space-y-1 mb-3.5 flex-1 flex flex-col justify-start">
+                                <h3 className="font-extrabold text-slate-800 text-sm md:text-base leading-snug group-hover:text-emerald-600 transition-colors line-clamp-1">
+                                  {camp.title}
+                                </h3>
+                                <p className="text-slate-450 text-[10px] md:text-xs line-clamp-2 leading-relaxed">
+                                  {camp.description ? stripHtml(camp.description) : "Participe desta rifa e garanta sua chance de ganhar prêmios incríveis enquanto apoia nossa comissão de formatura."}
+                                </p>
+                              </div>
+
+                              {/* The Trio of Info Boxes (Cotas, Vendidas, Restantes) */}
+                              <div className="grid grid-cols-3 gap-1.5 md:gap-2.5 mb-4">
+                                <div className="bg-[#f0f8db]/80 border border-lime-200/60 rounded-2xl p-2 md:p-2.5 flex flex-col items-center justify-center text-center">
+                                  <span className="text-emerald-700 font-extrabold text-[9px] md:text-[11px] uppercase tracking-wider">Cotas</span>
+                                  <span className="text-emerald-800 font-black text-xs md:text-sm mt-0.5">{camp.totalTickets}</span>
+                                </div>
+                                <div className="bg-[#f1f9db]/85 border border-lime-200/60 rounded-2xl p-2 md:p-2.5 flex flex-col items-center justify-center text-center">
+                                  <span className="text-amber-700 font-extrabold text-[9px] md:text-[11px] uppercase tracking-wider">Vendidas</span>
+                                  <span className="text-amber-800 font-black text-xs md:text-sm mt-0.5">{vendidas}</span>
+                                </div>
+                                <div className="bg-[#f1f9db]/85 border border-lime-200/60 rounded-2xl p-2 md:p-2.5 flex flex-col items-center justify-center text-center">
+                                  <span className="text-red-500 font-extrabold text-[9px] md:text-[11px] uppercase tracking-wider">Restantes</span>
+                                  <span className="text-red-700 font-black text-xs md:text-sm mt-0.5">{restantes}</span>
+                                </div>
+                              </div>
+
+                              {/* Comprar Bilhetes Button */}
+                              <div className={`w-full text-center text-xs md:text-sm font-black py-2.5 md:py-3.5 px-4 rounded-2xl transition-all duration-200 border ${
+                                isSelected
+                                  ? "bg-green-600 text-white border-green-600 shadow-md"
+                                  : "bg-[#82C943] text-white border-[#82C943] hover:bg-[#72b834] hover:border-[#72b834] shadow-md shadow-green-500/10"
+                              }`}>
+                                {isSelected ? "Comprar Bilhetes ✓" : "Comprar Bilhetes"}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* --- CAMPANHAS ENCERRADAS --- */}
+                  {closedCampaigns.length > 0 && (
+                    <div className="space-y-4 pt-6 border-t border-slate-100">
+                      <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+                        <Trophy className="w-4 h-4 text-amber-500 shrink-0" />
+                        <h3 className="text-xs md:text-sm font-black uppercase tracking-wider text-slate-500">
+                          Sorteios Realizados & Encerrados ({closedCampaigns.length})
+                        </h3>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 animate-fadeIn">
+                        {closedCampaigns.map((camp) => {
+                          const isSelected = selectedCampaign?.id === camp.id;
+                          const userTicketsCount = myTickets[camp.id]?.length || 0;
+
+                          // Calculate real-time tickets metrics
+                          const campTickets = allReservations[camp.id] || [];
+                          const vendidas = campTickets.filter(t => t.status === "confirmed").length;
+                          const restantes = Math.max(0, camp.totalTickets - campTickets.length);
+
+                          return (
+                            <button
+                              key={camp.id}
+                              onClick={() => {
+                                setSelectedCampaign(camp);
+                                setSuccessReserved(null);
+                                setSelectedNumbers([]);
+                                setTicketSearch("");
+                                setTicketPage(0);
+                                setGridFilter("all");
+                                setShowFullDescriptionMobile(false);
+                                
+                                const boardEl = document.getElementById("quadro-bilhetes");
+                                if (boardEl) {
+                                  boardEl.scrollIntoView({ behavior: "smooth", block: "start" });
+                                }
+                              }}
+                              className={`group relative flex flex-col text-left bg-white rounded-3xl border overflow-hidden p-4 md:p-5 transition-all duration-300 cursor-pointer w-full opacity-90 hover:opacity-100 ${
+                                isSelected
+                                  ? "border-amber-500 ring-4 ring-amber-500/15 shadow-lg transform scale-[1.01]"
+                                  : "border-slate-200 hover:border-amber-350 hover:shadow-lg hover:-translate-y-0.5"
+                              }`}
+                            >
+                              {/* Thumbnail Image Container ("Foto da Campanha" - Concluido) */}
+                              <div className="relative aspect-[4/3] w-full overflow-hidden bg-slate-50 rounded-2xl border border-slate-100 shrink-0 mb-4 grayscale group-hover:grayscale-0 transition-all duration-350">
+                                {camp.imageUrl ? (
+                                   <img
+                                     src={camp.imageUrl}
+                                     alt={camp.title}
+                                     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                     referrerPolicy="no-referrer"
+                                   />
+                                ) : (
+                                  <div className="w-full h-full bg-gradient-to-tr from-slate-900 via-indigo-950 to-indigo-900 flex flex-col items-center justify-center p-2 text-center">
+                                    <span className="text-2xl md:text-3.5xl filter drop-shadow">🎓</span>
+                                    <span className="text-[8px] md:text-[9px] text-slate-400 font-bold tracking-widest uppercase mt-1 font-mono">Concluído</span>
+                                  </div>
+                                )}
+
+                                {/* Floating Winner Number Tag */}
+                                <div className="absolute top-2.5 left-2.5 bg-amber-500 text-white font-black text-xs md:text-sm px-3.5 py-1.5 rounded-xl shadow-lg border border-white/10 flex items-center justify-center gap-1.5">
+                                  🏆 Nº {camp.winningNumber || "Sorteado"}
+                                </div>
+
+                                {/* Floating status badge (right side) */}
+                                <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5">
+                                  {userTicketsCount > 0 && (
+                                    <span className="bg-slate-600 text-white text-[8px] md:text-[9.5px] font-black px-2 py-0.5 rounded-full shadow-md">
+                                      {userTicketsCount} Adquirido(s)
+                                    </span>
+                                  )}
+                                  <span className="bg-slate-900/85 backdrop-blur-sm text-white px-2 py-0.5 md:px-2.5 md:py-1 text-[8px] md:text-[9.5px] font-bold rounded-full flex items-center gap-1 border border-white/10">
+                                    <Trophy className="w-2.5 h-2.5 text-amber-450 animate-bounce" />
+                                    Encerrada
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Title and Description */}
+                              <div className="space-y-1 mb-3.5 flex-1 flex flex-col justify-start">
+                                <h3 className="font-extrabold text-slate-800 text-sm md:text-base leading-snug group-hover:text-amber-600 transition-colors line-clamp-1">
+                                  {camp.title}
+                                </h3>
+                                <p className="text-slate-450 text-[10px] md:text-xs line-clamp-2 leading-relaxed">
+                                  {camp.description ? stripHtml(camp.description) : "Confira os detalhes e o bilhete contemplado para este sorteio encerrado de formatura."}
+                                </p>
+                              </div>
+
+                              {/* The Trio of Info Boxes (Cotas, Vendidas, Restantes) */}
+                              <div className="grid grid-cols-3 gap-1.5 md:gap-2.5 mb-4">
+                                <div className="bg-slate-50 border border-slate-100 rounded-2xl p-2 md:p-2.5 flex flex-col items-center justify-center text-center">
+                                  <span className="text-slate-500 font-extrabold text-[9px] md:text-[11px] uppercase tracking-wider">Cotas</span>
+                                  <span className="text-slate-700 font-black text-xs md:text-sm mt-0.5">{camp.totalTickets}</span>
+                                </div>
+                                <div className="bg-slate-50 border border-slate-100 rounded-2xl p-2 md:p-2.5 flex flex-col items-center justify-center text-center">
+                                  <span className="text-slate-500 font-extrabold text-[9px] md:text-[11px] uppercase tracking-wider">Vendidas</span>
+                                  <span className="text-slate-700 font-black text-xs md:text-sm mt-0.5">{vendidas}</span>
+                                </div>
+                                <div className="bg-slate-50 border border-slate-100 rounded-2xl p-2 md:p-2.5 flex flex-col items-center justify-center text-center">
+                                  <span className="text-slate-450 font-extrabold text-[9px] md:text-[11px] uppercase tracking-wider">Sobra</span>
+                                  <span className="text-slate-600 font-black text-xs md:text-sm mt-0.5">{restantes}</span>
+                                </div>
+                              </div>
+
+                              {/* Resultado / Ver Ganhador Button */}
+                              <div className={`w-full text-center text-xs md:text-sm font-black py-2.5 md:py-3.5 px-4 rounded-2xl transition-all duration-200 border ${
+                                isSelected
+                                  ? "bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/10"
+                                  : "bg-slate-100 text-slate-700 border-slate-200 hover:bg-amber-100 hover:text-amber-800 hover:border-amber-200 shadow-sm"
+                              }`}>
+                                {isSelected ? "Resultado Selecionado ✓" : "Ver Ganhador 🏆"}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+
+          {/* Sub-Seção dos Detalhes da Rifa Selecionada & Bilhetes (col-span-8) e as Compras/Pix do Cliente (col-span-4) */}
+          {selectedCampaign && (
+            <div id="quadro-bilhetes" className="grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-8 items-start pt-8 border-t border-slate-200/80">
+              
+              {/* Coluna Esquerda: Quadro de Bilhetes & Resultado */}
+              <div className="lg:col-span-8 space-y-6">
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                  {/* Campaign banner section */}
+                  <div className="p-6 md:p-8 bg-slate-50 border-b border-slate-100 grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
+                    {selectedCampaign.imageUrl && (
+                      <div className="md:col-span-4 shrink-0 flex justify-center">
+                        <img
+                          src={selectedCampaign.imageUrl}
+                          alt={selectedCampaign.title}
+                          className="w-full max-w-[280px] md:max-w-full aspect-square rounded-2xl object-contain bg-white border border-slate-200 shadow-md p-2 hover:scale-[1.01] transition-transform duration-300"
+                          referrerPolicy="no-referrer"
+                        />
+                      </div>
+                    )}
+                    <div className={selectedCampaign.imageUrl ? "md:col-span-8 space-y-2" : "md:col-span-12 space-y-2"}>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="bg-indigo-600 text-white font-bold text-[10px] uppercase tracking-wider px-2.5 py-1 rounded-full">
+                          R$ {selectedCampaign.ticketPrice.toFixed(2)} / BILHETE
+                        </span>
+                        {selectedCampaign.drawDate && (
+                          <span className="bg-slate-200 text-slate-700 text-[10px] font-semibold px-2.5 py-1 rounded-full flex items-center gap-1">
+                            <Calendar className="w-3 h-3" />
+                            Loteria Federal de: {selectedCampaign.drawDate}
+                          </span>
+                        )}
+                      </div>
+                      <h2 className="text-xl md:text-2xl font-extrabold tracking-tight text-slate-800">{selectedCampaign.title}</h2>
+                      <div 
+                        className="text-slate-650 text-xs leading-relaxed rich-text-content"
+                        dangerouslySetInnerHTML={{ __html: selectedCampaign.description || "" }}
+                      />
+                      
+                      {selectedCampaign.progressiveDiscounts && selectedCampaign.progressiveDiscounts.length > 0 && (
+                        <div className="mt-2.5 bg-indigo-50/70 border border-indigo-200/60 p-3 rounded-xl space-y-1.5 shadow-2xs">
+                          <h4 className="text-[10px] uppercase tracking-wider font-extrabold text-indigo-900 flex items-center gap-1">
+                            <span>🔥 Desconto Progressivo Especial</span>
+                          </h4>
+                          <div className="flex flex-wrap gap-2 text-xs">
+                            {selectedCampaign.progressiveDiscounts.map((tier, idx) => {
+                              const pct = tier.discountPercentage !== undefined
+                                ? tier.discountPercentage
+                                : selectedCampaign.ticketPrice > 0
+                                  ? Math.max(0, Math.round((1 - tier.discountPrice / selectedCampaign.ticketPrice) * 100))
+                                  : 0;
+                              
+                              const finalPrice = tier.discountPercentage !== undefined
+                                ? selectedCampaign.ticketPrice * (1 - tier.discountPercentage / 100)
+                                : tier.discountPrice;
+
+                              return (
+                                <span key={idx} className="bg-white px-2.5 py-1 rounded-lg border border-indigo-150/60 flex items-center gap-1.5 text-[11px] text-indigo-950 font-semibold shadow-3xs">
+                                  <span>{tier.minQuantity}+ cotas:</span>
+                                  <span className="bg-emerald-100 text-emerald-800 text-[9px] px-1.5 py-0.5 rounded-md font-bold">{pct}% OFF</span>
+                                  <span className="text-indigo-650">R$ {finalPrice.toFixed(2)} cada</span>
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* DRAW RESULT MOOD CARD IF DRAWN */}
+                  {selectedCampaign.status === "drawn" && (
+                    <div className="p-6 md:p-8 bg-indigo-950 text-white text-center flex flex-col items-center">
+                      <div className="p-4 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 rounded-full mb-3">
+                        <Trophy className="w-10 h-10" />
+                      </div>
+                      <h3 className="text-xl font-bold tracking-tight">Sorteio Realizado!</h3>
+                      <p className="text-slate-300 text-xs mt-1 max-w-md leading-relaxed">
+                        Extração concurso nº <strong>{selectedCampaign.federalLotteryDrawId || "Oficial"}</strong> da Loteria Federal
+                        {selectedCampaign.drawDate && (
+                          <> realizada em <strong>{selectedCampaign.drawDate.split("-").reverse().join("/")}</strong></>
+                        )}.
+                      </p>
+
+                      <div className="my-6 bg-indigo-900 border border-indigo-800 rounded-2xl px-8 py-5 flex flex-col items-center">
+                        <span className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Número Sorteado</span>
+                        <span className="text-5xl font-black text-indigo-300 tracking-wider font-mono mt-1">
+                          {selectedCampaign.winningNumber}
+                        </span>
+                        {selectedCampaign.federalLotteryNumber && (
+                          <span className="text-[11px] text-indigo-400 font-semibold mt-2 font-mono">
+                            Extração Federal: {selectedCampaign.federalLotteryNumber}
+                          </span>
+                        )}
+                      </div>
+
+                      {tickets[selectedCampaign.winningNumber || ""]?.status === "confirmed" ? (
+                        <div className="text-xs text-indigo-300 bg-indigo-900/40 p-3.5 border border-indigo-800/30 rounded-xl leading-relaxed max-w-sm">
+                          ✨ Parabéns ao vencedor! <br />
+                          <strong>{tickets[selectedCampaign.winningNumber || ""].buyerName}</strong> de{" "}
+                          <strong>{tickets[selectedCampaign.winningNumber || ""].buyerCpf || "CPF verificado"}</strong> comprou este bilhete!
+                        </div>
+                      ) : (
+                        <p className="text-xs text-slate-400">
+                          O bilhete correspondente não foi vendido ou não teve o pagamento confirmado a tempo.
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* RESERVATION NOTIFICATIONS */}
+                  {selectedCampaign.status === "active" && (
+                    <div className="p-6 md:p-8 space-y-6">
+                      {successReserved && successReserved.length > 0 && (
+                        <div className="bg-indigo-55 border border-indigo-200 rounded-xl p-5 text-slate-750 animate-fadeIn space-y-4">
+                          <div className="flex items-start gap-4">
+                            <div className="flex flex-wrap gap-1 hover:max-h-none overflow-y-auto max-h-[84px] shrink-0 max-w-[160px] bg-indigo-100/50 p-1 rounded-xl border border-indigo-200/50">
+                              {successReserved.map((num) => (
+                                <div key={num} className="p-1 px-1.5 bg-indigo-600 text-white rounded-lg font-bold text-xs font-mono">
+                                  #{num}
+                                </div>
+                              ))}
+                            </div>
+                            <div className="space-y-1">
+                              <h4 className="font-bold text-slate-800 text-sm leading-none flex items-center gap-1.5 pt-1">
+                                {successReserved.length === 1 ? "Cota Reservada" : "Cotas Reservadas"} com Sucesso! 🎟️
+                              </h4>
+                              <p className="text-xs text-slate-655 leading-normal pt-1">
+                                Para efetivar a compra e torná-la oficial para o sorteio, faça o PIX de{" "}
+                                {(() => {
+                                  const calc = getDiscountedPrice(successReserved.length, selectedCampaign.ticketPrice, selectedCampaign.progressiveDiscounts);
+                                  return (
+                                    <>
+                                      <strong>R$ {calc.totalPrice.toFixed(2)}</strong> (R$ {calc.unitPrice.toFixed(2)} por cota{calc.appliedDiscount ? " - com Desconto Progressivo!" : ""}).
+                                    </>
+                                  );
+                                })()}
+                              </p>
+                            </div>
+                          </div>
+ 
+                          {/* Manual Payment Step */}
+                          <div className="bg-white border border-slate-100 rounded-xl p-4 space-y-4 text-xs">
+                            <div className="font-bold text-slate-800 border-b border-slate-100 pb-2 flex items-center justify-between">
+                              <span>DADOS PARA TRANSFERÊNCIA PIX</span>
+                              <span className="text-[10px] uppercase font-bold text-indigo-600 tracking-wide">
+                                Preço Total: R$ {getDiscountedPrice(successReserved.length, selectedCampaign.ticketPrice, selectedCampaign.progressiveDiscounts).totalPrice.toFixed(2)}
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                              <div className="space-y-1.5">
+                                <span className="text-[10px] text-slate-400 block font-bold uppercase tracking-wider">Chave PIX</span>
+                                <div className="flex items-center gap-2 font-mono bg-slate-50 p-2 border border-slate-200 rounded-lg justify-between text-slate-700">
+                                  <span className="truncate">{settings.pixKey}</span>
+                                  <button
+                                    onClick={handleCopyPix}
+                                    className="text-slate-500 hover:text-slate-800 p-1 bg-white border border-slate-200 rounded cursor-pointer shrink-0"
+                                    title="Copiar chave"
+                                  >
+                                    {copiedPix ? <Check className="w-3.5 h-3.5 text-indigo-600" /> : <Copy className="w-3.5 h-3.5" />}
+                                  </button>
+                                </div>
+                                {settings.receiverName && (
+                                  <div className="text-[10px] text-slate-500 pt-0.5 flex justify-between">
+                                    <span>Favorecido:</span>
+                                    <span className="font-semibold text-slate-700">{settings.receiverName}</span>
+                                  </div>
+                                )}
+                                {settings.bankName && (
+                                  <div className="text-[10px] text-slate-500 flex justify-between">
+                                    <span>Banco:</span>
+                                    <span className="font-semibold text-slate-700">{settings.bankName}</span>
+                                  </div>
+                                )}
+                              </div>
+                              <div className="space-y-1">
+                                <span className="text-[10px] text-slate-400 block font-bold uppercase tracking-wider">Como Confirmar?</span>
+                                <p className="text-slate-650 leading-normal">
+                                  Envie o comprovante para o suporte ou simplesmente aguarde! O sistema revisará o extrato buscando o CPF/cadastro <strong>{userProfile.cpf}</strong> em até <strong>{settings.expirationHours} horas</strong> para validar seus números.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col sm:flex-row justify-end gap-2 text-xs">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const tempTickets = successReserved.map(num => ({
+                                  id: num,
+                                  number: num,
+                                  status: "reserved" as const,
+                                  buyerUid: userProfile.uid,
+                                  buyerName: userProfile.name,
+                                  buyerPhone: userProfile.phone || "",
+                                  buyerCpf: userProfile.cpf,
+                                  buyerEmail: userProfile.email,
+                                  reservedAt: new Date().toISOString(),
+                                }));
+                                handleWhatsAppRedirect(tempTickets, selectedCampaign);
+                              }}
+                              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg cursor-pointer flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+                            >
+                              <svg className="w-4 h-4 shrink-0 fill-current" viewBox="0 0 24 24">
+                                <path d="M12.012 2c-5.506 0-9.989 4.478-9.99 9.984a9.96 9.96 0 0 0 1.335 4.978L2 22l5.133-1.343a9.894 9.894 0 0 0 4.873 1.344h.004c5.507 0 9.99-4.478 9.99-9.984a9.97 9.97 0 0 0-2.926-7.064A9.923 9.923 0 0 0 12.012 2zm5.794 13.978c-.244.685-1.22 1.258-1.685 1.31-.415.048-.954.072-1.554-.12a14.2 14.2 0 0 1-5.323-3.26c-1.423-1.416-2.5-3.155-2.775-3.626-.275-.471-.03-.725.207-.962.214-.213.473-.553.71-.83.235-.276.314-.471.472-.786.158-.314.079-.588-.04-.844-.118-.256-.944-2.274-1.298-3.125-.347-.831-.699-.718-.959-.731-.248-.013-.532-.016-.816-.016-.284 0-.749.106-1.14.53-.393.424-1.5 1.464-1.5 3.568 0 2.102 1.533 4.133 1.747 4.419.215.285 3.018 4.606 7.311 6.467 1.02.443 1.815.707 2.437.904 1.025.326 1.958.28 2.696.17.822-.123 2.533-1.035 2.89-2.035.356-1 .356-1.857.248-2.035-.108-.178-.396-.285-.84-.508z" />
+                              </svg>
+                              <span>Confirmar no WhatsApp</span>
+                            </button>
+                            <button
+                              onClick={() => setSuccessReserved(null)}
+                              className="px-4 py-2 bg-slate-900 text-white font-bold rounded-lg cursor-pointer hover:bg-slate-800"
+                            >
+                              Concluir e Voltar
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* ACTIVE RESERVATION SELECTION CARD */}
+                      {selectedNumbers.length > 0 && (
+                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 text-slate-800 space-y-3 animate-fadeIn">
+                          <h4 className="font-bold text-slate-800 text-sm flex items-center gap-1.5">
+                            <AlertCircle className="w-4 h-4 text-amber-600 animate-pulse" />
+                            Deseja reservar as cotas selecionadas?
+                          </h4>
+                          <div className="text-xs text-slate-605 leading-relaxed">
+                            Você selecionou <strong className="text-slate-900">{selectedNumbers.length} cota(s)</strong>:{" "}
+                            <div className="flex flex-wrap gap-1.5 my-1.5">
+                              {selectedNumbers.map(n => (
+                                <span key={n} className="font-mono bg-amber-100 border border-amber-300 text-amber-900 rounded px-1.5 py-0.5 text-xs font-bold shadow-sm">
+                                  #{n}
+                                </span>
+                              ))}
+                            </div>
+                             Ao confirmar, estes números serão temporariamente reservados sob seu nome por 24 horas. Para mantê-los, você deve realizar a transferência manual via PIX. O valor total é {" "}
+                             {(() => {
+                               const calc = getDiscountedPrice(selectedNumbers.length, selectedCampaign.ticketPrice, selectedCampaign.progressiveDiscounts);
+                               return (
+                                 <strong>R$ {calc.totalPrice.toFixed(2)}{calc.appliedDiscount ? ` (cada cota sai por R$ ${calc.unitPrice.toFixed(2)}!)` : ""}</strong>
+                               );
+                             })()}.
+                          </div>
+                          <div className="flex gap-2 justify-end text-xs pt-1">
+                            <button
+                              onClick={() => setSelectedNumbers([])}
+                              disabled={reserving}
+                              className="px-3.5 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold rounded-lg cursor-pointer"
+                            >
+                              Limpar Seleção
+                            </button>
+                            <button
+                              onClick={handleReserveTickets}
+                              disabled={reserving}
+                              className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg shadow-md shadow-indigo-500/20 cursor-pointer text-center flex items-center gap-1"
+                            >
+                              {reserving ? "Reservando..." : `Confirmar Pré-Reserva de ${selectedNumbers.length} Cota(s)`}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* INTERACTIVE GRID SECTION */}
+                      <div className="space-y-4">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                          <div>
+                            <h3 className="font-bold text-slate-800 text-sm uppercase tracking-wider flex items-center gap-1.5">
+                              <TicketIcon className="w-4.5 h-4.5 text-indigo-600 animate-pulse" />
+                              Quadro de Bilhetes Disponíveis
+                            </h3>
+                            <p className="text-slate-500 text-xs">
+                              Clique sobre qualquer número em cinza ou use a compra rápida abaixo para realizar a sua reserva.
+                            </p>
+                          </div>
+
+                          {/* Legend badges */}
+                          <div className="flex flex-wrap gap-2 text-[10px] font-bold uppercase tracking-wide">
+                            <span className="flex items-center gap-1 bg-slate-100 border border-slate-200 px-2 py-1 rounded">
+                              <span className="w-2.5 h-2.5 rounded-full bg-slate-200"></span> Dispo.
+                            </span>
+                            <span className="flex items-center gap-1 bg-amber-50 border border-amber-200 text-amber-800 px-2 py-1 rounded">
+                              <span className="w-2.5 h-2.5 rounded-full bg-amber-400"></span> Reservado
+                            </span>
+                            <span className="flex items-center gap-1 bg-indigo-50 border border-indigo-200 text-indigo-800 px-2 py-1 rounded">
+                              <span className="w-2.5 h-2.5 rounded-full bg-indigo-400"></span> Confirmado
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* COMPRA RÁPIDA (LOTES ALEATÓRIOS) */}
+                        {selectedCampaign.status === "active" && (
+                          <div className="bg-gradient-to-r from-emerald-500/10 via-[#82C943]/5 to-transparent border border-emerald-500/15 p-4 rounded-2xl space-y-3.5 animate-fadeIn">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                              <div>
+                                <h4 className="text-xs font-black text-emerald-800 uppercase tracking-wider flex items-center gap-1.5">
+                                  <Sparkles className="w-3.5 h-3.5 text-emerald-600 animate-bounce" />
+                                  Compra Rápida (Lotes Promocionais)
+                                </h4>
+                                <p className="text-[10.5px] text-emerald-700/80 font-medium">
+                                  Selecione cotas de forma 100% aleatória e garanta suas chances de ganhar!
+                                </p>
+                              </div>
+                              <span className="text-[9px] text-[#55911d] font-mono bg-[#82C943]/20 border border-[#82C943]/30 px-2.5 py-0.5 rounded-full self-start sm:self-center font-bold uppercase tracking-wider">
+                                🔥 Mais rápido
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-5 gap-2">
+                              {[5, 10, 25, 50, 100].map((count) => {
+                                if (selectedCampaign.totalTickets < count) return null;
+                                const isSelectedCount = selectedNumbers.length === count;
+                                
+                                return (
+                                  <button
+                                    key={count}
+                                    type="button"
+                                    onClick={() => handleQuickSelectRandom(count)}
+                                    className={`relative py-2.5 px-1 sm:px-3 rounded-xl shadow-xs transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 text-center flex flex-col items-center justify-center cursor-pointer border font-black text-xs ${
+                                      isSelectedCount
+                                        ? "bg-emerald-600 border-emerald-600 text-white shadow-md"
+                                        : "bg-[#82C943] border-[#82C943] hover:bg-[#72b834] hover:border-[#72b834] text-white"
+                                    }`}
+                                  >
+                                    <span className="text-[15px] leading-tight">+{count}</span>
+                                    <span className="text-[8px] font-sans font-medium opacity-90 uppercase tracking-widest mt-0.5">
+                                      cotas
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Search and Pagination Controls */}
+                        <div className="bg-slate-100/50 p-3 rounded-2xl border border-slate-200/60 grid grid-cols-1 md:grid-cols-2 gap-3 items-center">
+                          <div className="relative">
+                            <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                              <Search className="w-4 h-4" />
+                            </span>
+                            <input
+                              type="text"
+                              value={ticketSearch}
+                              onChange={(e) => setTicketSearch(e.target.value.replace(/\D/g, ""))}
+                              placeholder="Buscar número específico..."
+                              className="w-full bg-white pl-9 pr-4 py-2 border border-slate-200 rounded-xl text-xs font-medium placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-650"
+                            />
+                            {ticketSearch && (
+                              <button
+                                onClick={() => setTicketSearch("")}
+                                className="absolute inset-y-0 right-0 pr-3 flex items-center text-xs font-bold text-slate-400 hover:text-slate-600"
+                              >
+                                Limpar
+                              </button>
+                            )}
+                          </div>
+
+                          {totalPages > 1 && (
+                            <div className="flex items-center justify-between md:justify-end gap-2.5 text-xs text-slate-650">
+                              <button
+                                disabled={ticketPage === 0}
+                                onClick={() => setTicketPage(prev => Math.max(0, prev - 1))}
+                                className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg disabled:opacity-50 font-bold hover:bg-slate-50 transition cursor-pointer"
+                              >
+                                Anterior
+                              </button>
+                              <span className="font-semibold text-slate-700 text-[11px]">
+                                Página <strong>{ticketPage + 1}</strong> de {totalPages}
+                              </span>
+                              <button
+                                disabled={ticketPage >= totalPages - 1}
+                                onClick={() => setTicketPage(prev => Math.min(totalPages - 1, prev + 1))}
+                                className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg disabled:opacity-50 font-bold hover:bg-slate-50 transition cursor-pointer"
+                              >
+                                Próxima
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
+                        {loadingTickets ? (
+                          <div className="grid grid-cols-5 sm:grid-cols-10 gap-2">
+                            {Array.from({ length: 40 }).map((_, idx) => (
+                              <div key={idx} className="h-10 bg-slate-100 animate-pulse rounded-lg"></div>
+                            ))}
+                          </div>
+                        ) : paginatedIndices.length === 0 ? (
+                          <div className="p-8 text-center bg-white border border-slate-200 rounded-2xl min-h-[140px] flex flex-col items-center justify-center">
+                            <AlertCircle className="w-8 h-8 text-amber-500 mb-2 shrink-0 animate-pulse" />
+                            <h4 className="font-bold text-slate-800 text-[13px]">Nenhum número correspondente encontrado</h4>
+                            <p className="text-[11px] text-slate-400 max-w-sm mt-0.5">Tente buscar por um termo numérico diferente existente nesta campanha.</p>
+                          </div>
+                        ) : (
+                          /* Grid drawing loop based on total size limit */
+                          <div className="grid grid-cols-5 sm:grid-cols-10 gap-2 max-h-[450px] overflow-y-auto p-1.5 bg-slate-50 border border-slate-100 rounded-2xl w-full">
+                            {paginatedIndices.map((idx) => {
+                              const numStr = padNumber(idx, selectedCampaign.totalTickets);
+                              const tInfo = tickets[numStr];
+                              const isCurrentlySelected = selectedNumbers.includes(numStr);
+
+                              // Resolve background style states
+                              let bgClass = "bg-white text-slate-700 hover:bg-slate-100 border-slate-200 hover:scale-105 hover:bg-slate-50";
+                              let statusLabel = "Livre (Disponível)";
+
+                              if (isCurrentlySelected) {
+                                bgClass = "bg-indigo-600 text-white border-indigo-600 font-bold scale-[1.03] shadow-md hover:bg-indigo-700 ring-2 ring-indigo-500/20";
+                                statusLabel = "Selecionado por você";
+                              } else if (tInfo) {
+                                if (tInfo.status === "confirmed") {
+                                  bgClass = "bg-indigo-100/70 text-indigo-400 border-indigo-100 cursor-not-allowed pointer-events-none opacity-60";
+                                  statusLabel = `Confirmado por ${tInfo.buyerName}`;
+                                } else if (tInfo.status === "reserved") {
+                                  const isMine = tInfo.buyerUid === userProfile.uid;
+                                  bgClass = isMine
+                                    ? "bg-amber-400 text-slate-900 border-amber-400 hover:bg-amber-500 font-bold"
+                                    : "bg-amber-100 text-amber-800 border-amber-200 cursor-not-allowed pointer-events-none opacity-70";
+                                  statusLabel = isMine ? "Sua Reserva" : "Já Reservado";
+                                }
+                              }
+
+                              return (
+                                <button
+                                  key={numStr}
+                                  disabled={tInfo?.status === "confirmed" || (tInfo?.status === "reserved" && tInfo.buyerUid !== userProfile.uid)}
+                                  onClick={() => {
+                                    setSuccessReserved(null);
+                                    handleToggleNumberSelection(numStr);
+                                  }}
+                                  className={`h-11 sm:h-12 border rounded-xl font-mono text-xs sm:text-sm font-semibold transition-all shadow-subtle flex flex-col items-center justify-center cursor-pointer ${bgClass}`}
+                                  title={`Bilhete #${numStr} - ${statusLabel}`}
+                                >
+                                  <span>{numStr}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* PAUSED RAFFLE MOOD CARD */}
+                  {selectedCampaign.status === "paused" && (
+                    <div className="p-8 text-center flex flex-col items-center justify-center space-y-3">
+                      <AlertCircle className="w-12 h-12 text-amber-500 animate-bounce" />
+                      <h3 className="font-bold text-slate-800 text-lg">Esta rifa está pausada temporariamente</h3>
+                      <p className="text-slate-500 text-xs max-w-sm leading-relaxed">
+                        A visualização do regulamento continua disponível, mas a reserva de novos bilhetes está bloqueada até que o administrador reative a campanha.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Coluna Direita: Minhas Reservas (Desktop-only inside RIFAS view) */}
+              <div className="hidden lg:block lg:col-span-4 space-y-6">
+                <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 space-y-4 font-normal text-slate-705">
+                  <h2 className="font-bold text-slate-800 text-sm uppercase tracking-wider flex items-center gap-2">
+                    <ShoppingBag className="w-4 h-4 text-indigo-650 shrink-0" />
+                    Minhas Reservas & Bilhetes
+                  </h2>
+                  <p className="text-slate-505 text-xs font-normal">
+                    Acompanhe o status do pagamento manual das suas reservas enviadas ao administrador.
+                  </p>
+
+                  {myTotalTicketsCount === 0 ? (
+              <div className="text-center p-6 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-slate-450 text-xs text-center normal-case">
+                Você não possui compras ou reservas registradas no momento.
+              </div>
+            ) : (
+                    <div className="space-y-4 max-h-[300px] overflow-y-auto pr-1">
+                      {(Object.entries(myTickets) as [string, Ticket[]][]).map(([campaignId, tList]) => {
+                        if (tList.length === 0) return null;
+                        const camp = campaigns.find(c => c.id === campaignId);
+                        if (!camp) return null;
+
+                        const confirmedTickets = tList.filter(item => item.status === "confirmed");
+
+                        return (
+                          <div key={campaignId} className="space-y-2 pb-3 border-b border-slate-100 last:border-0 last:pb-0">
+                            <div className="flex items-center justify-between gap-1.5">
+                              <strong className="text-slate-800 text-xs block truncate max-w-[55%]" title={camp.title}>{camp.title}</strong>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <span className="text-[10px] text-slate-400">{tList.length} cota(s)</span>
+                                {tList.filter(t => t.status === "reserved").length > 0 && (
+                                  <button
+                                    onClick={() => handleWhatsAppRedirect(tList.filter(t => t.status === "reserved"), camp)}
+                                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md cursor-pointer transition flex items-center gap-0.5"
+                                    title="Enviar comprovante de reserva desta campanha por WhatsApp"
+                                  >
+                                    <span>WhatsApp 💬</span>
+                                  </button>
+                                )}
+                                {confirmedTickets.length > 0 && (
+                                  <button
+                                    onClick={() => setTicketModalConfig({ campaign: camp, tickets: confirmedTickets })}
+                                    className="bg-indigo-600 hover:bg-indigo-700 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md cursor-pointer transition flex items-center gap-0.5"
+                                    title="Emitir todos os bilhetes confirmados desta campanha"
+                                  >
+                                    <span>Emitir 🎟️</span>
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {tList.map((t) => {
+                                const isConfirmed = t.status === "confirmed";
+                                return (
+                                  <button
+                                    key={t.id}
+                                    type="button"
+                                    onClick={() => {
+                                      if (isConfirmed) {
+                                        setTicketModalConfig({ campaign: camp, tickets: [t] });
+                                      }
+                                    }}
+                                    className={`px-2 py-1 rounded-lg border text-[11px] font-semibold font-mono flex items-center gap-1 transition-all ${
+                                      isConfirmed
+                                        ? "bg-indigo-50 border-indigo-200 text-indigo-800 hover:scale-[1.03] hover:bg-indigo-100 cursor-pointer"
+                                        : "bg-amber-55 border-amber-200 text-amber-800 cursor-default"
+                                    }`}
+                                    title={isConfirmed ? "Clique para emitir seu Bilhete Oficial 🎟️" : "Aguardando confirmação de pagamento"}
+                                  >
+                                    <span>#{t.number}</span>
+                                    <span className="text-[9px] uppercase px-1 rounded bg-white font-sans font-bold shrink-0">
+                                      {isConfirmed ? "Pago 🌟" : "Pend."}
+                                    </span>
+                                    {t.status === "reserved" && (
+                                      <span
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleCancelReservation(campaignId, t.id);
+                                        }}
+                                        className="text-red-500 hover:text-red-700 ml-0.5 font-sans font-extrabold cursor-pointer text-xs leading-none"
+                                        title="Desistir da reserva"
+                                      >
+                                        ×
+                                      </span>
+                                    )}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Quick Copy PIX helper inside reservations list */}
+                  {myTotalTicketsCount > 0 && (Object.values(myTickets).flat() as Ticket[]).some(t => t.status === "reserved") && (
+                    <div className="bg-amber-50/70 border border-amber-200/60 rounded-2xl p-4 text-xs text-slate-700 space-y-2.5 animate-fadeIn">
+                      <div className="flex items-center gap-1.5 font-bold text-amber-800">
+                        <Landmark className="w-4 h-4 text-amber-600 shrink-0" />
+                        <span>Transferência Pix Pendente</span>
+                      </div>
+                      <p className="text-[11px] leading-relaxed text-slate-600">
+                        Para confirmar suas reservas, por favor faça a transferência total via PIX das suas cotas pendentes nos dados abaixo:
+                      </p>
+                      <div className="space-y-1.5 bg-white border border-amber-200/55 rounded-xl p-2.5 shadow-xs">
+                        <div className="flex items-center justify-between gap-1.5 font-mono text-[11px] text-slate-800">
+                          <div>
+                            <span className="text-[9px] text-slate-400 block font-sans">CHAVE PIX</span>
+                            <span className="truncate block font-bold">{settings.pixKey}</span>
+                          </div>
+                          <button
+                            onClick={handleCopyPix}
+                            className="text-slate-500 hover:text-slate-800 p-1.5 bg-slate-55 hover:bg-slate-100 border border-slate-200 rounded-lg cursor-pointer shrink-0"
+                            title="Copiar chave PIX"
+                          >
+                            {copiedPix ? <Check className="w-3.5 h-3.5 text-indigo-600" /> : <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" /></svg>}
+                          </button>
+                        </div>
+                        {settings.receiverName && (
+                          <div className="text-[10px] text-slate-500 border-t border-slate-100 pt-1 flex justify-between font-sans">
+                            <span>Favorecido:</span>
+                            <strong className="text-slate-750">{settings.receiverName}</strong>
+                          </div>
+                        )}
+                        {settings.bankName && (
+                          <div className="text-[10px] text-slate-500 flex justify-between font-sans">
+                            <span>Banco:</span>
+                            <strong className="text-slate-750">{settings.bankName}</strong>
+                          </div>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-slate-500 leading-normal bg-white/40 p-1.5 rounded-lg border border-slate-200/10">
+                        💡 Realize o pagamento em até <strong>{settings.expirationHours} horas</strong>. Buscaremos no extrato pelo seu CPF <strong>{userProfile.cpf}</strong> para validar os números!
+                      </p>
+                      <button
+                        onClick={() => handleWhatsAppRedirect()}
+                        className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 shadow-sm border border-emerald-500/15"
+                      >
+                        <svg className="w-4 h-4 shrink-0 fill-current" viewBox="0 0 24 24">
+                          <path d="M12.012 2c-5.506 0-9.989 4.478-9.99 9.984a9.96 9.96 0 0 0 1.335 4.978L2 22l5.133-1.343a9.894 9.894 0 0 0 4.873 1.344h.004c5.507 0 9.99-4.478 9.99-9.984a9.97 9.97 0 0 0-2.926-7.064A9.923 9.923 0 0 0 12.012 2zm5.794 13.978c-.244.685-1.22 1.258-1.685 1.31-.415.048-.954.072-1.554-.12a14.2 14.2 0 0 1-5.323-3.26c-1.423-1.416-2.5-3.155-2.775-3.626-.275-.471-.03-.725.207-.962.214-.213.473-.553.71-.83.235-.276.314-.471.472-.786.158-.314.079-.588-.04-.844-.118-.256-.944-2.274-1.298-3.125-.347-.831-.699-.718-.959-.731-.248-.013-.532-.016-.816-.016-.284 0-.749.106-1.14.53-.393.424-1.5 1.464-1.5 3.568 0 2.102 1.533 4.133 1.747 4.419.215.285 3.018 4.606 7.311 6.467 1.02.443 1.815.707 2.437.904 1.025.326 1.958.28 2.696.17.822-.123 2.533-1.035 2.89-2.035.356-1 .356-1.857.248-2.035-.108-.178-.396-.285-.84-.508z" />
+                        </svg>
+                        <span>Confirmar no WhatsApp (Comissão)</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 3. RETRO COMPATIBLE "COMPRAS" TAB SEARCH ON MOBILE (ONLY) */}
+      {activeTab === "compras" && (
+        <div className="block lg:hidden space-y-6 animate-fadeIn">
+          <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 space-y-4">
+            <h2 className="font-bold text-slate-800 text-sm uppercase tracking-wider flex items-center gap-2">
+              <ShoppingBag className="w-4 h-4 text-indigo-650 shrink-0" />
+              Minhas Reservas & Bilhetes
+            </h2>
+            <p className="text-slate-500 text-xs">
+              Acompanhe o status do pagamento manual das suas reservas enviadas ao administrador.
+            </p>
+
+            {myTotalTicketsCount === 0 ? (
+              <div className="text-center p-6 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-slate-450 text-xs text-center normal-case">
+                Você não possui compras ou reservas registradas no momento.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {(Object.entries(myTickets) as [string, Ticket[]][]).map(([campaignId, tList]) => {
+                  if (tList.length === 0) return null;
+                  const camp = campaigns.find(c => c.id === campaignId);
+                  if (!camp) return null;
+
+                  const confirmedTickets = tList.filter(item => item.status === "confirmed");
+
+                  return (
+                    <div key={campaignId} className="space-y-2 pb-3 border-b border-slate-100 last:border-0 last:pb-0">
+                      <div className="flex items-center justify-between gap-1.5">
+                        <strong className="text-slate-800 text-xs block truncate max-w-[55%]" title={camp.title}>{camp.title}</strong>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className="text-[10px] text-slate-400">{tList.length} cota(s)</span>
+                          {tList.filter(t => t.status === "reserved").length > 0 && (
+                            <button
+                              onClick={() => handleWhatsAppRedirect(tList.filter(t => t.status === "reserved"), camp)}
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md cursor-pointer transition flex items-center gap-0.5"
+                              title="Enviar comprovante de reserva desta campanha por WhatsApp"
+                            >
+                              <span>WhatsApp 💬</span>
+                            </button>
+                          )}
+                          {confirmedTickets.length > 0 && (
+                            <button
+                              onClick={() => setTicketModalConfig({ campaign: camp, tickets: confirmedTickets })}
+                              className="bg-indigo-600 hover:bg-indigo-700 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md cursor-pointer transition flex items-center gap-0.5"
+                              title="Emitir todos os bilhetes confirmados desta campanha"
+                            >
+                              <span>Emitir 🎟️</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {tList.map((t) => {
+                          const isConfirmed = t.status === "confirmed";
+                          return (
+                            <button
+                              key={t.id}
+                              type="button"
+                              onClick={() => {
+                                if (isConfirmed) {
+                                  setTicketModalConfig({ campaign: camp, tickets: [t] });
+                                }
+                              }}
+                              className={`px-2 py-1 rounded-lg border text-[11px] font-semibold font-mono flex items-center gap-1 transition-all ${
+                                isConfirmed
+                                  ? "bg-indigo-50 border-indigo-200 text-indigo-800 hover:scale-[1.03] hover:bg-indigo-100 cursor-pointer"
+                                  : "bg-amber-55 border-amber-200 text-amber-800 cursor-default"
+                              }`}
+                              title={isConfirmed ? "Clique para emitir seu Bilhete Oficial 🎟️" : "Aguardando confirmação de pagamento"}
+                            >
+                              <span>#{t.number}</span>
+                              <span className="text-[9px] uppercase px-1 rounded bg-white font-sans font-bold shrink-0">
+                                {isConfirmed ? "Pago 🌟" : "Pend."}
+                              </span>
+                              {t.status === "reserved" && (
+                                <span
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleCancelReservation(campaignId, t.id);
+                                  }}
+                                  className="text-red-500 hover:text-red-700 ml-0.5 font-sans font-extrabold cursor-pointer text-xs leading-none"
+                                  title="Desistir da reserva"
+                                >
+                                  ×
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Quick Copy PIX helper inside reservations list for mobile */}
+            {myTotalTicketsCount > 0 && (Object.values(myTickets).flat() as Ticket[]).some(t => t.status === "reserved") && (
+              <div className="bg-amber-50/70 border border-amber-200/60 rounded-2xl p-4 text-xs text-slate-705 space-y-2.5 animate-fadeIn">
+                <div className="flex items-center gap-1.5 font-bold text-amber-850">
+                  <Landmark className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>Transferência Pix Pendente</span>
+                </div>
+                <p className="text-[11px] leading-relaxed text-slate-650">
+                  Para confirmar suas reservas, por favor faça a transferência total via PIX das suas cotas pendentes nos dados abaixo:
+                </p>
+                <div className="space-y-1.5 bg-white border border-amber-200/55 rounded-xl p-2.5 shadow-xs">
+                  <div className="flex items-center justify-between gap-1.5 font-mono text-[11px] text-slate-800">
+                    <div>
+                      <span className="text-[9px] text-slate-400 block font-sans">CHAVE PIX</span>
+                      <span className="truncate block font-bold">{settings.pixKey}</span>
+                    </div>
+                    <button
+                      onClick={handleCopyPix}
+                      className="text-slate-505 hover:text-slate-800 p-1.5 bg-slate-55 hover:bg-slate-100 border border-slate-200 rounded-lg cursor-pointer shrink-0"
+                      title="Copiar chave PIX"
+                    >
+                      {copiedPix ? <Check className="w-3.5 h-3.5 text-indigo-600" /> : <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" /></svg>}
+                    </button>
+                  </div>
+                  {settings.receiverName && (
+                    <div className="text-[10px] text-slate-500 border-t border-slate-100 pt-1 flex justify-between font-sans">
+                      <span>Favorecido:</span>
+                      <strong className="text-slate-705">{settings.receiverName}</strong>
+                    </div>
+                  )}
+                  {settings.bankName && (
+                    <div className="text-[10px] text-slate-500 flex justify-between font-sans">
+                      <span>Banco:</span>
+                      <strong className="text-slate-705">{settings.bankName}</strong>
+                    </div>
+                  )}
+                </div>
+                <p className="text-[10px] text-slate-505 leading-normal bg-white/40 p-1.5 rounded-lg border border-slate-200/10">
+                  💡 Realize o pagamento em até <strong>{settings.expirationHours} horas</strong>. Buscaremos no extrato pelo seu CPF <strong>{userProfile.cpf}</strong> para validar os números!
+                </p>
+                <button
+                  onClick={() => handleWhatsAppRedirect()}
+                  className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 shadow-sm border border-emerald-500/15"
+                >
+                  <svg className="w-4 h-4 shrink-0 fill-current" viewBox="0 0 24 24">
+                    <path d="M12.012 2c-5.506 0-9.989 4.478-9.99 9.984a9.96 9.96 0 0 0 1.335 4.978L2 22l5.133-1.343a9.894 9.894 0 0 0 4.873 1.344h.004c5.507 0 9.99-4.478 9.99-9.984a9.97 9.97 0 0 0-2.926-7.064A9.923 9.923 0 0 0 12.012 2zm5.794 13.978c-.244.685-1.22 1.258-1.685 1.31-.415.048-.954.072-1.554-.12a14.2 14.2 0 0 1-5.323-3.26c-1.423-1.416-2.5-3.155-2.775-3.626-.275-.471-.03-.725.207-.962.214-.213.473-.553.71-.83.235-.276.314-.471.472-.786.158-.314.079-.588-.04-.844-.118-.256-.944-2.274-1.298-3.125-.347-.831-.699-.718-.959-.731-.248-.013-.532-.016-.816-.016-.284 0-.749.106-1.14.53-.393.424-1.5 1.464-1.5 3.568 0 2.102 1.533 4.133 1.747 4.419.215.285 3.018 4.606 7.311 6.467 1.02.443 1.815.707 2.437.904 1.025.326 1.958.28 2.696.17.822-.123 2.533-1.035 2.89-2.035.356-1 .356-1.857.248-2.035-.108-.178-.396-.285-.84-.508z" />
+                  </svg>
+                  <span>Confirmar no WhatsApp (Comissão)</span>
+                </button>
+              </div>
+            )}
+
+            {/* FLOAT CHECKOUT POP-IN ON MOBILE SCENARIOS */}
+            {selectedCampaign && selectedNumbers.length > 0 && (
+              <div className="fixed bottom-16 left-0 right-0 z-45 px-4 py-3 bg-white/95 backdrop-blur-md border-t border-slate-200/60 shadow-[0_-8px_24px_rgba(0,0,0,0.12)] flex lg:hidden items-center justify-between animate-slideUp select-none">
+                <div className="space-y-0.5">
+                  <span className="text-[9px] text-indigo-650 font-black uppercase tracking-wider block">Reservar Bilhetes</span>
+                  <div className="flex items-baseline gap-1">
+                    <strong className="text-sm font-black text-slate-850">
+                      {selectedNumbers.length} {selectedNumbers.length === 1 ? "cota" : "cotas"}
+                    </strong>
+                    <span className="text-xs text-indigo-600 font-extrabold">
+                      • R$ {(() => {
+                        const calc = getDiscountedPrice(selectedNumbers.length, selectedCampaign.ticketPrice, selectedCampaign.progressiveDiscounts);
+                        return calc.totalPrice.toFixed(2);
+                      })()}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setSelectedNumbers([])}
+                    className="px-3 py-1.5 bg-slate-105 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition border border-slate-200/45 cursor-pointer active:scale-95"
+                  >
+                    Limpar
+                  </button>
+                  <button
+                    onClick={handleReserveTickets}
+                    disabled={reserving}
+                    className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition shadow-md shadow-indigo-500/10 cursor-pointer flex items-center justify-center gap-1 active:scale-95 disabled:opacity-50"
+                  >
+                    {reserving ? "Reservando..." : "Confirmar 🚀"}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* FIXED FLOATING FOOTER NAVIGATION TABS FOR HEALTHY MOBILE THUMB CONTROL */}
+            <div className="fixed bottom-0 left-0 right-0 z-45 bg-white/95 backdrop-blur-md border-t border-slate-200/75 shadow-[0_-4px_24px_rgba(0,0,0,0.06)] px-2 py-1.5 flex justify-around items-center lg:hidden select-none">
+              <button
+                onClick={() => {
+                  setActiveTab("rifas");
+                  setSuccessReserved(null);
+                }}
+                className={`flex flex-col items-center justify-center py-1 px-4 rounded-xl transition-all cursor-pointer ${
+                  activeTab === "rifas" ? "text-indigo-650 font-black scale-105" : "text-slate-450 hover:text-slate-755"
+                }`}
+              >
+                <TicketIcon className={`w-4.5 h-4.5 mb-1 ${activeTab === "rifas" ? "text-indigo-600 animate-pulse" : "text-slate-400"}`} />
+                <span className="text-[9.5px]">Rifas</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setActiveTab("compras");
+                  setSuccessReserved(null);
+                }}
+                className={`flex flex-col items-center justify-center py-1 px-4 rounded-xl transition-all cursor-pointer relative ${
+                  activeTab === "compras" ? "text-indigo-650 font-black scale-105" : "text-slate-450 hover:text-slate-755"
+                }`}
+              >
+                <ShoppingBag className={`w-4.5 h-4.5 mb-1 ${activeTab === "compras" ? "text-indigo-600" : "text-slate-400"}`} />
+                <span className="text-[9.5px]">Reservas</span>
+                {myTotalTicketsCount > 0 && (
+                  <span className="absolute top-1 right-2.5 bg-indigo-650 border border-white text-white font-extrabold text-[8.5px] min-w-[14px] h-[14px] rounded-full flex items-center justify-center px-0.5 shadow-sm">
+                    {myTotalTicketsCount}
+                  </span>
+                )}
+              </button>
+
+              <button
+                onClick={() => {
+                  setActiveTab("ranking");
+                  setSuccessReserved(null);
+                }}
+                className={`flex flex-col items-center justify-center py-1 px-4 rounded-xl transition-all cursor-pointer ${
+                  activeTab === "ranking" ? "text-indigo-650 font-black scale-105" : "text-slate-450 hover:text-slate-755"
+                }`}
+              >
+                <Trophy className={`w-4.5 h-4.5 mb-1 ${activeTab === "ranking" ? "text-amber-500" : "text-slate-400"}`} />
+                <span className="text-[9.5px]">Ranking</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* GLOBAL RULES / REGULAMENTO MODAL */}
+      {showRulesModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/45 backdrop-blur-xs select-none">
+          <div className="bg-white rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh] animate-fadeIn">
+            {/* Header */}
+            <div className="bg-slate-900 px-6 py-5 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <HelpCircle className="w-5 h-5 text-indigo-400" />
+                <div>
+                  <h3 className="font-extrabold text-base tracking-tight">Instruções e Regulamento</h3>
+                  <span className="text-[10px] text-slate-400 block -mt-0.5 font-bold uppercase tracking-wide">Rifas de Formatura Oficial</span>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowRulesModal(false)}
+                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 transition flex items-center justify-center text-white text-sm font-extrabold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Content body */}
+            <div className="p-6 md:p-8 overflow-y-auto flex-1 select-text space-y-4">
+              <div 
+                className="text-slate-705 text-sm leading-relaxed rich-text-content"
+                dangerouslySetInnerHTML={{ __html: settings.rulesText || "Nenhum regulamento cadastrado no momento." }}
+              />
+            </div>
+
+            {/* Footer buttons */}
+            <div className="bg-slate-50 border-t border-slate-150 p-4 flex justify-end">
+              <button
+                onClick={() => setShowRulesModal(false)}
+                className="bg-indigo-600 hover:bg-indigo-750 text-white font-bold text-xs px-6 py-2.5 rounded-xl transition cursor-pointer shadow-xs"
+              >
+                Entendi, Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* LGPD USER COMPLIANCE / PRIVACY RIGHTS CENTER MODAL */}
+      {showLgpdModal && (
+        <div className="fixed inset-0 z-[105] flex items-center justify-center p-4 bg-slate-950/45 backdrop-blur-xs select-none">
+          <div className="bg-white rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh] animate-fadeIn">
+            {/* Header */}
+            <div className="bg-emerald-900 px-6 py-5 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <ShieldCheck className="w-5 h-5 text-emerald-400 animate-pulse" />
+                <div>
+                  <h3 className="font-extrabold text-base tracking-tight text-white">Privacidade & Meus Dados (LGPD)</h3>
+                  <span className="text-[10px] text-emerald-300 block -mt-0.5 font-bold uppercase tracking-wide">Direitos do Titular (Brasil - Lei 13.709/18)</span>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowLgpdModal(false)}
+                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 transition flex items-center justify-center text-white text-sm font-extrabold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Content body */}
+            <div className="p-6 md:p-8 overflow-y-auto flex-1 select-text space-y-6">
+              <div className="bg-emerald-50 rounded-2xl p-4 border border-emerald-150 text-xs md:text-sm text-emerald-850 leading-relaxed">
+                <span className="font-bold text-emerald-900 block mb-1">🛡️ Seus Dados estão Protegidos de acordo com a LGPD</span>
+                Você possui total controle sobre as informações coletadas. Conforme a regulação, veja abaixo o diagnóstico completo de como tratamos e quais informações estão armazenadas.
+              </div>
+
+              {/* Data Diagnosis Grid */}
+              <div className="space-y-4">
+                <h4 className="font-bold text-slate-800 text-xs md:text-sm uppercase tracking-wide">1. Transparência: Dados Pessoais Armazenados</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                  <div className="bg-slate-50 border border-slate-150 p-3.5 rounded-2xl">
+                    <span className="text-[10px] font-bold text-slate-400 block uppercase">Nome Cadastrado</span>
+                    <span className="text-sm font-bold text-slate-800">{userProfile.name}</span>
+                  </div>
+                  <div className="bg-slate-50 border border-slate-150 p-3.5 rounded-2xl">
+                    <span className="text-[10px] font-bold text-slate-400 block uppercase">E-mail de Autenticação</span>
+                    <span className="text-sm font-semibold text-slate-705 font-mono">{userProfile.email}</span>
+                  </div>
+                  <div className="bg-slate-50 border border-slate-150 p-3.5 rounded-2xl">
+                    <span className="text-[10px] font-bold text-slate-400 block uppercase">CPF (Tratado p/ antifraude)</span>
+                    <span className="text-sm font-mono text-slate-805 font-bold">{userProfile.cpf}</span>
+                  </div>
+                  <div className="bg-slate-50 border border-slate-150 p-3.5 rounded-2xl">
+                    <span className="text-[10px] font-bold text-slate-400 block uppercase">WhatsApp / Celular</span>
+                    <span className="text-sm font-semibold text-slate-805 font-mono">{userProfile.phone}</span>
+                  </div>
+                  <div className="bg-slate-50 border border-slate-150 p-3.5 rounded-2xl md:col-span-2">
+                    <span className="text-[10px] font-bold text-slate-400 block uppercase">Cidade do Usuário</span>
+                    <span className="text-xs font-semibold text-slate-750">{userProfile.city}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Legal Base explanations */}
+              <div className="space-y-3.5">
+                <h4 className="font-bold text-slate-800 text-xs md:text-sm uppercase tracking-wide">2. Finalidade e Bases Legais aplicadas</h4>
+                <div className="text-xs text-slate-600 space-y-3">
+                  <p>
+                    <strong>Art. 7º, I da LGPD (Consentimento):</strong> Você consentiu explicitamente ao preencher este cadastro no momento do seu primeiro acesso à plataforma formal.
+                  </p>
+                  <p>
+                    <strong>Art. 11, II, "g" da LGPD (Prevenção à Fraude):</strong> Tratamos o seu CPF com a única finalidade técnica de resguardar a integridade dos sorteios, garantir que cada ganhador corresponda a uma identidade civil única, mitigar cadastros fantasmas e evitar fraudes beneficentes.
+                  </p>
+                  <p>
+                    <strong>Hospedagem & Segurança:</strong> Seus dados são salvos com segurança de ponta-a-ponta nos servidores em nuvem do Google Firebase operando em infraestrutura redundante e vigiado por regras de acesso à prova de vazamento.
+                  </p>
+                </div>
+              </div>
+
+              {/* Exercises / Rights buttons container */}
+              <div className="bg-slate-100 rounded-2xl p-5 border border-slate-200 flex flex-col gap-4">
+                <h4 className="font-black text-slate-805 text-xs uppercase tracking-wider">3. Exerça seus Direitos de Titular</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* Portabilidade */}
+                  <button
+                    type="button"
+                    onClick={handleExportMyData}
+                    className="flex items-center justify-center gap-2 px-4 py-3 bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs rounded-xl border border-slate-250 transition cursor-pointer shadow-xs active:scale-95"
+                  >
+                    <svg className="w-4 h-4 text-emerald-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <span>Baixar Relatório (Portabilidade)</span>
+                  </button>
+
+                  {/* Direito ao Esquecimento */}
+                  <button
+                    type="button"
+                    onClick={handleDeleteMyDataAndAccount}
+                    disabled={isDeletingAccount}
+                    className="flex items-center justify-center gap-2 px-4 py-3 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl border border-rose-200 transition cursor-pointer shadow-xs active:scale-95 disabled:opacity-50"
+                  >
+                    {isDeletingAccount ? (
+                      <div className="w-3.5 h-3.5 border-2 border-rose-750 border-t-transparent rounded-full animate-spin"></div>
+                    ) : (
+                      <svg className="w-4 h-4 text-rose-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    )}
+                    <span>Excluir Cadastro (Esquecimento)</span>
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-500 italic leading-snug">
+                  *A exclusão do cadastro cancelará na mesma hora todos os seus números de bilhetes que estejam atualmente pré-reservados.
+                </p>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="bg-slate-50 border-t border-slate-150 p-4 flex justify-end">
+              <button
+                onClick={() => setShowLgpdModal(false)}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs px-6 py-2.5 rounded-xl transition cursor-pointer shadow-xs"
+              >
+                Concluir Diagnóstico
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TICKET EMISSION AND VISUALIZATION DIALOG MODAL */}
+      {ticketModalConfig && (
+        <div className="fixed inset-0 z-[105] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs select-none">
+          {/* Custom style injection for print support */}
+          <style dangerouslySetInnerHTML={{ __html: `
+            @media print {
+              /* Hide everything in the page */
+              body * {
+                visibility: hidden !important;
+                background: none !important;
+              }
+              /* Show ONLY the printable ticket area */
+              #printable-tickets-area, #printable-tickets-area * {
+                visibility: visible !important;
+              }
+              #printable-tickets-area {
+                position: absolute !important;
+                left: 0 !important;
+                top: 0 !important;
+                width: 100% !important;
+                margin: 0 !important;
+                padding: 0 !important;
+              }
+              .print-ticket-card {
+                page-break-inside: avoid !important;
+                margin-bottom: 1.5rem !important;
+                border: 2px dashed #10b981 !important;
+                box-shadow: none !important;
+                background-color: #fdfdf4 !important;
+                color: #064e3b !important;
+              }
+            }
+          `}} />
+
+          <div className="bg-slate-900 rounded-3xl w-full max-w-xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh] text-white animate-fadeIn">
+            {/* Header */}
+            <div className="bg-slate-950 px-5 py-4 border-b border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <TicketIcon className="w-5 h-5 text-emerald-400 rotate-12" />
+                <div>
+                  <h3 className="font-extrabold text-sm tracking-tight text-white">Comprovante de Volante de Loteria</h3>
+                  <span className="text-[10px] text-emerald-400 block -mt-0.5 font-bold uppercase tracking-wider">
+                    {ticketModalConfig.tickets.length === 1 ? "1 Volante Emitido" : `${ticketModalConfig.tickets.length} Volantes Emitidos`}
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => setTicketModalConfig(null)}
+                className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 transition flex items-center justify-center text-slate-400 hover:text-white text-xs font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Scrollable list of vouchers */}
+            <div className="p-4 md:p-6 overflow-y-auto flex-1 space-y-6 select-text bg-slate-950">
+              <p className="text-[11px] text-slate-400 text-center -mt-1 leading-relaxed">
+                🎟️ Este é o seu volante único oficial. O pagamento foi homologado e a aposta confirmada na plataforma. Você pode imprimir ou salvar em arquivo.
+              </p>
+
+              {/* Printable area wrapper */}
+              <div id="printable-tickets-area">
+                {(() => {
+                  const purchasedNumbers = ticketModalConfig.tickets.map((t) => t.number);
+                  const combinedAuth = `${ticketModalConfig.campaign.id.slice(0, 6)}-LOTE-${purchasedNumbers.slice(0, 3).join("-")}-${userProfile.uid.slice(0, 5)}`.toUpperCase();
+
+                  return (
+                    <div className="print-ticket-card bg-[#fefdf0] rounded-2xl border-t-[12px] border-emerald-600 border-l border-r border-b border-emerald-250 p-5 md:p-6 overflow-hidden relative shadow-lg text-slate-900 font-sans">
+                      {/* Watermark Logo */}
+                      <div className="absolute right-6 bottom-16 text-emerald-650 opacity-5 select-none pointer-events-none text-8xl font-black font-mono">
+                        LOTERIA
+                      </div>
+
+                      {/* Header resembling Caixa Mega Sena card */}
+                      <div className="border-b-2 border-dashed border-emerald-300 pb-3 mb-3">
+                        <div className="flex justify-between items-start gap-4">
+                          <div>
+                            <span className="text-[9px] bg-emerald-600 text-white font-extrabold uppercase px-2 py-0.5 rounded-sm tracking-widest text-[8px]">
+                              MEGA SORTEIO BRASIL
+                            </span>
+                            <h4 className="font-extrabold text-base text-emerald-950 mt-1 leading-tight tracking-tight">
+                              {ticketModalConfig.campaign.title}
+                            </h4>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <span className="text-[8px] text-emerald-700 block uppercase font-bold tracking-wider">COTAS ADQUIRIDAS</span>
+                            <span className="font-mono text-xs font-bold text-slate-500 block">
+                              Total de {ticketModalConfig.tickets.length} cotas
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Visual list of all purchased quotas */}
+                      <div className="mb-4">
+                        <span className="text-[9px] text-emerald-800 font-bold block uppercase tracking-wider mb-1.5 text-center sm:text-left">
+                          🎟️ Suas Dezenas Oficiais Confirmadas
+                        </span>
+                        <div className="flex flex-wrap gap-1.5 justify-center sm:justify-start">
+                          {purchasedNumbers.map((num) => (
+                            <span
+                              key={num}
+                              className="font-mono text-[13px] font-black bg-black text-white border border-neutral-900 px-2.5 py-0.5 rounded-md shadow-md shrink-0 animate-pulse"
+                            >
+                              #{num}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Ticket metadata in columns (thermal printer receipts style) */}
+                      <div className="space-y-1.5 text-[10px] border-b border-dashed border-emerald-200 pb-3 mb-3">
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-emerald-900 font-mono">
+                          <div>
+                            <span className="text-[8px] text-emerald-700 block uppercase font-bold text-[7px]">COMPRADOR INTEGRAL</span>
+                            <span className="font-sans font-extrabold truncate block text-emerald-950 text-xs">{userProfile.name}</span>
+                          </div>
+                          <div>
+                            <span className="text-[8px] text-emerald-700 block uppercase font-bold text-[7px]">DOCUMENTO / CPF</span>
+                            <span className="block truncate text-xs font-bold">{userProfile.cpf || "Tratado"}</span>
+                          </div>
+                          <div>
+                            <span className="text-[8px] text-emerald-700 block uppercase font-bold text-[7px]">WHATSAPP / CONTATO</span>
+                            <span className="block text-xs">{userProfile.phone || "Informado"}</span>
+                          </div>
+                          <div>
+                            <span className="text-[8px] text-emerald-700 block uppercase font-bold text-[7px]">CHAVE DO LOTE</span>
+                            <span className="block text-xs text-slate-650 font-bold break-all select-all">{combinedAuth}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Bottom Footer block - Barcode layout and certification */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-slate-600">
+                        <div className="text-[8px] font-mono text-slate-500 space-y-0.5 text-center sm:text-left">
+                          <div>DATA RESERVADA: {ticketModalConfig.tickets[0]?.reservedAt ? new Date(ticketModalConfig.tickets[0].reservedAt).toLocaleString("pt-BR") : "N/A"}</div>
+                          <div>DATA HOMOLOGAÇÃO: {ticketModalConfig.tickets[0]?.confirmedAt ? new Date(ticketModalConfig.tickets[0].confirmedAt).toLocaleString("pt-BR") : new Date().toLocaleString("pt-BR")}</div>
+                        </div>
+
+                        {/* Barcode representation */}
+                        <div className="flex flex-col items-center shrink-0">
+                          <div className="font-mono text-xs leading-none font-bold text-slate-900 tracking-tighter opacity-80 mb-0.5">
+                            |||| ||| ||||| || |||| ||| |||||
+                          </div>
+                          <span className="text-[7px] text-emerald-700 font-mono tracking-widest font-extrabold uppercase">
+                            LOTE-CONSOLIDADO-PAGO
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+
+            {/* Footer with actions */}
+            <div className="bg-slate-950 border-t border-slate-800 p-4 md:p-5 flex flex-col sm:flex-row gap-3 justify-between items-center">
+              <span className="text-[10px] text-slate-500 text-center sm:text-left max-w-[55%] leading-relaxed">
+                🛡️ Transações confirmadas na blockchain interna com auditoria do Pix. Utilize o código validador em caso de premiação física.
+              </span>
+              <div className="flex gap-2 w-full sm:w-auto shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const purchasedNumbers = ticketModalConfig.tickets.map((t) => t.number);
+                    const itemsText = purchasedNumbers.map((num) => `#${num}`).join(", ");
+                    const keyList = ticketModalConfig.tickets.map((t) => `[Cota #${t.number}: ${ticketModalConfig.campaign.id.slice(0, 6).toUpperCase()}-${t.number}-${userProfile.uid.slice(0, 6).toUpperCase()}-APOSTADO]`).join("\n");
+                    const txtContent = `
+========================================
+       COMPROVANTE OFICIAL DE VOLANTE       
+       ESTILO VOLANTE DA MEGA-SENA
+========================================
+CAMPANHA: ${ticketModalConfig.campaign.title.toUpperCase()}
+ID DA CAMPANHA: ${ticketModalConfig.campaign.id}
+
+COTAS ADQUIRIDAS EM LOTE: ${itemsText}
+TOTAL DE COTAS: ${ticketModalConfig.tickets.length}
+STATUS DE PAGAMENTO: APORTADO / PAGO / HOMOLOGADO
+DATA CONFIRMAÇÃO: ${ticketModalConfig.tickets[0]?.confirmedAt ? new Date(ticketModalConfig.tickets[0].confirmedAt).toLocaleString("pt-BR") : new Date().toLocaleString("pt-BR")}
+
+----------------------------------------
+DADOS DO PARTICIPANTE:
+NOME: ${userProfile.name}
+E-MAIL: ${userProfile.email}
+CPF: ${userProfile.cpf || "Tratado"}
+----------------------------------------
+CHAVES CRIPTOGRAFICAS DE VALIDAÇÃO:
+${keyList}
+========================================
+Boa Sorte!
+Acompanhe os resultados no link de nossa plataforma.
+========================================
+`;
+                    const blob = new Blob([txtContent], { type: "text/plain;charset=utf-8" });
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement("a");
+                    link.href = url;
+                    link.download = `volante_consolidado_${ticketModalConfig.campaign.title.replace(/\s+/g, "_").toLowerCase()}.txt`;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(url);
+                  }}
+                  className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-xl border border-slate-705 font-bold text-xs transition cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Salvar Recibo</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs transition cursor-pointer shadow-sm shadow-emerald-600/10"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Imprimir Volante</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === "ranking" && (
+        <RankingView
+          campaigns={campaigns}
+          allReservations={allReservations}
+          loading={loadingAllReservations}
+        />
+      )}
+
+      {/* Floating Toast Notification system */}
+      <div id="toast-notifications-root" className="fixed top-5 right-5 z-[9999] flex flex-col gap-3 max-w-sm w-full pointer-events-none px-4 sm:px-0">
+        {toasts.map((toast) => {
+          let bgColor = "bg-slate-900 border-slate-800 text-slate-100";
+          let iconColor = "text-indigo-400";
+          let icon = <Sparkles className="w-4 h-4" />;
+
+          if (toast.type === "success") {
+            bgColor = "bg-emerald-950/95 border-emerald-800 text-emerald-100";
+            iconColor = "text-emerald-400";
+            icon = <Check className="w-4 h-4" />;
+          } else if (toast.type === "warning") {
+            bgColor = "bg-amber-950/95 border-amber-800 text-amber-100";
+            iconColor = "text-amber-400";
+            icon = <AlertCircle className="w-4 h-4" />;
+          } else if (toast.type === "error") {
+            bgColor = "bg-rose-950/95 border-rose-800 text-rose-100";
+            iconColor = "text-rose-400";
+            icon = <AlertCircle className="w-4 h-4" />;
+          } else if (toast.type === "info") {
+            bgColor = "bg-slate-900/95 border-slate-800 text-slate-100";
+            iconColor = "text-indigo-400";
+            icon = <Sparkles className="w-4 h-4" />;
+          }
+
+          return (
+            <div
+              key={toast.id}
+              className={`pointer-events-auto flex items-center justify-between gap-3 px-4 py-3 rounded-2xl border backdrop-blur-md shadow-xl transition-all duration-300 animate-slideIn ${bgColor}`}
+            >
+              <div className="flex items-center gap-2.5">
+                <div className={`p-1.5 rounded-xl bg-black/25 ${iconColor} flex items-center justify-center`}>
+                  {icon}
+                </div>
+                <span className="text-[12px] font-semibold leading-snug">{toast.message}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setToasts((prev) => prev.filter((t) => t.id !== toast.id))}
+                className="text-slate-400 hover:text-white text-[11px] p-1 cursor-pointer transition"
+              >
+                ✕
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// Custom icons to dodge unneeded package imports
+function GraduationCapIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={2}
+      stroke="currentColor"
+      className={props.className}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M4.26 10.147L12 6.5l7.74 3.647M12 6.5v11.5M4.26 10.147L12 13.5l7.74-3.353m-15.48 0L12 13.5v5.5m7.74-8.853V15.5"
+      />
+    </svg>
+  );
+}

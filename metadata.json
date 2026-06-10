@@ -1,0 +1,8 @@
+{
+  "name": "Rifas Online de Formatura",
+  "description": "Sistema de rifas simultâneas integrado com banco de dados Firebase para o financiamento de formatura, incluindo controle de pré-reservas manuais, cadastro de CPFs e painel do administrador com autenticação de dois fatores (2FA).",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
