@@ -24,6 +24,14 @@ service cloud.firestore {
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\\\-]+$');
     }
 
+    // Helper: Is the user blocked/suspended?
+    function isBlocked() {
+      return isSignedIn() &&
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             ('isBlocked' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isBlocked == true;
+    }
+
     // Default Lockout rule
     match /{document=**} {
       allow read, write: if false;
@@ -46,7 +54,7 @@ service cloud.firestore {
       allow list: if isAdmin();
       allow create: if isSignedIn() && userId == request.auth.uid && isValidUser(request.resource.data) && request.resource.data.role == 'client';
       allow update: if (
-        (isSignedIn() && userId == request.auth.uid && isValidUser(request.resource.data) && request.resource.data.role == 'client' && resource.data.role == 'client') ||
+        (isSignedIn() && userId == request.auth.uid && !isBlocked() && isValidUser(request.resource.data) && request.resource.data.role == 'client' && resource.data.role == 'client') ||
         (isAdmin() && isValidUser(request.resource.data))
       );
       allow delete: if isAdmin();
@@ -125,6 +133,7 @@ service cloud.firestore {
       
       // Client reserving a ticket
       allow create: if isSignedIn() && 
+                    !isBlocked() &&
                     isValidTicket(request.resource.data) && 
                     request.resource.data.buyerUid == request.auth.uid && 
                     request.resource.data.status == 'reserved' &&
@@ -135,6 +144,7 @@ service cloud.firestore {
         (isAdmin() && isValidTicket(request.resource.data)) ||
         (
           isSignedIn() && 
+          !isBlocked() &&
           isValidTicket(request.resource.data) && 
           resource.data.buyerUid == request.auth.uid &&
           (
@@ -146,7 +156,7 @@ service cloud.firestore {
         )
       );
 
-      allow delete: if isAdmin() || (isSignedIn() && resource.data.buyerUid == request.auth.uid && resource.data.status == 'reserved');
+      allow delete: if isAdmin() || (isSignedIn() && !isBlocked() && resource.data.buyerUid == request.auth.uid && resource.data.status == 'reserved');
     }
   }
 }

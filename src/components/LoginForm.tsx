@@ -7,7 +7,7 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword
 } from "firebase/auth";
-import { doc, getDoc, setDoc, collection, getDocs } from "firebase/firestore";
+import { doc, getDoc, setDoc, collection, getDocs, query, where } from "firebase/firestore";
 import { auth, db, handleFirestoreError, OperationType } from "../firebase";
 import { validateCPF, formatCPF, formatPhone, validatePhone } from "../utils/validation";
 import { 
@@ -301,6 +301,28 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
     setLoading(true);
 
     try {
+      // Check for duplicate CPF or Phone Number
+      const usersRef = collection(db, "users");
+      const cpfQuery = query(usersRef, where("cpf", "==", cleanCpf));
+      const phoneQuery = query(usersRef, where("phone", "==", cleanPhone));
+
+      const [cpfSnap, phoneSnap] = await Promise.all([
+        getDocs(cpfQuery),
+        getDocs(phoneQuery),
+      ]);
+
+      if (!cpfSnap.empty) {
+        setFormError("Este CPF já está cadastrado no sistema.");
+        setLoading(false);
+        return;
+      }
+
+      if (!phoneSnap.empty) {
+        setFormError("Este número de WhatsApp/Celular já está cadastrado no sistema.");
+        setLoading(false);
+        return;
+      }
+
       // 1. Create client user credential in Firebase Auth
       const result = await createUserWithEmailAndPassword(auth, email.trim(), password);
       const newUser = result.user;
@@ -379,6 +401,30 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
     setLoading(true);
 
     try {
+      // Check for duplicate CPF or Phone (excluding current user UID)
+      const usersRef = collection(db, "users");
+      const cpfQuery = query(usersRef, where("cpf", "==", cleanCpf));
+      const phoneQuery = query(usersRef, where("phone", "==", cleanPhone));
+
+      const [cpfSnap, phoneSnap] = await Promise.all([
+        getDocs(cpfQuery),
+        getDocs(phoneQuery),
+      ]);
+
+      const otherUserWithCpf = cpfSnap.docs.find(d => d.id !== currentUser.uid);
+      if (otherUserWithCpf) {
+        setFormError("Este CPF já está cadastrado no sistema por outro usuário.");
+        setLoading(false);
+        return;
+      }
+
+      const otherUserWithPhone = phoneSnap.docs.find(d => d.id !== currentUser.uid);
+      if (otherUserWithPhone) {
+        setFormError("Este número de WhatsApp/Celular já está cadastrado no sistema por outro usuário.");
+        setLoading(false);
+        return;
+      }
+
       const userData = {
         uid: currentUser.uid,
         name: name.trim(),

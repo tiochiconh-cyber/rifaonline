@@ -7,7 +7,7 @@ import LoginForm from "./components/LoginForm";
 import ClientDashboard from "./components/ClientDashboard";
 import Admin2FA from "./components/Admin2FA";
 import AdminPanel from "./components/AdminPanel";
-import { Loader2, GraduationCap, Sparkles, LogIn, Lock, BookOpen, Clock, ShieldCheck, Trophy, AlertCircle, DollarSign, Calendar } from "lucide-react";
+import { Loader2, GraduationCap, Sparkles, LogIn, Lock, BookOpen, Clock, ShieldCheck, Trophy, AlertCircle, DollarSign, Calendar, VolumeX, Music } from "lucide-react";
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -45,6 +45,7 @@ export default function App() {
     expirationHours: 24,
     supportContact: "51999999999",
     rulesText: "Os bilhetes reservados têm prazo de validade. Caso a transferência via PIX não seja comprovada, a cota retornará à disponibilidade geral automaticamente.",
+    bgMusicUrl: "",
   });
 
   // Load dynamically controlled settings
@@ -57,43 +58,85 @@ export default function App() {
     return () => unsub();
   }, []);
 
+  // Audio state
+  const [musicPlaying, setMusicPlaying] = useState(false);
+  const [audioError, setAudioError] = useState(false);
+  const audioSource = settings.bgMusicUrl || "";
+
+  useEffect(() => {
+    const audioEl = document.getElementById("app-bg-audio-player") as HTMLAudioElement;
+    if (!audioEl) return;
+
+    if (audioSource) {
+      audioEl.load();
+      audioEl.play()
+        .then(() => {
+          setMusicPlaying(true);
+          setAudioError(false);
+        })
+        .catch(() => {
+          setMusicPlaying(false);
+        });
+    } else {
+      audioEl.pause();
+      setMusicPlaying(false);
+    }
+  }, [audioSource]);
+
+  // Click or touch screen to trigger playback on first user interaction (bypasses browser strict autoplay policy)
+  useEffect(() => {
+    if (!audioSource) return;
+
+    const handleFirstInteraction = () => {
+      const audioEl = document.getElementById("app-bg-audio-player") as HTMLAudioElement;
+      if (audioEl && audioEl.paused && !musicPlaying) {
+        audioEl.play()
+          .then(() => {
+            setMusicPlaying(true);
+          })
+          .catch(() => {
+            // Silent block catch
+          });
+      }
+      window.removeEventListener("click", handleFirstInteraction);
+      window.removeEventListener("touchstart", handleFirstInteraction);
+    };
+
+    window.addEventListener("click", handleFirstInteraction);
+    window.addEventListener("touchstart", handleFirstInteraction);
+
+    return () => {
+      window.removeEventListener("click", handleFirstInteraction);
+      window.removeEventListener("touchstart", handleFirstInteraction);
+    };
+  }, [audioSource, musicPlaying]);
+
+  const toggleMusicPlayback = () => {
+    const audioEl = document.getElementById("app-bg-audio-player") as HTMLAudioElement;
+    if (!audioEl) return;
+
+    if (musicPlaying) {
+      audioEl.pause();
+      setMusicPlaying(false);
+    } else {
+      audioEl.play()
+        .then(() => {
+          setMusicPlaying(true);
+          setAudioError(false);
+        })
+        .catch((err) => {
+          console.error("Audio playback failed:", err);
+          setAudioError(true);
+        });
+    }
+  };
+
   // Authenticated state listener
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       setLoading(true);
       if (firebaseUser) {
         setUser(firebaseUser);
-
-        // Check if admin email matches exactly
-        if (firebaseUser.email === "tio.chico.nh@gmail.com") {
-          // Admin triggers 2FA check
-          setLoading(false);
-          return;
-        }
-
-        // Regular clients look up profile shape
-        try {
-          const userDocRef = doc(db, "users", firebaseUser.uid);
-          const docSnap = await getDoc(userDocRef);
-
-          if (docSnap.exists()) {
-            const profileData = docSnap.data() as UserProfile;
-            if (profileData.isBlocked) {
-              alert("Sua conta está suspensa ou bloqueada pelo administrador do sistema. Entre em contato para mais detalhes.");
-              await signOut(auth);
-              setProfile(null);
-              setUser(null);
-              setLoading(false);
-              return;
-            }
-            setProfile(profileData);
-          } else {
-            setProfile(null); // Triggers "Completar Cadastro" screen
-          }
-        } catch (err) {
-          console.error("Error fetching user profile:", err);
-          setProfile(null);
-        }
       } else {
         setUser(null);
         setProfile(null);
@@ -105,19 +148,31 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  const handleLoginSuccess = async (loggedInUser: User) => {
-    setUser(loggedInUser);
-    setLoading(true);
-
-    if (loggedInUser.email === "tio.chico.nh@gmail.com") {
-      setLoading(false);
+  // Real-time user profile listener (to detect blocks/suspensions instantly)
+  useEffect(() => {
+    if (!user) {
+      setProfile(null);
       return;
     }
 
-    try {
-      const userDocRef = doc(db, "users", loggedInUser.uid);
-      const docSnap = await getDoc(userDocRef);
+    // Static Admin Profile Definition
+    if (user.email === "tio.chico.nh@gmail.com") {
+      setProfile({
+        uid: user.uid,
+        name: "Administrador",
+        email: user.email,
+        cpf: "000.000.000-00",
+        phone: "(00) 00000-0000",
+        city: "Administração",
+        role: "admin",
+        isBlocked: false,
+      });
+      return;
+    }
 
+    // Sync other clients in real-time
+    const userDocRef = doc(db, "users", user.uid);
+    const unsubscribeProfile = onSnapshot(userDocRef, async (docSnap) => {
       if (docSnap.exists()) {
         const profileData = docSnap.data() as UserProfile;
         if (profileData.isBlocked) {
@@ -125,18 +180,21 @@ export default function App() {
           await signOut(auth);
           setProfile(null);
           setUser(null);
-          setLoading(false);
           return;
         }
         setProfile(profileData);
       } else {
-        setProfile(null);
+        setProfile(null); // Triggers "Completar Cadastro" screen
       }
-    } catch (err) {
-      console.error("Error reading profile following authentication:", err);
-    } finally {
-      setLoading(false);
-    }
+    }, (err) => {
+      console.error("Error listening to user profile:", err);
+    });
+
+    return () => unsubscribeProfile();
+  }, [user]);
+
+  const handleLoginSuccess = (loggedInUser: User) => {
+    setUser(loggedInUser);
   };
 
   const handleLogout = async () => {
@@ -539,6 +597,46 @@ export default function App() {
             </div>
 
           </div>
+        </div>
+      )}
+
+      {/* GLOBAL BACKGROUND MUSIC FLOATING PLAYER */}
+      {audioSource && (
+        <div className="fixed bottom-6 right-6 z-40 font-sans">
+          <button
+            type="button"
+            onClick={toggleMusicPlayback}
+            className={`flex items-center gap-2 p-3 rounded-full shadow-xl transition-all duration-300 transform active:scale-95 group border cursor-pointer ${
+              musicPlaying 
+                ? "bg-indigo-600 text-white border-indigo-500 scale-100 hover:scale-105" 
+                : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+            }`}
+            title={musicPlaying ? "Pausar música de fundo" : "Iniciar trilha sonora de fundo"}
+          >
+            <div className="relative">
+              {musicPlaying ? (
+                <div className="flex gap-0.5 items-end h-4 w-4 shrink-0 transition-all">
+                  <span className="w-0.5 bg-current animate-bounce rounded-full" style={{ animationDuration: '0.6s', height: '60%' }}></span>
+                  <span className="w-0.5 bg-current animate-bounce rounded-full" style={{ animationDuration: '0.8s', height: '100%', animationDelay: '0.15s' }}></span>
+                  <span className="w-0.5 bg-current animate-bounce rounded-full" style={{ animationDuration: '0.7s', height: '40%', animationDelay: '0.3s' }}></span>
+                  <span className="w-0.5 bg-current animate-bounce rounded-full" style={{ animationDuration: '0.5s', height: '80%', animationDelay: '0.05s' }}></span>
+                </div>
+              ) : (
+                <VolumeX className="w-4 h-4 text-slate-400" />
+              )}
+            </div>
+
+            <span className="max-w-0 overflow-hidden group-hover:max-w-xs transition-all duration-300 ease-in-out text-[11px] font-extrabold tracking-wider whitespace-nowrap uppercase pr-0 group-hover:pr-1">
+              Trilha Sonora
+            </span>
+          </button>
+          
+          <audio 
+            id="app-bg-audio-player" 
+            src={audioSource} 
+            loop 
+            preload="auto"
+          />
         </div>
       )}
     </div>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot } from "firebase/firestore";
+import { collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, query, where, getDocs } from "firebase/firestore";
 import { db, handleFirestoreError, OperationType } from "../firebase";
 import { Campaign, Ticket, UserProfile } from "../types";
 import { validateCPF, formatCPF, formatPhone, validatePhone } from "../utils/validation";
@@ -30,7 +30,8 @@ import {
   Coins,
   Edit,
   Database,
-  Download
+  Download,
+  Music
 } from "lucide-react";
 
 interface AdminPanelProps {
@@ -53,7 +54,8 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
     receiverName: "Comissão de Formatura Integrada",
     expirationHours: 24,
     supportContact: "51999999999",
-    rulesText: "Os bilhetes reservados têm prazo de validade. Caso a transferência via PIX não seja comprovada, a cota retornará à disponibilidade geral automaticamente."
+    rulesText: "Os bilhetes reservados têm prazo de validade. Caso a transferência via PIX não seja comprovada, a cota retornará à disponibilidade geral automaticamente.",
+    bgMusicUrl: ""
   });
 
   const [groupReservationsByBuyer, setGroupReservationsByBuyer] = useState(false);
@@ -490,6 +492,28 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
     }
 
     try {
+      // Check for duplicate CPF or Phone (excluding editingClient)
+      const usersRef = collection(db, "users");
+      const cpfQuery = query(usersRef, where("cpf", "==", cleanCpf));
+      const phoneQuery = query(usersRef, where("phone", "==", cleanPhone));
+
+      const [cpfSnap, phoneSnap] = await Promise.all([
+        getDocs(cpfQuery),
+        getDocs(phoneQuery),
+      ]);
+
+      const otherUserWithCpf = cpfSnap.docs.find(d => d.id !== editingClient.uid);
+      if (otherUserWithCpf) {
+        setEditClientError("Este CPF já está associado a outro participante.");
+        return;
+      }
+
+      const otherUserWithPhone = phoneSnap.docs.find(d => d.id !== editingClient.uid);
+      if (otherUserWithPhone) {
+        setEditClientError("Este WhatsApp/Celular já está associado a outro participante.");
+        return;
+      }
+
       const ref = doc(db, "users", editingClient.uid);
       await updateDoc(ref, {
         name: editClientName,
@@ -1742,6 +1766,76 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                   onChange={(val) => setSettings({ ...settings, rulesText: val })}
                   placeholder="Instruções e regulamento da rifa, prazos de validade das reservas, e regras de reembolso..."
                 />
+              </div>
+
+              {/* MÚSICA DE FUNDO */}
+              <div className="space-y-3.5 md:col-span-2 border-t border-slate-200/80 pt-5 mt-2">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg">
+                    <Music className="w-4 h-4 animate-pulse" />
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-slate-850 text-sm">Música de Fundo para o Aplicativo</h3>
+                    <p className="text-[10px] text-slate-400">Adicione uma atmosfera sonora de fundo ao sistema para criar um clima festivo para os compradores.</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 bg-white border border-slate-200/60 p-4 rounded-xl">
+                  {/* Link Direto */}
+                  <div className="space-y-1.5">
+                    <label className="block font-bold text-slate-700">Link Direto do Áudio (URL externa)</label>
+                    <input
+                      type="url"
+                      value={settings.bgMusicUrl || ""}
+                      onChange={(e) => {
+                        setSettings({
+                          ...settings,
+                          bgMusicUrl: e.target.value,
+                        });
+                      }}
+                      className="w-full bg-slate-50 p-2.5 border border-slate-300 rounded-lg text-xs"
+                      placeholder="Ex: https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"
+                    />
+                    <span className="text-[10px] text-slate-400 block">Pode ser qualquer link direto público de hospedagem ou CDN terminado em .mp3, .ogg, .wav, .aac ou similar, sem restrições de tamanho de arquivo.</span>
+                  </div>
+
+                  {/* Visualizer & Tester */}
+                  <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 bg-slate-50/50 p-3 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></div>
+                      <span className="text-[11px] text-slate-600 font-semibold">
+                        {settings.bgMusicUrl ? "🔗 Áudio Carregado via URL externa" : "🔇 Nenhuma trilha sonora ativa"}
+                      </span>
+                    </div>
+
+                    {settings.bgMusicUrl && (
+                      <div className="flex items-center gap-2">
+                        {/* Audio Preview Element */}
+                        <audio 
+                          id="admin-bg-audio-preview" 
+                          src={settings.bgMusicUrl || undefined} 
+                          controls 
+                          className="h-7 max-w-xs scale-90 origin-right"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSettings({
+                              ...settings,
+                              bgMusicUrl: "",
+                            });
+                            const previewEl = document.getElementById("admin-bg-audio-preview") as HTMLAudioElement;
+                            if (previewEl) previewEl.pause();
+                          }}
+                          className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 font-bold rounded-lg transition-all text-[11px] cursor-pointer flex items-center gap-1.5"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Remover</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
 
 
