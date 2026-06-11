@@ -6,6 +6,7 @@ import { validateCPF, formatCPF, formatPhone, validatePhone, getCampaignDrawProj
 import RichTextEditor from "./RichTextEditor";
 import { getDiscountedPrice } from "./ClientDashboard";
 import DashboardOverview from "./DashboardOverview";
+import PricingDashboard from "./PricingDashboard";
 import {
   Plus,
   Trash2,
@@ -30,7 +31,9 @@ import {
   Coins,
   Edit,
   Database,
-  Download
+  Download,
+  Calculator,
+  Percent
 } from "lucide-react";
 
 interface AdminPanelProps {
@@ -39,7 +42,7 @@ interface AdminPanelProps {
 
 export default function AdminPanel({ onLogout }: AdminPanelProps) {
   // Navigation tabs: metris, reservations, config, campaigns, winners, clients
-  const [activeTab, setActiveTab] = useState<"metrics" | "reservations" | "config" | "campaigns" | "winners" | "clients" | "backup">("metrics");
+  const [activeTab, setActiveTab] = useState<"metrics" | "reservations" | "config" | "campaigns" | "winners" | "clients" | "backup" | "pricing">("metrics");
 
   // Databases States
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -107,6 +110,13 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
   const [isClearingRanking, setIsClearingRanking] = useState(false);
   const [clearRankingError, setClearRankingError] = useState<string | null>(null);
   const [clearRankingSuccess, setClearRankingSuccess] = useState<string | null>(null);
+
+  // States for Pricing Calculator / Dashboard
+  const [calcPrizeCost, setCalcPrizeCost] = useState<number>(1500);
+  const [calcExtraCosts, setCalcExtraCosts] = useState<number>(200);
+  const [calcTicketPrice, setCalcTicketPrice] = useState<number>(10);
+  const [calcTotalTickets, setCalcTotalTickets] = useState<number>(500);
+  const [calcSelectedCampaignId, setCalcSelectedCampaignId] = useState<string>("manual");
 
   // Client Management States
   const [editingClient, setEditingClient] = useState<UserProfile | null>(null);
@@ -1608,7 +1618,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
 
       {/* 6 Tab Buttons Navigation Panel */}
       <div className="overflow-x-auto pb-1.5 scrollbar-thin">
-        <div className="flex bg-slate-100 rounded-2xl p-1.5 gap-1.5 min-w-[700px] md:min-w-0">
+        <div className="flex bg-slate-100 rounded-2xl p-1.5 gap-1.5 min-w-[850px] md:min-w-0">
           <button
             onClick={() => setActiveTab("metrics")}
             className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl font-bold text-[11px] tracking-wide uppercase transition cursor-pointer ${
@@ -1664,6 +1674,15 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
             Clientes ({clients.length})
           </button>
           <button
+            onClick={() => setActiveTab("pricing")}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl font-bold text-[11px] tracking-wide uppercase transition cursor-pointer ${
+              activeTab === "pricing" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"
+            }`}
+          >
+            <Calculator className="w-4 h-4 text-emerald-600 font-bold" />
+            Precificação
+          </button>
+          <button
             onClick={() => setActiveTab("backup")}
             className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl font-bold text-[11px] tracking-wide uppercase transition cursor-pointer ${
               activeTab === "backup" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"
@@ -1683,6 +1702,10 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
             allReservations={allReservations}
             clientsCount={clients.length}
           />
+        )}
+
+        {activeTab === "pricing" && (
+          <PricingDashboard campaigns={campaigns} />
         )}
 
         {activeTab === "reservations" && (
@@ -4094,6 +4117,451 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === "pricing" && (
+          /* SECTION 8: PRICING AND FINANCIAL SIMULATION DASHBOARD */
+          <div className="space-y-8 animate-fadeIn">
+            {/* Header info */}
+            <div>
+              <h2 className="font-extrabold text-slate-800 text-lg flex items-center gap-2">
+                <Calculator className="w-5 h-5 text-emerald-600 font-bold" />
+                Painel e Dashboard de Precificação Financeira
+              </h2>
+              <p className="text-xs text-slate-400">
+                Calcule a margem de lucro por ação, cotas necessárias para pagar o custo do prêmio (Break-even), simule novos sorteios e compare com suas campanhas ativas reais.
+              </p>
+            </div>
+
+            {/* Quick Presets / Cenários Rápidos */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {[
+                { name: "Rifa Rápida (100 cotas)", tickets: 100, price: 10, prize: 350, extra: 50, desc: "Ação rápida e fechamento dinâmico" },
+                { name: "Rifa Clássica (500 cotas)", tickets: 500, price: 10, prize: 1500, extra: 200, desc: "Modelo ideal para eletrônicos / celular" },
+                { name: "Sorteio de Elite (1000 cotas)", tickets: 1000, price: 15, prize: 4500, extra: 500, desc: "Alta margem de lucro com prêmio robusto" },
+                { name: "Ação em Lote (10000 cotas)", tickets: 10000, price: 5, prize: 15000, extra: 1500, desc: "Grande escala com venda de centenas" }
+              ].map((preset, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => {
+                    setCalcSelectedCampaignId("manual");
+                    setCalcTotalTickets(preset.tickets);
+                    setCalcTicketPrice(preset.price);
+                    setCalcPrizeCost(preset.prize);
+                    setCalcExtraCosts(preset.extra);
+                  }}
+                  className="bg-white hover:bg-emerald-50/30 border border-slate-200 hover:border-emerald-250 p-4 rounded-2xl text-left transition shadow-xs hover:shadow-md cursor-pointer group flex flex-col justify-between"
+                >
+                  <div>
+                    <h4 className="text-xs font-black text-slate-850 group-hover:text-emerald-700 tracking-wide font-sans">{preset.name}</h4>
+                    <p className="text-[10px] text-slate-400 leading-snug mt-1">{preset.desc}</p>
+                  </div>
+                  <div className="flex gap-2.5 items-center mt-3 pt-2.5 border-t border-slate-100/70 text-[9.5px] font-mono text-slate-500">
+                    <span>Cotas: <strong className="text-slate-700">{preset.tickets}</strong></span>
+                    <span>Valor: <strong className="text-emerald-600">R$ {preset.price}</strong></span>
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            {/* Input and Configuration section */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              
+              {/* Box 1: Configuration Form (Inputs) */}
+              <div className="lg:col-span-5 bg-white border border-slate-200 rounded-2xl p-5 md:p-6 space-y-5 shadow-xs">
+                <div className="border-b border-slate-150 pb-3 flex justify-between items-center">
+                  <h3 className="font-bold text-slate-800 text-sm">Parâmetros de Simulação</h3>
+                  <span className="bg-emerald-100 text-emerald-800 font-extrabold text-[8.5px] uppercase tracking-wider px-2 py-0.5 rounded-full">
+                    Ajuste Fino
+                  </span>
+                </div>
+
+                <div className="space-y-4 text-xs md:text-sm">
+                  {/* Select integration */}
+                  <div>
+                    <label className="block text-[10px] uppercase font-extrabold tracking-wider text-slate-500 mb-1.5">
+                      Vincular / Copiar de Campanha Ativa:
+                    </label>
+                    <select
+                      value={calcSelectedCampaignId}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setCalcSelectedCampaignId(val);
+                        if (val !== "manual") {
+                          const matched = campaigns.find(c => c.id === val);
+                          if (matched) {
+                            setCalcTicketPrice(matched.ticketPrice);
+                            setCalcTotalTickets(matched.totalTickets);
+                          }
+                        }
+                      }}
+                      className="w-full text-xs bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-emerald-500 focus:bg-white text-slate-700 rounded-xl px-3.5 py-2.5 outline-none transition font-semibold cursor-pointer"
+                    >
+                      <option value="manual">⚙️ Simulador Manual / Cenário Livre</option>
+                      {campaigns.map((camp) => (
+                        <option key={camp.id} value={camp.id}>
+                          📊 {camp.title} ({camp.totalTickets} cotas @ R$ {camp.ticketPrice.toFixed(2)})
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-[9px] text-slate-400 mt-1 font-sans">
+                      Ao selecionar uma campanha ativa, as cotas e o preço de venda unitário serão atualizados com os dados reais do Firestore.
+                    </p>
+                  </div>
+
+                  <hr className="border-slate-100" />
+
+                  {/* Prize Cost Input */}
+                  <div>
+                    <label className="text-[10px] uppercase font-extrabold tracking-wider text-slate-500 block mb-1">
+                      Custo Real do Prêmio (R$):
+                    </label>
+                    <div className="relative rounded-xl shadow-xs">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <span className="text-slate-400 font-bold text-xs">R$</span>
+                      </div>
+                      <input
+                        type="number"
+                        min="0"
+                        step="50"
+                        value={calcPrizeCost}
+                        onChange={(e) => setCalcPrizeCost(Math.max(0, Number(e.target.value)))}
+                        className="w-full pl-8 pr-3.5 py-2.5 bg-slate-50 focus:bg-white border border-slate-200 focus:border-emerald-500 rounded-xl outline-none font-bold text-xs text-slate-805 transition"
+                        placeholder="Ex: 1500"
+                      />
+                    </div>
+                    <span className="text-[9px] text-slate-400 leading-tight block mt-1 font-sans">
+                      O valor líquido desembolsado para obter o prêmio (ex: custo do eletrônico, pix, celular ou prêmio seco).
+                    </span>
+                  </div>
+
+                  {/* Extra/Operational Costs Input */}
+                  <div>
+                    <label className="text-[10px] uppercase font-extrabold tracking-wider text-slate-500 block mb-1">
+                      Outros Custos e Gastos Operacionais (R$):
+                    </label>
+                    <div className="relative rounded-xl shadow-xs">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <span className="text-slate-400 font-bold text-xs">R$</span>
+                      </div>
+                      <input
+                        type="number"
+                        min="0"
+                        step="10"
+                        value={calcExtraCosts}
+                        onChange={(e) => setCalcExtraCosts(Math.max(0, Number(e.target.value)))}
+                        className="w-full pl-8 pr-3.5 py-2.5 bg-slate-50 focus:bg-white border border-slate-200 focus:border-emerald-500 rounded-xl outline-none font-bold text-xs text-slate-805 transition"
+                        placeholder="Ex: 200"
+                      />
+                    </div>
+                    <span className="text-[9px] text-slate-400 leading-tight block mt-1 font-sans">
+                      Marketing pago, suporte do gateway de pagamentos, custos operacionais da plataforma ou despesas diversas do sorteio.
+                    </span>
+                  </div>
+
+                  {/* Total quota count (if manual) */}
+                  <div>
+                    <label className="text-[10px] uppercase font-extrabold tracking-wider text-slate-500 block mb-1">
+                      Quantidade Total de Cotas:
+                    </label>
+                    <input
+                      type="number"
+                      min="10"
+                      step="100"
+                      disabled={calcSelectedCampaignId !== "manual"}
+                      value={calcTotalTickets}
+                      onChange={(e) => setCalcTotalTickets(Math.max(1, Number(e.target.value)))}
+                      className={`w-full px-3.5 py-2.5 border rounded-xl outline-none font-bold text-xs transition ${
+                        calcSelectedCampaignId !== "manual"
+                          ? "bg-slate-105 border-slate-200 text-slate-450 cursor-not-allowed"
+                          : "bg-slate-50 border-slate-200 focus:border-emerald-500 focus:bg-white text-slate-805"
+                      }`}
+                      placeholder="Ex: 1000"
+                    />
+                    <span className="text-[9px] text-slate-400 leading-tight block mt-1 font-sans">
+                      {calcSelectedCampaignId !== "manual"
+                        ? "Bloqueado pois está importando a quantidade de cotas oficial da rifa ativa vinculada."
+                        : "Defina o tamanho da rifa (Ex: 100 para rifas de 2 algarismos, 1000 para rifas de 3 algarismos)."
+                      }
+                    </span>
+                  </div>
+
+                  {/* Quota ticket price */}
+                  <div>
+                    <label className="text-[10px] uppercase font-extrabold tracking-wider text-slate-500 block mb-1">
+                      Preço Unitário da Cota (R$):
+                    </label>
+                    <div className="relative rounded-xl shadow-xs">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <span className="text-slate-400 font-bold text-xs">R$</span>
+                      </div>
+                      <input
+                        type="number"
+                        min="0.1"
+                        step="0.5"
+                        disabled={calcSelectedCampaignId !== "manual"}
+                        value={calcTicketPrice}
+                        onChange={(e) => setCalcTicketPrice(Math.max(0.01, Number(e.target.value)))}
+                        className={`w-full pl-8 pr-3.5 py-2.5 border rounded-xl outline-none font-bold text-xs transition ${
+                          calcSelectedCampaignId !== "manual"
+                            ? "bg-slate-105 border-slate-200 text-slate-450 cursor-not-allowed"
+                            : "bg-slate-50 border-slate-200 focus:border-emerald-500 focus:bg-white text-slate-805"
+                        }`}
+                        placeholder="Ex: 10.00"
+                      />
+                    </div>
+                    <span className="text-[9px] text-slate-400 leading-tight block mt-1 font-sans">
+                      {calcSelectedCampaignId !== "manual"
+                        ? "Preço fixado pela campanha ativa vinculada."
+                        : "Defina o valor de venda unitário por cota no simulador."
+                      }
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Box 2: Analysis Results & Projections */}
+              <div className="lg:col-span-7 space-y-6">
+                
+                {/* Bento Grid: Financial KPIs */}
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  {/* KPI 1: Gross revenue */}
+                  <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs flex flex-col justify-between">
+                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">Receita Bruta Potencial</span>
+                    <div className="mt-2">
+                      <span className="text-lg font-extrabold text-slate-800">
+                        R$ {(calcTotalTickets * calcTicketPrice).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                      <p className="text-[9px] text-slate-404 mt-0.5">Se vender 100% das cotas</p>
+                    </div>
+                  </div>
+
+                  {/* KPI 2: Total Cost */}
+                  <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs flex flex-col justify-between">
+                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">Investimento Geral</span>
+                    <div className="mt-2">
+                      <span className="text-lg font-extrabold text-slate-800">
+                        R$ {(calcPrizeCost + calcExtraCosts).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                      <p className="text-[9px] text-slate-404 mt-0.5">Prêmio + Operações</p>
+                    </div>
+                  </div>
+
+                  {/* KPI 3: Breakeven tickets */}
+                  <div className="bg-emerald-600 rounded-2xl p-4 shadow-sm text-white flex flex-col justify-between col-span-2 md:col-span-1">
+                    <span className="text-[9px] font-black uppercase tracking-widest text-emerald-100">Break-even (Equilíbrio)</span>
+                    <div className="mt-2">
+                      <span className="text-lg font-extrabold">
+                        {Math.ceil((calcPrizeCost + calcExtraCosts) / calcTicketPrice)} cotas
+                      </span>
+                      <p className="text-[9.5px] text-emerald-100 font-medium mt-0.5">
+                        Equivale a {((Math.ceil((calcPrizeCost + calcExtraCosts) / calcTicketPrice) / calcTotalTickets) * 100).toFixed(1)}% de vendas
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* KPI 4: Max Net Profit */}
+                  <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs flex flex-col justify-between">
+                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">Lucro Líquido Alvo</span>
+                    <div className="mt-2">
+                      <span className={`text-lg font-extrabold ${
+                        (calcTotalTickets * calcTicketPrice) - (calcPrizeCost + calcExtraCosts) >= 0 ? "text-emerald-700" : "text-rose-600"
+                      }`}>
+                        R$ {((calcTotalTickets * calcTicketPrice) - (calcPrizeCost + calcExtraCosts)).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                      <p className="text-[9px] text-slate-404 mt-0.5">Margem total líquida</p>
+                    </div>
+                  </div>
+
+                  {/* KPI 5: Return Margin */}
+                  <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs flex flex-col justify-between">
+                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">Margem Comercial</span>
+                    <div className="mt-2">
+                      <span className="text-lg font-extrabold text-slate-805">
+                        {(() => {
+                          const gross = calcTotalTickets * calcTicketPrice;
+                          const net = gross - (calcPrizeCost + calcExtraCosts);
+                          if (gross === 0) return "0.0%";
+                          return `${((net / gross) * 100).toFixed(1)}%`;
+                        })()}
+                      </span>
+                      <p className="text-[9px] text-slate-404 mt-0.5">Retorno por Real investido</p>
+                    </div>
+                  </div>
+
+                  {/* KPI 6: Profit per ticket sold */}
+                  <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs flex flex-col justify-between">
+                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">Lucro Médio por Cotas</span>
+                    <div className="mt-2">
+                      <span className="text-lg font-extrabold text-indigo-650">
+                        R$ {(() => {
+                          const gross = calcTotalTickets * calcTicketPrice;
+                          const net = gross - (calcPrizeCost + calcExtraCosts);
+                          return (net / calcTotalTickets).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        })()}
+                      </span>
+                      <p className="text-[9px] text-slate-404 mt-0.5">Descontando custos médios</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Real campaign data integration card if campaign is selected */}
+                {calcSelectedCampaignId !== "manual" && (() => {
+                  const selectedCampaignObj = campaigns.find(c => c.id === calcSelectedCampaignId);
+                  if (!selectedCampaignObj) return null;
+
+                  const campaignTicketsList = allReservations[calcSelectedCampaignId] || [];
+                  const confirmedTickets = campaignTicketsList.filter(t => t.status === "confirmed");
+                  const reservedTickets = campaignTicketsList.filter(t => t.status === "reserved");
+
+                  // Real income calculated
+                  const realConfirmedCount = confirmedTickets.length;
+                  const realReservedCount = reservedTickets.length;
+                  const realValueArrecadado = realConfirmedCount * calcTicketPrice;
+                  
+                  // Total costs
+                  const totalSimulationCost = calcPrizeCost + calcExtraCosts;
+                  const breakevenTicketsCount = Math.ceil(totalSimulationCost / calcTicketPrice);
+
+                  const progressToBreakeven = Math.min(100, Math.ceil((realConfirmedCount / breakevenTicketsCount) * 100));
+                  const isBreakEvenReached = realValueArrecadado >= totalSimulationCost;
+
+                  return (
+                    <div className="bg-slate-900 rounded-2xl p-5 md:p-6 text-white space-y-4 shadow-md animate-fadeIn">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <span className="bg-indigo-505 text-white font-extrabold text-[8.5px] uppercase tracking-wider px-2 py-0.5 rounded-full inline-block mb-1.5">
+                            Status Real da Ação do Firestore
+                          </span>
+                          <h4 className="font-bold text-sm text-slate-100">{selectedCampaignObj.title}</h4>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-[10px] uppercase font-medium text-slate-400 block">Vendido Real</span>
+                          <span className="font-mono font-bold text-xs block mt-0.5">{realConfirmedCount} cota(s) pagas</span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5 pt-1.5">
+                        <div className="bg-white/5 border border-white/10 rounded-xl p-3">
+                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wide block">Faturamento Atual</span>
+                          <span className="font-mono text-sm font-extrabold text-emerald-400 block mt-1">R$ {realValueArrecadado.toFixed(2)}</span>
+                          <span className="text-[8px] text-slate-500 block mt-0.5 font-sans">Reservado pendente: R$ {(realReservedCount * calcTicketPrice).toFixed(2)}</span>
+                        </div>
+                        
+                        <div className="bg-white/5 border border-white/10 rounded-xl p-3">
+                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wide block">Taxa de Break-even</span>
+                          <span className="font-sans text-sm font-extrabold text-white block mt-1">{progressToBreakeven}% do Custo</span>
+                          <span className="text-[8px] text-slate-500 block mt-0.5 font-sans">Alvo: {breakevenTicketsCount} cotas</span>
+                        </div>
+
+                        <div className="bg-white/5 border border-white/10 rounded-xl p-3 col-span-2 sm:col-span-1">
+                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wide block">Margem Líquida Atual</span>
+                          <span className={`text-sm font-extrabold block mt-1 ${
+                            isBreakEvenReached ? "text-emerald-400" : "text-amber-400"
+                          }`}>
+                            R$ {(realValueArrecadado - totalSimulationCost).toFixed(2)}
+                          </span>
+                          <span className="text-[8px] text-slate-500 block mt-0.5 font-sans">Prejuízo ou Lucro real</span>
+                        </div>
+                      </div>
+
+                      <div className="pt-2 border-t border-white/10 flex items-center gap-2 text-xs">
+                        {isBreakEvenReached ? (
+                          <div className="text-emerald-400 flex items-center gap-1.5 font-sans">
+                            <span className="flex h-2 w-2 relative">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                            </span>
+                            <strong>Excelente!</strong> Esta campanha já ultrapassou o ponto de equilíbrio financeiro. Cada venda de cota agora é 100% lucro líquido! Lucro líquido real atual: R$ {(realValueArrecadado - totalSimulationCost).toFixed(2)}.
+                          </div>
+                        ) : (
+                          <div className="text-amber-400 flex items-center gap-1.5 font-sans">
+                            <span className="flex h-2 w-2 relative">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                            </span>
+                            <span>Ainda faltam <strong className="text-white">{Math.max(0, breakevenTicketsCount - realConfirmedCount)} cotas pagas</strong> (aprox. R$ {Math.max(0, totalSimulationCost - realValueArrecadado).toFixed(2)}) para cobrir os custos do prêmio e operacional.</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* table list with expectations details */}
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+                  <div className="p-4 bg-slate-50 border-b border-slate-150 flex items-center justify-between">
+                    <span className="text-[10px] uppercase font-extrabold text-slate-505 tracking-wider">Cenários de Faturamento Incremental</span>
+                    <span className="text-[10px] text-slate-404 font-mono">Meta Nominal: {calcTotalTickets} cotas</span>
+                  </div>
+
+                  <div className="divide-y divide-slate-100 text-xs">
+                    {[25, 50, 75, 100].map((percent) => {
+                      const soldCount = Math.ceil((calcTotalTickets * percent) / 100);
+                      const grossRevenue = soldCount * calcTicketPrice;
+                      const totalCosts = calcPrizeCost + calcExtraCosts;
+                      const netProfit = grossRevenue - totalCosts;
+                      const isProfit = netProfit >= 0;
+
+                      return (
+                        <div key={percent} className="p-4 flex flex-col sm:flex-row items-center justify-between gap-4 font-sans hover:bg-slate-50/50 transition">
+                          <div className="flex items-center gap-2.5 w-full sm:w-auto">
+                            <span className={`w-10 h-10 rounded-xl flex items-center justify-center font-black ${
+                              percent === 100 ? "bg-emerald-100 text-emerald-800" :
+                              percent === 75 ? "bg-indigo-100 text-indigo-805" :
+                              percent === 50 ? "bg-amber-100 text-amber-850" :
+                              "bg-slate-100 text-slate-600"
+                            }`}>
+                              {percent}%
+                            </span>
+                            <div>
+                              <p className="font-bold text-slate-800">{soldCount} cotas vendidas</p>
+                              <span className="text-[10px] text-slate-404 block">Faturamento bruto: R$ {grossRevenue.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between sm:justify-end gap-6 w-full sm:w-auto">
+                            <div className="text-left sm:text-right">
+                              <span className="text-[9px] uppercase font-bold text-slate-400 block">Situação Financeira</span>
+                              <span className={`font-mono font-bold ${isProfit ? "text-emerald-700" : "text-rose-600"}`}>
+                                R$ {netProfit.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                              </span>
+                            </div>
+
+                            <span className={`px-2.5 py-1 rounded-full text-[9px] font-extrabold uppercase tracking-wide shrink-0 ${
+                              isProfit
+                                ? "bg-emerald-50 text-emerald-850 border border-emerald-150"
+                                : "bg-rose-50/70 text-rose-800 border border-rose-150"
+                            }`}>
+                              {isProfit ? "✅ Lucro Líquido" : "⚠️ Prejuízo"}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Additional mathematical guidelines card */}
+                <div className="bg-emerald-500/5 border border-emerald-150 rounded-2xl p-4 flex gap-3 text-emerald-850 text-xs text-balance">
+                  <div className="p-2 bg-emerald-50 rounded-xl text-emerald-600 self-start shrink-0">
+                    <Info className="w-4 h-4 font-bold" />
+                  </div>
+                  <div>
+                    <h5 className="font-bold text-xs text-emerald-900 mb-1">Dicas financeiras do Chiquinho para sua Rifa</h5>
+                    <ul className="list-disc pl-4 space-y-1 text-[11px] text-emerald-850 leading-relaxed font-sans">
+                      <li><strong>Análise de elasticidade:</strong> Se a margem estiver muito baixa, experimente abaixar ligeiramente o número total de cotas ou aumentar o preço unitário em R$ 2,00.</li>
+                      <li><strong>Volume vs Valor:</strong> Rifas de 10.000 cotas têm excelente aceitação quando o ticket unitário custa de R$ 0,50 a R$ 2,00. Rifas de 100 a 1.000 cotas suportam tickets mais altos de R$ 10,00 a R$ 50,00.</li>
+                      <li><strong>Incentive compras em bando:</strong> Lembre-se de configurar os Descontos Progressivos (Ex: Leve 5 por R$ 40 em vez de R$ 50) para acelerar a captação e atingir o break-even duas vezes mais rápido!</li>
+                    </ul>
+                  </div>
+                </div>
+
+              </div>
+
             </div>
           </div>
         )}
