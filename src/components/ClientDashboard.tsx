@@ -340,6 +340,7 @@ export default function ClientDashboard({ userProfile, onLogout }: ClientDashboa
     supportContact: "51999999999",
     rulesText: "Os bilhetes reservados têm prazo de validade. Caso a transferência via PIX não seja comprovada, a cota retornará à disponibilidade geral automaticamente.",
     backgroundAudioUrl: "",
+    autoWhatsAppRedirect: true,
   });
 
   useEffect(() => {
@@ -483,7 +484,8 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
         });
       });
 
-      setSuccessReserved([...selectedNumbers]);
+      const reservedCopy = [...selectedNumbers];
+      setSuccessReserved(reservedCopy);
       setSelectedNumbers([]);
       addToast(`Reserva realizada com sucesso! (${reservedCount} cota${reservedCount > 1 ? "s" : ""} reservada${reservedCount > 1 ? "s" : ""})`, "success");
       
@@ -491,6 +493,24 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
       setTimeout(() => {
         addToast("Atenção: Seu pagamento está com status pendente de homologação via PIX.", "warning");
       }, 700);
+
+      // Auto-redirect to WhatsApp if enabled
+      if (settings.autoWhatsAppRedirect !== false) {
+        const tempTickets = reservedCopy.map(num => ({
+          id: num,
+          number: num,
+          status: "reserved" as const,
+          buyerUid: userProfile.uid,
+          buyerName: userProfile.name,
+          buyerPhone: userProfile.phone || "",
+          buyerCpf: userProfile.cpf,
+          buyerEmail: userProfile.email,
+          reservedAt: new Date().toISOString(),
+        }));
+        setTimeout(() => {
+          handleWhatsAppRedirect(tempTickets, selectedCampaign);
+        }, 1200);
+      }
     } catch (err: any) {
       console.error("Failed to reserve tickets:", err);
       const errMsg = err?.message || String(err);
@@ -1318,6 +1338,15 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                                   <p className="text-xs text-slate-650 leading-normal pt-1">
                                     Sua reserva temporária de <strong className="text-slate-900">{successReserved.length} cota(s)</strong> está ativa. Faça o PIX do valor total destacado abaixo para oficializar.
                                   </p>
+                                  {settings.autoWhatsAppRedirect !== false && (
+                                    <div className="flex items-center gap-2 mt-2 text-[10px] md:text-xs text-emerald-750 bg-emerald-50 border border-emerald-150 px-3 py-1.5 rounded-xl font-bold w-fit animate-pulse shadow-sm">
+                                      <span className="flex h-2.5 w-2.5 relative">
+                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                                      </span>
+                                      <span>Abrindo o WhatsApp automaticamente para confirmar sua reserva... 🚀</span>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
 

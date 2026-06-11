@@ -56,7 +56,8 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
     receiverName: "Comissão de Formatura Integrada",
     expirationHours: 24,
     supportContact: "51999999999",
-    rulesText: "Os bilhetes reservados têm prazo de validade. Caso a transferência via PIX não seja comprovada, a cota retornará à disponibilidade geral automaticamente."
+    rulesText: "Os bilhetes reservados têm prazo de validade. Caso a transferência via PIX não seja comprovada, a cota retornará à disponibilidade geral automaticamente.",
+    autoWhatsAppRedirect: true
   });
 
   const [groupReservationsByBuyer, setGroupReservationsByBuyer] = useState(false);
@@ -2410,6 +2411,24 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                   className="w-full bg-white p-2.5 border border-slate-300 rounded-lg text-xs"
                   placeholder="Ex: 51999999999"
                 />
+              </div>
+
+              <div className="space-y-1.5 md:col-span-2 flex items-center gap-3 bg-slate-50 border border-slate-200 p-3.5 rounded-xl">
+                <input
+                  type="checkbox"
+                  id="autoWhatsAppRedirect"
+                  checked={settings.autoWhatsAppRedirect !== false}
+                  onChange={(e) => setSettings({ ...settings, autoWhatsAppRedirect: e.target.checked })}
+                  className="w-4 h-4 text-indigo-600 border-slate-200 rounded focus:ring-indigo-500 cursor-pointer"
+                />
+                <div className="flex-1">
+                  <label htmlFor="autoWhatsAppRedirect" className="block font-bold text-slate-800 text-xs cursor-pointer select-none">
+                    Redirecionamento Automático para WhatsApp 🚀
+                  </label>
+                  <span className="text-[10px] text-slate-450 block leading-normal mt-0.5">
+                    Quando o apoiador confirmar a reserva de cota, abrir automaticamente a aba do WhatsApp com o link de confirmação preenchido.
+                  </span>
+                </div>
               </div>
 
               <div className="space-y-1.5 md:col-span-2">
