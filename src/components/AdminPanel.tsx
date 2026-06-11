@@ -130,6 +130,335 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
   const [issueSuccess, setIssueSuccess] = useState<string | null>(null);
   const [issueLoading, setIssueLoading] = useState(false);
 
+  // States for Receipt / Comprovante
+  const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [receiptCampaign, setReceiptCampaign] = useState<Campaign | null>(null);
+  const [receiptClientName, setReceiptClientName] = useState("");
+  const [receiptClientPhone, setReceiptClientPhone] = useState("");
+  const [receiptClientCpf, setReceiptClientCpf] = useState("");
+  const [receiptClientEmail, setReceiptClientEmail] = useState("");
+  const [receiptTickets, setReceiptTickets] = useState<Ticket[]>([]);
+  const [receiptStatus, setReceiptStatus] = useState<TicketStatus>("confirmed");
+  const [receiptTheme, setReceiptTheme] = useState<"emerald" | "indigo" | "amber" | "slate">("emerald");
+  const [receiptCustomNote, setReceiptCustomNote] = useState("Obrigado pela preferência e muita boa sorte!");
+
+  const generateReceiptCanvas = (format: "png" | "jpeg"): string | null => {
+    if (!receiptCampaign) return null;
+
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+
+    const ticketsCount = receiptTickets.length;
+    const itemsPerRow = 5;
+    const rowHeight = 36;
+    const ticketRows = Math.ceil(ticketsCount / itemsPerRow);
+    
+    // Dynamic height calculation
+    const baseHeight = 520; // header details, text notes, etc.
+    const calculatedHeight = baseHeight + (ticketRows * rowHeight);
+    
+    canvas.width = 600;
+    canvas.height = calculatedHeight;
+
+    // Get color theme variables
+    let themePrimary = "#059669"; // Emerald default
+    let themeSecondary = "#10B981";
+    let themeBgLight = "#ECFDF5";
+    
+    if (receiptTheme === "indigo") {
+      themePrimary = "#4F46E5";
+      themeSecondary = "#6366F1";
+      themeBgLight = "#EEF2FF";
+    } else if (receiptTheme === "amber") {
+      themePrimary = "#D97706";
+      themeSecondary = "#F59E0B";
+      themeBgLight = "#FEF3C7";
+    } else if (receiptTheme === "slate") {
+      themePrimary = "#1E293B";
+      themeSecondary = "#475569";
+      themeBgLight = "#F1F5F9";
+    }
+
+    // 1. Draw plain white background
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // 2. Draw sophisticated modern background graphics (ribbon stripe on left or top)
+    ctx.fillStyle = themePrimary;
+    ctx.fillRect(0, 0, canvas.width, 140); // header primary background
+
+    // Clean header details
+    ctx.fillStyle = "#FFFFFF";
+    ctx.font = "bold 24px sans-serif";
+    ctx.fillText("COMPROVANTE DE PARTICIPAÇÃO", 30, 50);
+    
+    ctx.font = "semibold 14px sans-serif";
+    ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
+    ctx.fillText("SISTEMA DE COTAS E RIFAS", 30, 75);
+
+    // Dynamic verification hash
+    const fakeHash = "TX" + Math.random().toString(36).substring(2, 10).toUpperCase() + "R";
+    ctx.font = "bold 13px Courier New, monospace";
+    ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+    ctx.fillText(`CÓD CORRESPONDÊNCIA: ${fakeHash}`, 30, 110);
+
+    // Status Badge inside header
+    const badgeText = receiptStatus === "confirmed" ? "PAGO & CONFIRMADO" : "PENDENTE / RESERVADO";
+    ctx.font = "bold 11px sans-serif";
+    const textWidth = ctx.measureText(badgeText).width;
+    
+    // Draw status badge pill background
+    ctx.fillStyle = receiptStatus === "confirmed" ? "#10B981" : "#EF4444";
+    ctx.beginPath();
+    ctx.roundRect(canvas.width - textWidth - 60, 42, textWidth + 30, 26, 13);
+    ctx.fill();
+    
+    ctx.fillStyle = "#ffffff";
+    ctx.fillText(badgeText, canvas.width - textWidth - 45, 59);
+
+    // 3. Buyer & Campaign details card setup
+    let y = 170;
+    ctx.fillStyle = "#1E293B";
+    ctx.font = "bold 16px sans-serif";
+    ctx.fillText("INFORMAÇÕES DO CLIENTE", 30, y);
+    
+    y += 24;
+    ctx.fillStyle = "#475569";
+    ctx.font = "13px sans-serif";
+    ctx.fillText(`Nome: ${receiptClientName}`, 35, y);
+    ctx.fillText(`Telefone: ${receiptClientPhone || "Não informado"}`, 320, y);
+    
+    y += 20;
+    ctx.fillText(`CPF: ${receiptClientCpf || "Não informado"}`, 35, y);
+    ctx.fillText(`E-mail: ${receiptClientEmail || "Não informado"}`, 320, y);
+
+    y += 35;
+    ctx.strokeStyle = "#E2E8F0";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(30, y);
+    ctx.lineTo(canvas.width - 30, y);
+    ctx.stroke();
+
+    y += 25;
+    ctx.fillStyle = "#1E293B";
+    ctx.font = "bold 16px sans-serif";
+    ctx.fillText("CAMPANHA / RIFA", 30, y);
+
+    y += 24;
+    ctx.fillStyle = "#334155";
+    ctx.font = "bold 14px sans-serif";
+    ctx.fillText(receiptCampaign.title, 35, y);
+    
+    // Price breakdown
+    let calcPrice = { totalPrice: receiptCampaign.ticketPrice * ticketsCount, unitPrice: receiptCampaign.ticketPrice, appliedDiscount: false };
+    try {
+      calcPrice = getDiscountedPrice(
+        ticketsCount,
+        receiptCampaign.ticketPrice,
+        receiptCampaign.progressiveDiscounts
+      );
+    } catch(e) {}
+
+    y += 22;
+    ctx.fillStyle = "#475569";
+    ctx.font = "12px sans-serif";
+    ctx.fillText(`Campanha ID: ${receiptCampaign.id}`, 35, y);
+    ctx.font = "bold 13px sans-serif";
+    ctx.fillText(`Valor Unitário: R$ ${calcPrice.unitPrice.toFixed(2)}`, 320, y);
+
+    y += 18;
+    ctx.fillText(`Quantidade: ${ticketsCount} cota(s)`, 35, y);
+    ctx.fillStyle = themePrimary;
+    ctx.font = "bold 15px sans-serif";
+    ctx.fillText(`TOTAL PAGO: R$ ${calcPrice.totalPrice.toFixed(2)}`, 320, y);
+
+    y += 30;
+    ctx.strokeStyle = "#E2E8F0";
+    ctx.beginPath();
+    ctx.moveTo(30, y);
+    ctx.lineTo(canvas.width - 30, y);
+    ctx.stroke();
+
+    // 5. Ticket Quotas section
+    y += 25;
+    ctx.fillStyle = "#1E293B";
+    ctx.font = "bold 15px sans-serif";
+    ctx.fillText(`COTAS ADQUIRIDAS (${ticketsCount})`, 30, y);
+
+    y += 15;
+    const badgeW = 95;
+    const badgeH = 26;
+    const gapX = 18;
+    const startX = 30;
+
+    receiptTickets.forEach((tk, idx) => {
+      const col = idx % itemsPerRow;
+      const row = Math.floor(idx / itemsPerRow);
+      const bx = startX + col * (badgeW + gapX);
+      const by = y + row * rowHeight;
+
+      // Draw shiny ticket background
+      ctx.fillStyle = themeBgLight;
+      ctx.beginPath();
+      // Draw rounded rectangle for tag
+      ctx.roundRect(bx, by, badgeW, badgeH, 6);
+      ctx.fill();
+
+      // Border for tag
+      ctx.strokeStyle = themeSecondary + "40"; // low opacity border
+      ctx.stroke();
+
+      // Draw ticket number text
+      ctx.fillStyle = themePrimary;
+      ctx.font = "bold 11px Courier New, monospace";
+      const numTxt = `# ${tk.number}`;
+      const textW = ctx.measureText(numTxt).width;
+      ctx.fillText(numTxt, bx + (badgeW - textW) / 2, by + 17);
+    });
+
+    // Advance Y past all row heights
+    y += (ticketRows * rowHeight) + 30;
+
+    // Custom Note / Footer Card block
+    ctx.fillStyle = "#F8FAFC";
+    ctx.beginPath();
+    ctx.roundRect(30, y, canvas.width - 60, 60, 10);
+    ctx.fill();
+
+    ctx.strokeStyle = "#E2E8F0";
+    ctx.stroke();
+
+    ctx.fillStyle = "#475569";
+    ctx.font = "italic 11px sans-serif";
+    const noteTxt = receiptCustomNote || "Nenhuma observação extra.";
+    ctx.fillText(noteTxt, 45, y + 34);
+
+    // Decorative ticket notch detail to make it look premium
+    ctx.fillStyle = "#E2E8F0";
+    ctx.beginPath();
+    ctx.arc(0, 140, 10, 0, Math.PI * 2);
+    ctx.arc(canvas.width, 140, 10, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Timestamp at the bottom
+    ctx.fillStyle = "#94A3B8";
+    ctx.font = "9px sans-serif";
+    ctx.fillText(`Emissão do Comprovante: ${new Date().toLocaleString("pt-BR")} - Op: Admin`, 35, canvas.height - 20);
+
+    return canvas.toDataURL(format === "png" ? "image/png" : "image/jpeg");
+  };
+
+  const downloadReceiptImage = (format: "png" | "jpeg") => {
+    const dataUrl = generateReceiptCanvas(format);
+    if (!dataUrl) return;
+
+    const link = document.createElement("a");
+    link.href = dataUrl;
+    const safeName = receiptClientName.trim().replace(/\s+/g, "_");
+    link.download = `comprovante_${receiptCampaign?.id || "camp"}_${safeName}.${format}`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handlePrintPDF = () => {
+    const dataUrl = generateReceiptCanvas("png");
+    if (!dataUrl) return;
+
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) {
+      alert("O bloqueador de pop-ups impediu a geração do PDF. Por favor, permita pop-ups para este site.");
+      return;
+    }
+
+    const title = `Recibo - ${receiptClientName}`;
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>${title}</title>
+          <style>
+            @page {
+              size: portrait;
+              margin: 1cm;
+            }
+            body {
+              margin: 0;
+              padding: 0;
+              display: flex;
+              justify-content: center;
+              align-items: flex-start;
+              background-color: #f1f5f9;
+              font-family: system-ui, -apple-system, sans-serif;
+            }
+            .container {
+              max-width: 100%;
+              width: 580px;
+              text-align: center;
+              padding: 30px 20px;
+            }
+            img {
+              width: 100%;
+              height: auto;
+              border-radius: 16px;
+              box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            }
+            .print-btn {
+              display: inline-flex;
+              align-items: center;
+              justify-content: center;
+              gap: 8px;
+              margin-bottom: 20px;
+              padding: 12px 24px;
+              background-color: #059669;
+              color: white;
+              border: none;
+              border-radius: 12px;
+              font-weight: 800;
+              cursor: pointer;
+              font-size: 15px;
+              box-shadow: 0 4px 12px rgba(5, 150, 105, 0.3);
+              transition: all 0.2s ease;
+            }
+            .print-btn:hover {
+              background-color: #047857;
+              transform: translateY(-1px);
+            }
+            @media print {
+              .print-btn {
+                display: none;
+              }
+              body {
+                background: white;
+              }
+              img {
+                box-shadow: none;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <button class="print-btn" onclick="window.print()">
+              <span>🖨️ Confirmar e Imprimir / Salvar PDF</span>
+            </button>
+            <img src="${dataUrl}" alt="Recibo" />
+          </div>
+          <script>
+            // Auto open print dialog on load
+            window.onload = function() {
+              setTimeout(function() {
+                window.print();
+              }, 500);
+            };
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
 
   // Drawing winners flows
   const [drawingCampaignId, setDrawingCampaignId] = useState<string | null>(null);
@@ -1487,6 +1816,27 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                                 )}
 
                                 <button
+                                  type="button"
+                                  onClick={() => {
+                                    setReceiptCampaign(ca);
+                                    setReceiptClientName(t.buyerName || "Mapeado manualmente");
+                                    setReceiptClientCpf(t.buyerCpf || "");
+                                    setReceiptClientPhone(t.buyerPhone || "");
+                                    setReceiptClientEmail(t.buyerEmail || "");
+                                    setReceiptTickets([t]);
+                                    setReceiptStatus(t.status);
+                                    setReceiptTheme("emerald");
+                                    setReceiptCustomNote("Obrigado pela preferência e muita boa sorte!");
+                                    setShowReceiptModal(true);
+                                  }}
+                                  className="px-2.5 py-1.5 text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 rounded-lg font-bold flex items-center gap-1 cursor-pointer text-[11px]"
+                                  title="Emitir recibo para esta cota"
+                                >
+                                  <FileText className="w-3.5 h-3.5 text-indigo-650" />
+                                  <span>Recibo</span>
+                                </button>
+
+                                <button
                                   onClick={() => handleReleaseReservation(ca.id, t.id)}
                                   className={`px-2 py-1.5 rounded-lg border font-bold flex items-center gap-1 cursor-pointer transition ${
                                     t.status === "confirmed"
@@ -1601,6 +1951,27 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
 
                               <button
                                 type="button"
+                                onClick={() => {
+                                  setReceiptCampaign(batch.campaign);
+                                  setReceiptClientName(batch.buyerName);
+                                  setReceiptClientCpf(batch.buyerCpf || "");
+                                  setReceiptClientPhone(batch.buyerPhone || "");
+                                  setReceiptClientEmail(batch.buyerEmail || "");
+                                  setReceiptTickets(batch.tickets);
+                                  setReceiptStatus(batch.tickets.every(t => t.status === "confirmed") ? "confirmed" : "reserved");
+                                  setReceiptTheme("emerald");
+                                  setReceiptCustomNote("Obrigado pela preferência e muita boa sorte!");
+                                  setShowReceiptModal(true);
+                                }}
+                                className="px-2.5 py-1.5 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg font-bold flex items-center gap-1.5 cursor-pointer text-[11px] transition"
+                                title="Emitir recibo para este lote"
+                              >
+                                <FileText className="w-3.5 h-3.5" />
+                                <span>Recibo</span>
+                              </button>
+
+                              <button
+                                type="button"
                                 disabled={isCurrentlyLoading}
                                 onClick={() => handleReleaseBatchReservation(
                                   batch.campaign.id,
@@ -1708,6 +2079,27 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                                 <span>Confirmar Pago</span>
                               </button>
                             )}
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setReceiptCampaign(ca);
+                                setReceiptClientName(t.buyerName || "Mapeado manualmente");
+                                setReceiptClientCpf(t.buyerCpf || "");
+                                setReceiptClientPhone(t.buyerPhone || "");
+                                setReceiptClientEmail(t.buyerEmail || "");
+                                setReceiptTickets([t]);
+                                setReceiptStatus(t.status);
+                                setReceiptTheme("emerald");
+                                setReceiptCustomNote("Obrigado pela preferência e muita boa sorte!");
+                                setShowReceiptModal(true);
+                              }}
+                              className="px-2.5 py-1.5 text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 rounded-xl font-bold text-[10px] flex items-center gap-1 cursor-pointer transition"
+                              title="Emitir recibo para esta cota"
+                            >
+                              <FileText className="w-3.5 h-3.5" />
+                              <span>Recibo</span>
+                            </button>
 
                             <button
                               onClick={() => handleReleaseReservation(ca.id, t.id)}
@@ -1826,6 +2218,27 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                               <span>Baix. {reservedTickets.length} Cotas</span>
                             </button>
                           )}
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setReceiptCampaign(batch.campaign);
+                              setReceiptClientName(batch.buyerName);
+                              setReceiptClientCpf(batch.buyerCpf || "");
+                              setReceiptClientPhone(batch.buyerPhone || "");
+                              setReceiptClientEmail(batch.buyerEmail || "");
+                              setReceiptTickets(batch.tickets);
+                              setReceiptStatus(batch.tickets.every(t => t.status === "confirmed") ? "confirmed" : "reserved");
+                              setReceiptTheme("emerald");
+                              setReceiptCustomNote("Obrigado pela preferência e muita boa sorte!");
+                              setShowReceiptModal(true);
+                            }}
+                            className="px-2.5 py-1.5 text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 rounded-xl font-bold text-[10px] flex items-center gap-1 cursor-pointer transition"
+                            title="Emitir recibo para este lote"
+                          >
+                            <FileText className="w-3.5 h-3.5 text-indigo-650" />
+                            <span>Recibo</span>
+                          </button>
 
                           <button
                             type="button"
@@ -3946,6 +4359,260 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                 )}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Emitir Recibo Premium Modal Overlay */}
+      {showReceiptModal && receiptCampaign && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto animate-fadeIn">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 max-w-4xl w-full overflow-hidden flex flex-col md:flex-row my-8 max-h-[90vh]">
+            
+            {/* Left Column: Configuration Controls */}
+            <div className="w-full md:w-1/2 p-6 md:p-8 overflow-y-auto border-r border-slate-100 space-y-6">
+              <div>
+                <span className="bg-indigo-100 text-indigo-805 text-[9px] uppercase tracking-wider font-extrabold px-2.5 py-1 rounded-full">
+                  Painel de Emissão
+                </span>
+                <h3 className="text-xl font-black text-slate-800 mt-2">Personalizar Comprovante</h3>
+                <p className="text-xs text-slate-400 mt-0.5">Defina as cores e detalhes do recibo de pagamento.</p>
+              </div>
+
+              <div className="space-y-4">
+                {/* 1. Theme Picker */}
+                <div>
+                  <label className="text-[10px] uppercase font-bold text-slate-500 block mb-2">Tema / Paleta de Cores</label>
+                  <div className="grid grid-cols-4 gap-2">
+                    {[
+                      { id: "emerald", label: "Verde", color: "bg-emerald-600" },
+                      { id: "indigo", label: "Azul/Roxo", color: "bg-indigo-600" },
+                      { id: "amber", label: "Dourado", color: "bg-amber-500" },
+                      { id: "slate", label: "Grafite", color: "bg-slate-700" }
+                    ].map((th) => (
+                      <button
+                        key={th.id}
+                        type="button"
+                        onClick={() => setReceiptTheme(th.id as any)}
+                        className={`p-2.5 border rounded-xl flex flex-col items-center justify-center gap-1.5 transition cursor-pointer ${
+                          receiptTheme === th.id
+                            ? "border-slate-400 bg-slate-50 font-extrabold text-slate-800"
+                            : "border-slate-150 hover:bg-slate-50 text-slate-500 text-xs font-semibold"
+                        }`}
+                      >
+                        <span className={`w-4 h-4 rounded-full ${th.color} shadow-xs`} />
+                        <span className="text-[10px]">{th.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 2. Receipt Status */}
+                <div>
+                  <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Status de Pagamento</label>
+                  <select
+                    value={receiptStatus}
+                    onChange={(e) => setReceiptStatus(e.target.value as any)}
+                    className="w-full px-3.5 py-3 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-sans text-xs bg-slate-50 font-bold text-slate-800"
+                  >
+                    <option value="confirmed">Pago & Confirmado</option>
+                    <option value="reserved">Reservado / Aguardando PIX</option>
+                  </select>
+                </div>
+
+                {/* 3. Buyer details preview / override */}
+                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-150/60 space-y-3">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block">Dados do Cliente</span>
+                  
+                  <div className="grid grid-cols-2 gap-3.5">
+                    <div>
+                      <label className="text-[9px] font-bold text-slate-400 block mb-0.5">Nome</label>
+                      <input
+                        type="text"
+                        value={receiptClientName}
+                        onChange={(e) => setReceiptClientName(e.target.value)}
+                        className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-bold text-slate-400 block mb-0.5">Telefone</label>
+                      <input
+                        type="text"
+                        value={receiptClientPhone}
+                        onChange={(e) => setReceiptClientPhone(e.target.value)}
+                        className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-bold text-slate-400 block mb-0.5">CPF</label>
+                      <input
+                        type="text"
+                        value={receiptClientCpf}
+                        onChange={(e) => setReceiptClientCpf(e.target.value)}
+                        className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-bold text-slate-400 block mb-0.5">E-mail</label>
+                      <input
+                        type="text"
+                        value={receiptClientEmail}
+                        onChange={(e) => setReceiptClientEmail(e.target.value)}
+                        className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4. Message extra */}
+                <div>
+                  <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Nota extra de agradecimento</label>
+                  <textarea
+                    rows={2}
+                    value={receiptCustomNote}
+                    onChange={(e) => setReceiptCustomNote(e.target.value)}
+                    placeholder="Ex: Obrigado pela confiança e boa sorte!"
+                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-sans text-xs bg-slate-50 text-slate-700"
+                  />
+                </div>
+              </div>
+
+              {/* Action output buttons */}
+              <div className="pt-2 space-y-2.5">
+                <button
+                  type="button"
+                  onClick={handlePrintPDF}
+                  className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-extrabold rounded-2xl transition shadow-md flex items-center justify-center gap-2 text-xs cursor-pointer"
+                >
+                  <FileText className="w-4 h-4 text-emerald-400" />
+                  <span>Imprimir ou Salvar PDF</span>
+                </button>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => downloadReceiptImage("png")}
+                    className="py-3 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-bold rounded-2xl transition flex items-center justify-center gap-2 text-xs cursor-pointer"
+                  >
+                    <span>Baixar PNG</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => downloadReceiptImage("jpeg")}
+                    className="py-3 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-bold rounded-2xl transition flex items-center justify-center gap-2 text-xs cursor-pointer"
+                  >
+                    <span>Baixar JPEG</span>
+                  </button>
+                </div>
+                
+                <button
+                  type="button"
+                  onClick={() => setShowReceiptModal(false)}
+                  className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-2xl transition text-xs cursor-pointer"
+                >
+                  Fechar Painel
+                </button>
+              </div>
+            </div>
+
+            {/* Right Column: Beautiful Live Preview */}
+            <div className="w-full md:w-1/2 bg-slate-50 p-6 md:p-8 flex flex-col items-center justify-center overflow-y-auto max-h-[50vh] md:max-h-full">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Pré-visualização do voucher</span>
+              
+              <div className="bg-white rounded-2xl shadow-xl w-full max-w-[360px] overflow-hidden border border-slate-150 flex flex-col relative select-none">
+                
+                {/* Header stripe based on theme */}
+                <div className={`p-5 text-white ${
+                  receiptTheme === "emerald" ? "bg-emerald-600" :
+                  receiptTheme === "indigo" ? "bg-indigo-600" :
+                  receiptTheme === "amber" ? "bg-amber-500" :
+                  "bg-slate-700"
+                }`}>
+                  <div className="flex justify-between items-center">
+                    <span className="text-[8px] uppercase tracking-widest font-bold opacity-80">Comprovante Oficial</span>
+                    <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase ${
+                      receiptStatus === "confirmed" ? "bg-emerald-500/30 text-white" : "bg-red-500 text-white"
+                    }`}>
+                      {receiptStatus === "confirmed" ? "Pago" : "Pendente"}
+                    </span>
+                  </div>
+                  <h4 className="text-sm font-black tracking-wide uppercase mt-1">Sorteio de Cotas</h4>
+                  <p className="text-[10px] opacity-75 font-mono mt-1">CÓD VERIFICAÇÃO: EXPROV</p>
+                </div>
+
+                {/* Body details */}
+                <div className="p-5 space-y-4 text-[11px] text-slate-600 flex-1">
+                  
+                  {/* Client summary */}
+                  <div className="space-y-1 bg-slate-50/60 p-3 rounded-xl border border-dashed border-slate-200">
+                    <span className="text-[9px] font-bold text-slate-400 block uppercase">Comprador</span>
+                    <div className="font-bold text-slate-800">{receiptClientName}</div>
+                    {receiptClientPhone && <div className="text-slate-500 font-mono text-[10px]">{receiptClientPhone}</div>}
+                    {receiptClientCpf && <div className="text-slate-400 font-mono text-[9px]">CPF: {receiptClientCpf}</div>}
+                  </div>
+
+                  {/* Campaign summary */}
+                  <div className="space-y-1">
+                    <span className="text-[9px] font-bold text-slate-400 block uppercase">Iniciativa / Rifa</span>
+                    <p className="font-bold text-slate-800 line-clamp-1">{receiptCampaign.title}</p>
+                    <div className="flex justify-between text-[10px] text-slate-500 mt-1">
+                      <span>{receiptTickets.length} cota(s)</span>
+                      <span className="font-bold">
+                        R$ {(() => {
+                          try {
+                            return getDiscountedPrice(
+                              receiptTickets.length,
+                              receiptCampaign.ticketPrice,
+                              receiptCampaign.progressiveDiscounts
+                            ).totalPrice.toFixed(2);
+                          } catch (e) {
+                            return (receiptCampaign.ticketPrice * receiptTickets.length).toFixed(2);
+                          }
+                        })()}
+                      </span>
+                    </div>
+                  </div>
+
+                  <hr className="border-slate-100" />
+
+                  {/* Ticket Numbers Slots */}
+                  <div className="space-y-1.5">
+                    <span className="text-[9px] font-bold text-slate-400 block uppercase">Cotas Solicitadas</span>
+                    <div className="flex flex-wrap gap-1 max-h-[85px] overflow-y-auto pr-1">
+                      {receiptTickets.map((tk) => (
+                        <span
+                          key={tk.id}
+                          className={`font-mono text-[9px] font-bold px-1.5 py-0.5 rounded border ${
+                            receiptTheme === "emerald" ? "bg-emerald-50 text-emerald-850 border-emerald-100" :
+                            receiptTheme === "indigo" ? "bg-indigo-50 text-indigo-850 border-indigo-100" :
+                            receiptTheme === "amber" ? "bg-amber-50 text-amber-850 border-amber-100" :
+                            "bg-slate-50 text-slate-850 border-slate-100"
+                          }`}
+                        >
+                          #{tk.number}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Message Card block */}
+                  {receiptCustomNote && (
+                    <div className="bg-slate-50/80 p-2.5 rounded-xl border border-slate-150 text-[10px] italic text-slate-500 text-center">
+                      "{receiptCustomNote}"
+                    </div>
+                  )}
+
+                  <div className="text-[8px] text-slate-400 text-center mt-3 pt-2 border-t border-slate-100">
+                    Obrigado pela sua participação! Guarde seu comprovante.
+                  </div>
+                </div>
+
+                {/* Classic Voucher layout notch cuts */}
+                <div className="absolute left-0 top-[60px] w-3 h-6 bg-slate-50 rounded-r-full border-y border-r border-slate-150 -ml-1.5" />
+                <div className="absolute right-0 top-[60px] w-3 h-6 bg-slate-50 rounded-l-full border-y  border-l border-slate-150 -mr-1.5" />
+
+              </div>
+            </div>
+
           </div>
         </div>
       )}
