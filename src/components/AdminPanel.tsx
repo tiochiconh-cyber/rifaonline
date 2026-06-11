@@ -190,12 +190,12 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
 
     // Clean header details
     ctx.fillStyle = "#FFFFFF";
-    ctx.font = "bold 24px sans-serif";
-    ctx.fillText("COMPROVANTE DE PARTICIPAÇÃO", 30, 50);
+    ctx.font = "bold 26px sans-serif";
+    ctx.fillText("COMPROVANTE", 30, 50);
     
-    ctx.font = "semibold 14px sans-serif";
-    ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
-    ctx.fillText("SISTEMA DE COTAS E RIFAS", 30, 75);
+    ctx.font = "bold 15px sans-serif";
+    ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+    ctx.fillText("www.rifadochiquinho.com.br", 30, 75);
 
     // Dynamic verification hash
     const fakeHash = "TX" + Math.random().toString(36).substring(2, 10).toUpperCase() + "R";
@@ -4599,8 +4599,8 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                       {receiptStatus === "confirmed" ? "Pago" : "Pendente"}
                     </span>
                   </div>
-                  <h4 className="text-sm font-black tracking-wide uppercase mt-1">Sorteio de Cotas</h4>
-                  <p className="text-[10px] opacity-75 font-mono mt-1">CÓD VERIFICAÇÃO: EXPROV</p>
+                  <h4 className="text-base font-black tracking-wide uppercase mt-1">COMPROVANTE</h4>
+                  <p className="text-[10px] opacity-90 font-mono mt-0.5">www.rifadochiquinho.com.br</p>
                 </div>
 
                 {/* Body details */}
