@@ -105,6 +105,166 @@ export default function ClientDashboard({ userProfile, onLogout }: ClientDashboa
     tickets: Ticket[];
   } | null>(null);
 
+  // Safe Masked Name for supporting competition with LGPD
+  const formatMaskedName = (fullName?: string): string => {
+    if (!fullName) return "Participante";
+    const parts = fullName.trim().split(/\s+/);
+    if (parts.length === 1) return parts[0];
+    const first = parts[0];
+    const second = parts[1];
+    if (second && second.length > 0) {
+      return `${first} ${second[0].toUpperCase()}.`;
+    }
+    return first;
+  };
+
+  const renderTopSupportersWidget = (isSidebar: boolean = false) => {
+    const buyerMap: { [uid: string]: { name: string; phone: string; totalCount: number; confirmedCount: number; reservedCount: number } } = {};
+
+    (Object.entries(allReservations) as [string, Ticket[]][]).forEach(([campaignId, tList]) => {
+      // If inside sidebar under a selected campaign, only show contributors for this specific active campaign!
+      if (selectedCampaign && campaignId !== selectedCampaign.id) return;
+
+      tList.forEach((t) => {
+        if (!t.buyerUid) return;
+        if (t.status === "available") return;
+
+        if (!buyerMap[t.buyerUid]) {
+          buyerMap[t.buyerUid] = {
+            name: t.buyerName || "Apoiador Anônimo",
+            phone: t.buyerPhone || "",
+            totalCount: 0,
+            confirmedCount: 0,
+            reservedCount: 0
+          };
+        }
+        buyerMap[t.buyerUid].totalCount++;
+        if (t.status === "confirmed") {
+          buyerMap[t.buyerUid].confirmedCount++;
+        } else if (t.status === "reserved") {
+          buyerMap[t.buyerUid].reservedCount++;
+        }
+      });
+    });
+
+    const list = Object.entries(buyerMap)
+      .map(([uid, data]) => ({
+        uid,
+        ...data
+      }))
+      .sort((a, b) => {
+        if (b.totalCount !== a.totalCount) {
+          return b.totalCount - a.totalCount;
+        }
+        return b.confirmedCount - a.confirmedCount;
+      })
+      .slice(0, 5);
+
+    if (list.length === 0) {
+      return (
+        <div className="bg-white rounded-2xl p-5 border border-slate-100 text-center space-y-2">
+          <Trophy className="w-8 h-8 text-indigo-550 mx-auto animate-pulse" />
+          <h4 className="text-slate-750 font-bold text-xs">Apoiadores Iniciando</h4>
+          <p className="text-slate-400 text-[10px] leading-relaxed">
+            Seja o primeiro a reservar cotas e lidere o ranking de apoiadores! 🚀
+          </p>
+        </div>
+      );
+    }
+
+    return (
+      <div className={`bg-white rounded-2xl p-5 shadow-sm border border-slate-100 space-y-4 ${isSidebar ? "" : "w-full animate-fadeIn"}`}>
+        <div className="flex items-center justify-between">
+          <h2 className="font-bold text-slate-800 text-sm uppercase tracking-wider flex items-center gap-2">
+            <Trophy className="w-4.5 h-4.5 text-amber-500 shrink-0" />
+            <span>🏆 Maiores Apoiadores {selectedCampaign ? "" : "Globais"}</span>
+          </h2>
+          <span className="bg-amber-100 text-amber-800 font-extrabold text-[9px] uppercase tracking-wider px-2 py-0.5 rounded-full">
+            Top 5
+          </span>
+        </div>
+        <p className="text-slate-500 text-xs leading-normal font-normal">
+          {selectedCampaign 
+            ? `Quem está liderando a corrida pelo prêmio "${selectedCampaign.title}"?`
+            : "Os apoiadores mais engajados que estão impulsionando a formatura da nossa turma!"
+          }
+        </p>
+
+        <div className="space-y-2.5 pt-1">
+          {list.map((buyer, index) => {
+            const position = index + 1;
+            const isMe = buyer.uid === userProfile.uid;
+            const confirmedPct = buyer.totalCount > 0 ? (buyer.confirmedCount / buyer.totalCount) * 100 : 0;
+
+            return (
+              <div 
+                key={buyer.uid} 
+                className={`p-3 rounded-xl flex items-center justify-between gap-3 transition-all ${
+                  isMe 
+                    ? "bg-amber-500/5 border border-amber-300 ring-2 ring-amber-300/10 shadow-xs" 
+                    : "bg-slate-50 border border-slate-100"
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  {/* Position Badge with styling */}
+                  <div className={`w-6 h-6 rounded-lg font-mono text-[10px] font-black flex items-center justify-center shrink-0 ${
+                    position === 1 ? "bg-amber-400 text-amber-955" 
+                    : position === 2 ? "bg-slate-300 text-slate-800" 
+                    : position === 3 ? "bg-amber-100 text-amber-900" 
+                    : "bg-slate-200/60 text-slate-500"
+                  }`}>
+                    {position === 1 ? "🥇" : position === 2 ? "🥈" : position === 3 ? "🥉" : position}
+                  </div>
+
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-xs font-bold text-slate-805 truncate block">
+                        {formatMaskedName(buyer.name)}
+                      </span>
+                      {isMe && (
+                        <span className="bg-amber-500 text-white font-extrabold text-[8px] uppercase px-1.5 py-0.2 rounded shadow-xs shrink-0 select-none">
+                          Você
+                        </span>
+                      )}
+                    </div>
+                    {/* Micro count */}
+                    <span className="text-[9.5px] text-slate-400 block mt-0.5">
+                      {buyer.confirmedCount} Pago • {buyer.reservedCount} Reservado
+                    </span>
+                  </div>
+                </div>
+
+                <div className="text-right shrink-0 flex flex-col items-end justify-center">
+                  <span className="text-xs font-black text-slate-805 font-mono">
+                    {buyer.totalCount} <span className="font-sans font-medium text-[9.5px] text-slate-450">cotas</span>
+                  </span>
+                  
+                  {/* Slim progress bar indicating paid/unpaid segment */}
+                  <div className="h-1 w-14 bg-slate-200 rounded-full overflow-hidden flex mt-1">
+                    <div 
+                      style={{ width: `${confirmedPct}%` }}
+                      className="h-full bg-emerald-500"
+                    />
+                    <div 
+                      style={{ width: `${100 - confirmedPct}%` }}
+                      className="h-full bg-amber-400"
+                    />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Secure privacy text */}
+        <div className="text-[9px] text-slate-400/90 leading-tight bg-slate-50/50 p-2 rounded-lg border border-slate-100 flex items-center gap-1.5">
+          <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+          <span>Políticas de Privacidade: Nomes mascarados em conformidade com a LGPD.</span>
+        </div>
+      </div>
+    );
+  };
+
   // LGPD - Export Stored Personal Data (Data Portability)
   const handleExportMyData = () => {
     try {
@@ -784,22 +944,20 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
           )}
         </button>
 
-        {userProfile.role === "admin" && (
-          <button
-            onClick={() => {
-              setActiveTab("ranking");
-              setSuccessReserved(null);
-            }}
-            className={`flex-1 text-center py-3 rounded-xl font-bold transition-all duration-150 cursor-pointer flex items-center justify-center gap-2 ${
-              activeTab === "ranking" 
-                ? "bg-white text-slate-900 shadow-sm" 
-                : "text-slate-500 hover:text-slate-850"
-            }`}
-          >
-            <Trophy className="w-4 h-4 text-amber-500 animate-pulse" />
-            <span>Ranking</span>
-          </button>
-        )}
+        <button
+          onClick={() => {
+            setActiveTab("ranking");
+            setSuccessReserved(null);
+          }}
+          className={`flex-1 text-center py-3 rounded-xl font-bold transition-all duration-150 cursor-pointer flex items-center justify-center gap-2 ${
+            activeTab === "ranking" 
+              ? "bg-white text-slate-900 shadow-sm" 
+              : "text-slate-500 hover:text-slate-850"
+          }`}
+        >
+          <Trophy className="w-4 h-4 text-amber-500 animate-pulse" />
+          <span>Ranking</span>
+        </button>
       </div>
 
       {/* 2. MAIN CLIENT RIFAS CONTENT GRID */}
@@ -1151,6 +1309,13 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
               );
             })()}
           </div>
+
+          {/* Main overview rankings if no campaign is selected */}
+          {!selectedCampaign && (
+            <div className="pt-8 border-t border-slate-200/80 max-w-4xl mx-auto">
+              {renderTopSupportersWidget(false)}
+            </div>
+          )}
 
           {/* Sub-Seção dos Detalhes da Rifa Selecionada & Bilhetes (col-span-8) e as Compras/Pix do Cliente (col-span-4) */}
           {selectedCampaign && (
@@ -1750,6 +1915,11 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                     </div>
                   )}
                 </div>
+
+                {/* Mobile Only: Top 5 Maiores Apoiadores of the active campaign */}
+                <div className="block lg:hidden mt-6">
+                  {renderTopSupportersWidget(false)}
+                </div>
               </div>
 
               {/* Coluna Direita: Minhas Reservas (Desktop-only inside RIFAS view) */}
@@ -1936,6 +2106,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                     </div>
                   )}
                 </div>
+                {renderTopSupportersWidget(true)}
               </div>
 
             </div>
@@ -2211,20 +2382,18 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                 )}
               </button>
 
-              {userProfile.role === "admin" && (
-                <button
-                  onClick={() => {
-                    setActiveTab("ranking");
-                    setSuccessReserved(null);
-                  }}
-                  className={`flex flex-col items-center justify-center py-1 px-4 rounded-xl transition-all cursor-pointer ${
-                    activeTab === "ranking" ? "text-indigo-650 font-black scale-105" : "text-slate-450 hover:text-slate-755"
-                  }`}
-                >
-                  <Trophy className={`w-4.5 h-4.5 mb-1 ${activeTab === "ranking" ? "text-amber-500" : "text-slate-400"}`} />
-                  <span className="text-[9.5px]">Ranking</span>
-                </button>
-              )}
+              <button
+                onClick={() => {
+                  setActiveTab("ranking");
+                  setSuccessReserved(null);
+                }}
+                className={`flex flex-col items-center justify-center py-1 px-4 rounded-xl transition-all cursor-pointer ${
+                  activeTab === "ranking" ? "text-indigo-650 font-black scale-105" : "text-slate-450 hover:text-slate-755"
+                }`}
+              >
+                <Trophy className={`w-4.5 h-4.5 mb-1 ${activeTab === "ranking" ? "text-amber-500" : "text-slate-400"}`} />
+                <span className="text-[9.5px]">Ranking</span>
+              </button>
             </div>
           </div>
         </div>
@@ -2631,7 +2800,7 @@ Acompanhe os resultados no link de nossa plataforma.
         </div>
       )}
 
-      {activeTab === "ranking" && userProfile.role === "admin" && (
+      {activeTab === "ranking" && (
         <RankingView
           campaigns={campaigns}
           allReservations={allReservations}
