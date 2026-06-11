@@ -1785,7 +1785,28 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                               <span className="text-[10px] text-slate-400 block">{t.buyerEmail}</span>
                             </td>
                             <td className="py-4 px-4 text-slate-600">
-                              <div className="font-bold">{t.buyerPhone || "Sem contato"}</div>
+                              {t.buyerPhone ? (() => {
+                                const clean = t.buyerPhone.replace(/\D/g, "");
+                                const url = `https://wa.me/55${clean}`;
+                                return (
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-bold">{t.buyerPhone}</span>
+                                    <a
+                                      href={url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="inline-flex items-center justify-center p-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded-full transition"
+                                      title="Chamar no WhatsApp"
+                                    >
+                                      <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
+                                        <path d="M12.022 2C6.5 2 2 6.5 2 12.022c0 1.766.457 3.428 1.256 4.887L1.13 22.872a.5.5 0 0 0 .61.61l5.963-2.126a10.024 10.024 0 0 0 4.319.98c5.522 0 10.022-4.5 10.022-10.022C22.044 6.5 17.544 2 12.022 2zm6.183 14.881c-.267.755-1.35 1.4-1.85 1.455-.453.05-1.042.043-1.684-.162-2.336-.745-3.92-.128-5.882-2.09l-.162-.162c-1.93-1.934-2.58-3.565-1.83-5.912l.142-.446c.162-.513.56-1.114 1.114-1.114l.812.001c.219 0 .425.043.513.26l.462 1.127.35.856c.088.219.013.438-.13.585l-.546.546c-.075.075-.1.175-.05.275.462.91 1.05 1.745 1.745 2.441.724.724 1.572 1.3 2.502 1.743.1.052.2.028.275-.05l.546-.546c.142-.143.367-.219.585-.13l1.983.812c.219.088.256.326.2.55z" />
+                                      </svg>
+                                    </a>
+                                  </div>
+                                );
+                              })() : (
+                                <div className="text-slate-400">Sem contato</div>
+                              )}
                               <div className="text-[10px] text-slate-400 font-mono">CPF: {t.buyerCpf || "Simulado"}</div>
                             </td>
                             <td className="py-4 px-4">
@@ -1896,7 +1917,28 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                             <span className="text-[10px] text-slate-400 block">{batch.buyerEmail || "sem e-mail"}</span>
                           </td>
                           <td className="py-4 px-4 text-slate-600">
-                            <div className="font-bold">{batch.buyerPhone || "Sem telefone"}</div>
+                            {batch.buyerPhone ? (() => {
+                              const clean = batch.buyerPhone.replace(/\D/g, "");
+                              const url = `https://wa.me/55${clean}`;
+                              return (
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-bold">{batch.buyerPhone}</span>
+                                  <a
+                                    href={url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center justify-center p-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded-full transition"
+                                    title="Chamar no WhatsApp"
+                                  >
+                                    <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
+                                      <path d="M12.022 2C6.5 2 2 6.5 2 12.022c0 1.766.457 3.428 1.256 4.887L1.13 22.872a.5.5 0 0 0 .61.61l5.963-2.126a10.024 10.024 0 0 0 4.319.98c5.522 0 10.022-4.5 10.022-10.022C22.044 6.5 17.544 2 12.022 2zm6.183 14.881c-.267.755-1.35 1.4-1.85 1.455-.453.05-1.042.043-1.684-.162-2.336-.745-3.92-.128-5.882-2.09l-.162-.162c-1.93-1.934-2.58-3.565-1.83-5.912l.142-.446c.162-.513.56-1.114 1.114-1.114l.812.001c.219 0 .425.043.513.26l.462 1.127.35.856c.088.219.013.438-.13.585l-.546.546c-.075.075-.1.175-.05.275.462.91 1.05 1.745 1.745 2.441.724.724 1.572 1.3 2.502 1.743.1.052.2.028.275-.05l.546-.546c.142-.143.367-.219.585-.13l1.983.812c.219.088.256.326.2.55z" />
+                                    </svg>
+                                  </a>
+                                </div>
+                              );
+                            })() : (
+                              <div className="text-slate-400">Sem telefone</div>
+                            )}
                             <div className="text-[10px] text-slate-400 font-mono">CPF: {batch.buyerCpf || "Simulado"}</div>
                           </td>
                           <td className="py-4 px-4 text-center">
@@ -3523,7 +3565,29 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                       </td>
                       <td className="py-4 px-4 text-slate-600">{cl.city}</td>
                       <td className="py-4 px-4 font-mono text-slate-600">
-                        ({cl.phone.slice(0, 2)}) {cl.phone.slice(2, 7)}-{cl.phone.slice(7)}
+                        {cl.phone ? (() => {
+                          const clean = cl.phone.replace(/\D/g, "");
+                          const url = `https://wa.me/55${clean}`;
+                          const formatted = `(${cl.phone.slice(0, 2)}) ${cl.phone.slice(2, 7)}-${cl.phone.slice(7)}`;
+                          return (
+                            <div className="flex items-center gap-1.5 font-mono">
+                              <span>{formatted}</span>
+                              <a
+                                href={url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center justify-center p-1 bg-emerald-100 hover:bg-emerald-250 text-emerald-800 rounded-full transition"
+                                title="Chamar no WhatsApp"
+                              >
+                                <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
+                                  <path d="M12.022 2C6.5 2 2 6.5 2 12.022c0 1.766.457 3.428 1.256 4.887L1.13 22.872a.5.5 0 0 0 .61.61l5.963-2.126a10.024 10.024 0 0 0 4.319.98c5.522 0 10.022-4.5 10.022-10.022C22.044 6.5 17.544 2 12.022 2zm6.183 14.881c-.267.755-1.35 1.4-1.85 1.455-.453.05-1.042.043-1.684-.162-2.336-.745-3.92-.128-5.882-2.09l-.162-.162c-1.93-1.934-2.58-3.565-1.83-5.912l.142-.446c.162-.513.56-1.114 1.114-1.114l.812.001c.219 0 .425.043.513.26l.462 1.127.35.856c.088.219.013.438-.13.585l-.546.546c-.075.075-.1.175-.05.275.462.91 1.05 1.745 1.745 2.441.724.724 1.572 1.3 2.502 1.743.1.052.2.028.275-.05l.546-.546c.142-.143.367-.219.585-.13l1.983.812c.219.088.256.326.2.55z" />
+                                </svg>
+                              </a>
+                            </div>
+                          );
+                        })() : (
+                          <span className="text-slate-400">Sem telefone</span>
+                        )}
                       </td>
                       <td className="py-4 px-4 text-slate-400">{new Date(cl.createdAt).toLocaleDateString("pt-BR")}</td>
                       <td className="py-4 px-4 text-right">
