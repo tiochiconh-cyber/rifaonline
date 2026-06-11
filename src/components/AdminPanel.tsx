@@ -4515,7 +4515,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
             </div>
 
             {/* Right Column: Beautiful Live Preview */}
-            <div className="w-full md:w-1/2 bg-slate-50 p-6 md:p-8 flex flex-col items-center justify-center overflow-y-auto max-h-[50vh] md:max-h-full">
+            <div className="w-full md:w-1/2 bg-slate-50 p-6 md:p-8 flex flex-col items-center justify-start overflow-y-auto max-h-[60vh] md:max-h-full py-8">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Pré-visualização do voucher</span>
               
               <div className="bg-white rounded-2xl shadow-xl w-full max-w-[360px] overflow-hidden border border-slate-150 flex flex-col relative select-none">
@@ -4577,7 +4577,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                   {/* Ticket Numbers Slots */}
                   <div className="space-y-1.5">
                     <span className="text-[9px] font-bold text-slate-400 block uppercase">Cotas Solicitadas</span>
-                    <div className="flex flex-wrap gap-1 max-h-[85px] overflow-y-auto pr-1">
+                    <div className="flex flex-wrap gap-1">
                       {receiptTickets.map((tk) => (
                         <span
                           key={tk.id}
