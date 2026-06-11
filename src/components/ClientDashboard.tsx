@@ -901,6 +901,15 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                                   </div>
                                 )}
 
+                                {/* Diagonal Sold Out Banner */}
+                                {restantes === 0 && (
+                                  <div className="absolute inset-0 bg-black/20 z-10 pointer-events-none flex items-center justify-center overflow-hidden">
+                                    <div className="bg-red-650 text-white font-black text-[10px] md:text-xs py-1.5 w-[150%] text-center uppercase tracking-widest rotate-[-25deg] shadow-lg border-y-2 border-white/20 select-none">
+                                      COTAS ESGOTADAS
+                                    </div>
+                                  </div>
+                                )}
+
                                 {/* Floating Price Tag ("Valor Cota") */}
                                 <div className="absolute top-2.5 left-2.5 bg-[#82C943] text-white font-black text-xs md:text-sm px-3.5 py-1.5 rounded-xl shadow-lg border border-white/10 flex items-center justify-center">
                                   R$ {camp.ticketPrice.toFixed(2)}
@@ -1050,6 +1059,15 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                                   </div>
                                 )}
 
+                                {/* Diagonal Sold Out Banner */}
+                                {restantes === 0 && (
+                                  <div className="absolute inset-0 bg-black/20 z-10 pointer-events-none flex items-center justify-center overflow-hidden">
+                                    <div className="bg-red-650 text-white font-black text-[10px] md:text-xs py-1.5 w-[150%] text-center uppercase tracking-widest rotate-[-25deg] shadow-lg border-y-2 border-white/20 select-none">
+                                      COTAS ESGOTADAS
+                                    </div>
+                                  </div>
+                                )}
+
                                 {/* Floating Winner Number Tag */}
                                 <div className="absolute top-2.5 left-2.5 bg-amber-500 text-white font-black text-xs md:text-sm px-3.5 py-1.5 rounded-xl shadow-lg border border-white/10 flex items-center justify-center gap-1.5">
                                   🏆 Nº {camp.winningNumber || "Sorteado"}
@@ -1123,16 +1141,29 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                 <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
                   {/* Campaign banner section */}
                   <div className="p-6 md:p-8 bg-slate-50 border-b border-slate-100 grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
-                    {selectedCampaign.imageUrl && (
-                      <div className="md:col-span-4 shrink-0 flex justify-center">
-                        <img
-                          src={selectedCampaign.imageUrl}
-                          alt={selectedCampaign.title}
-                          className="w-full max-w-[280px] md:max-w-full aspect-square rounded-2xl object-contain bg-white border border-slate-200 shadow-md p-2 hover:scale-[1.01] transition-transform duration-300"
-                          referrerPolicy="no-referrer"
-                        />
-                      </div>
-                    )}
+                    {selectedCampaign.imageUrl && (() => {
+                      const selectedCampaignTickets = allReservations[selectedCampaign.id] || [];
+                      const selectedCampaignRestantes = Math.max(0, selectedCampaign.totalTickets - selectedCampaignTickets.length);
+                      const selectedCampaignIsSoldOut = selectedCampaignRestantes === 0;
+
+                      return (
+                        <div className="md:col-span-4 shrink-0 flex justify-center relative overflow-hidden rounded-2xl">
+                          <img
+                            src={selectedCampaign.imageUrl}
+                            alt={selectedCampaign.title}
+                            className="w-full max-w-[280px] md:max-w-full aspect-square rounded-2xl object-contain bg-white border border-slate-200 shadow-md p-2 hover:scale-[1.01] transition-transform duration-300"
+                            referrerPolicy="no-referrer"
+                          />
+                          {selectedCampaignIsSoldOut && (
+                            <div className="absolute inset-0 bg-black/20 z-10 pointer-events-none flex items-center justify-center overflow-hidden m-2 rounded-2xl">
+                              <div className="bg-red-650 text-white font-black text-[10px] md:text-sm py-1.5 w-[150%] text-center uppercase tracking-widest rotate-[-25deg] shadow-lg border-y-2 border-white/20 select-none">
+                                COTAS ESGOTADAS
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                     <div className={selectedCampaign.imageUrl ? "md:col-span-8 space-y-2" : "md:col-span-12 space-y-2"}>
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="bg-indigo-600 text-white font-bold text-[10px] uppercase tracking-wider px-2.5 py-1 rounded-full">

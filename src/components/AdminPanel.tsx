@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, query, where, getDocs } from "firebase/firestore";
 import { db, handleFirestoreError, OperationType } from "../firebase";
-import { Campaign, Ticket, UserProfile } from "../types";
+import { Campaign, Ticket, UserProfile, TicketStatus } from "../types";
 import { validateCPF, formatCPF, formatPhone, validatePhone, getCampaignDrawProjection } from "../utils/validation";
 import RichTextEditor from "./RichTextEditor";
 import { getDiscountedPrice } from "./ClientDashboard";
@@ -117,6 +117,18 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
   const [editClientEmail, setEditClientEmail] = useState("");
   const [editClientRole, setEditClientRole] = useState<"client" | "admin" | "">("client");
   const [editClientError, setEditClientError] = useState("");
+
+  // Manual Ticket Allocation Flow (Lançar Cotas)
+  const [showIssueTicketsModal, setShowIssueTicketsModal] = useState(false);
+  const [issueSelectedClient, setIssueSelectedClient] = useState<UserProfile | null>(null);
+  const [issueCampaignId, setIssueCampaignId] = useState<string>("");
+  const [issueNumbersType, setIssueNumbersType] = useState<"specific" | "random">("specific");
+  const [issueSpecificNumbers, setIssueSpecificNumbers] = useState("");
+  const [issueRandomCount, setIssueRandomCount] = useState<number>(1);
+  const [issueStatus, setIssueStatus] = useState<TicketStatus>("confirmed");
+  const [issueError, setIssueError] = useState<string | null>(null);
+  const [issueSuccess, setIssueSuccess] = useState<string | null>(null);
+  const [issueLoading, setIssueLoading] = useState(false);
 
 
   // Drawing winners flows
@@ -541,6 +553,142 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
       alert("Cadastro do cliente atualizado com absoluto sucesso!");
     } catch (err: any) {
       handleFirestoreError(err, OperationType.WRITE, `users/${editingClient.uid}`);
+    }
+  };
+
+  const handleSaveIssueTickets = async () => {
+    if (!issueSelectedClient) {
+      setIssueError("Selecione um cliente.");
+      return;
+    }
+    if (!issueCampaignId) {
+      setIssueError("Selecione uma rifa/campanha.");
+      return;
+    }
+
+    const selectedCampaign = campaigns.find(c => c.id === issueCampaignId);
+    if (!selectedCampaign) {
+      setIssueError("Rifa/Campanha não encontrada.");
+      return;
+    }
+
+    setIssueLoading(true);
+    setIssueError(null);
+    setIssueSuccess(null);
+
+    try {
+      const totalTickets = selectedCampaign.totalTickets;
+      const padLength = totalTickets > 1000 ? 4 : totalTickets > 100 ? 3 : 2;
+      const existingTickets = allReservations[issueCampaignId] || [];
+      const takenNumbersSet = new Set(
+        existingTickets
+          .filter(t => t.status === "reserved" || t.status === "confirmed")
+          .map(t => t.number)
+      );
+
+      let finalNumbersToAssign: string[] = [];
+
+      if (issueNumbersType === "specific") {
+        if (!issueSpecificNumbers.trim()) {
+          setIssueError("Digite ao menos um número de bilhete.");
+          setIssueLoading(false);
+          return;
+        }
+
+        // Parse comma-separated numbers
+        const parts = issueSpecificNumbers.split(",").map(p => p.trim()).filter(Boolean);
+        const parsedNums: number[] = [];
+
+        for (const p of parts) {
+          const numVal = parseInt(p, 10);
+          if (isNaN(numVal) || numVal < 0 || numVal >= totalTickets) {
+            setIssueError(`O número "${p}" é inválido. Para esta rifa, os números devem ir de 0 a ${totalTickets - 1}.`);
+            setIssueLoading(false);
+            return;
+          }
+          parsedNums.push(numVal);
+        }
+
+        // Track and map with padding
+        for (const n of parsedNums) {
+          const padded = n.toString().padStart(padLength, "0");
+          if (takenNumbersSet.has(padded)) {
+            setIssueError(`O número "${padded}" já está reservado ou confirmado nesta campanha.`);
+            setIssueLoading(false);
+            return;
+          }
+          finalNumbersToAssign.push(padded);
+        }
+
+        // Avoid duplicates within input
+        finalNumbersToAssign = Array.from(new Set(finalNumbersToAssign));
+      } else {
+        // Random Allocation
+        const count = issueRandomCount;
+        if (count < 1) {
+          setIssueError("A quantidade de cotas deve ser de no mínimo 1.");
+          setIssueLoading(false);
+          return;
+        }
+
+        // Determine available pool
+        const availablePool: string[] = [];
+        for (let i = 0; i < totalTickets; i++) {
+          const padded = i.toString().padStart(padLength, "0");
+          if (!takenNumbersSet.has(padded)) {
+            availablePool.push(padded);
+          }
+        }
+
+        if (count > availablePool.length) {
+          setIssueError(`Saldo de cotas livres insuficiente. Há apenas ${availablePool.length} cotas disponíveis.`);
+          setIssueLoading(false);
+          return;
+        }
+
+        // Shuffle and pick
+        const shuffled = [...availablePool].sort(() => 0.5 - Math.random());
+        finalNumbersToAssign = shuffled.slice(0, count);
+      }
+
+      if (finalNumbersToAssign.length === 0) {
+        setIssueError("Nenhum número foi selecionado ou gerado.");
+        setIssueLoading(false);
+        return;
+      }
+
+      // Write documents to Firestore
+      await Promise.all(
+        finalNumbersToAssign.map((numStr) => {
+          const ticketRef = doc(db, "campaigns", issueCampaignId, "tickets", numStr);
+          const ticketData: Ticket = {
+            id: numStr,
+            number: numStr,
+            status: issueStatus,
+            buyerUid: issueSelectedClient.uid,
+            buyerName: issueSelectedClient.name,
+            buyerPhone: issueSelectedClient.phone,
+            buyerCpf: issueSelectedClient.cpf,
+            buyerEmail: issueSelectedClient.email,
+            reservedAt: new Date().toISOString(),
+            ...(issueStatus === "confirmed" ? { confirmedAt: new Date().toISOString() } : {})
+          };
+          return setDoc(ticketRef, ticketData);
+        })
+      );
+
+      setIssueSuccess(`Sucesso! Foram lançadas ${finalNumbersToAssign.length} cotas (${finalNumbersToAssign.join(", ")}) com status "${issueStatus === "confirmed" ? "Pago" : "Pendente"}" para "${issueSelectedClient.name}".`);
+      setIssueSpecificNumbers("");
+      setIssueRandomCount(1);
+    } catch (err: any) {
+      console.error("Error manual issuing tickets:", err);
+      try {
+        handleFirestoreError(err, OperationType.WRITE, `campaigns/${issueCampaignId}/tickets`);
+      } catch (mappedErr: any) {
+        setIssueError(`Erro ao gravar dados no Firebase: ${mappedErr?.message || String(mappedErr)}`);
+      }
+    } finally {
+      setIssueLoading(false);
     }
   };
 
@@ -2896,9 +3044,30 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
         {activeTab === "clients" && (
           /* SECTION 6: CLIENTS DETAIL BASE */
           <div className="space-y-6 animate-fadeIn">
-            <div>
-              <h2 className="font-extrabold text-slate-800 text-lg">Histórico de Clientes Cadastrados</h2>
-              <p className="text-xs text-slate-400">Consulte a base de participantes, contatos do WhatsApp e CPFs vinculados.</p>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <h2 className="font-extrabold text-slate-800 text-lg">Histórico de Clientes Cadastrados</h2>
+                <p className="text-xs text-slate-400">Consulte a base de participantes, contatos do WhatsApp e CPFs vinculados.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIssueSelectedClient(clients.length > 0 ? clients[0] : null);
+                  const activeCamps = campaigns.filter(c => c.status === "active");
+                  setIssueCampaignId(activeCamps.length > 0 ? activeCamps[0].id : "");
+                  setIssueNumbersType("specific");
+                  setIssueSpecificNumbers("");
+                  setIssueRandomCount(1);
+                  setIssueStatus("confirmed");
+                  setIssueError(null);
+                  setIssueSuccess(null);
+                  setShowIssueTicketsModal(true);
+                }}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs px-4 py-2.5 rounded-xl transition flex items-center gap-1.5 self-start sm:self-auto cursor-pointer shadow-xs"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Lançar Cotas Manuais</span>
+              </button>
             </div>
 
             <div className="relative max-w-md text-xs">
@@ -2946,6 +3115,25 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                       <td className="py-4 px-4 text-slate-400">{new Date(cl.createdAt).toLocaleDateString("pt-BR")}</td>
                       <td className="py-4 px-4 text-right">
                         <div className="flex justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIssueSelectedClient(cl);
+                              const activeCamps = campaigns.filter(c => c.status === "active");
+                              setIssueCampaignId(activeCamps.length > 0 ? activeCamps[0].id : "");
+                              setIssueNumbersType("specific");
+                              setIssueSpecificNumbers("");
+                              setIssueRandomCount(1);
+                              setIssueStatus("confirmed");
+                              setIssueError(null);
+                              setIssueSuccess(null);
+                              setShowIssueTicketsModal(true);
+                            }}
+                            className="p-1.5 text-emerald-600 hover:text-emerald-850 hover:bg-emerald-50 rounded-lg transition"
+                            title="Lançar Cotas (Manual)"
+                          >
+                            <Plus className="w-4 h-4" />
+                          </button>
                           <button
                             type="button"
                             onClick={() => handleOpenEditClient(cl)}
@@ -3052,6 +3240,25 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                         </svg>
                         <span>WhatsApp Quick Chat</span>
                       </a>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIssueSelectedClient(cl);
+                          const activeCamps = campaigns.filter(c => c.status === "active");
+                          setIssueCampaignId(activeCamps.length > 0 ? activeCamps[0].id : "");
+                          setIssueNumbersType("specific");
+                          setIssueSpecificNumbers("");
+                          setIssueRandomCount(1);
+                          setIssueStatus("confirmed");
+                          setIssueError(null);
+                          setIssueSuccess(null);
+                          setShowIssueTicketsModal(true);
+                        }}
+                        className="w-full text-center flex items-center justify-center gap-1.5 px-3 py-2 bg-indigo-650 hover:bg-indigo-750 text-white rounded-xl font-bold text-xs shadow-sm transition"
+                      >
+                        <Plus className="w-3.5 h-3.5 text-white" />
+                        <span>Lançar Cotas Manuais</span>
+                      </button>
                       <div className="grid grid-cols-3 gap-2">
                         <button
                           type="button"
@@ -3532,6 +3739,211 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                 className="bg-indigo-600 hover:bg-indigo-750 text-white font-extrabold px-6 py-2.5 rounded-xl transition shadow-xs cursor-pointer"
               >
                 Salvar Alterações
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Lançar Cotas Modal Overlay */}
+      {showIssueTicketsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-xs select-none animate-fadeIn">
+          <div className="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+            <div className="bg-emerald-700 px-6 py-5 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <Plus className="w-5 h-5 text-emerald-300" />
+                <div>
+                  <h3 className="font-extrabold text-base tracking-tight text-white">Lançar Cotas Manuais</h3>
+                  <span className="text-[10px] text-emerald-200 block -mt-0.5 font-bold uppercase tracking-wide">Lançamento administrativo direto</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowIssueTicketsModal(false)}
+                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 transition flex items-center justify-center text-white text-sm font-extrabold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="p-6 md:p-8 overflow-y-auto flex-1 space-y-4 text-xs md:text-sm animate-fadeIn">
+              {issueError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl font-medium text-[11px] flex items-center gap-2 animate-shake">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-rose-500" />
+                  <span>{issueError}</span>
+                </div>
+              )}
+
+              {issueSuccess && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl font-medium text-[11px] flex items-center gap-2">
+                  <Check className="w-4 h-4 shrink-0 text-emerald-600" />
+                  <span>{issueSuccess}</span>
+                </div>
+              )}
+
+              <div className="space-y-4">
+                {/* 1. Select Client */}
+                <div>
+                  <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Cliente Beneficiário</label>
+                  <select
+                    value={issueSelectedClient?.uid || ""}
+                    onChange={(e) => {
+                      const found = clients.find(cl => cl.uid === e.target.value);
+                      if (found) {
+                        setIssueSelectedClient(found);
+                        setIssueSuccess(null);
+                        setIssueError(null);
+                      }
+                    }}
+                    className="w-full px-3.5 py-3 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-sans text-xs bg-slate-50 font-bold text-slate-800"
+                  >
+                    <option value="" disabled>-- Selecione o Cliente --</option>
+                    {clients.slice().sort((a,b) => a.name.localeCompare(b.name)).map(cl => (
+                      <option key={cl.uid} value={cl.uid}>
+                        {cl.name} (CPF: {cl.cpf ? `${cl.cpf.slice(0,3)}.${cl.cpf.slice(3,6)}...` : "S/CPF"})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* 2. Select Campaign/Rifa */}
+                <div>
+                  <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Rifa / Campanha Alvo</label>
+                  <select
+                    value={issueCampaignId}
+                    onChange={(e) => {
+                      setIssueCampaignId(e.target.value);
+                      setIssueSuccess(null);
+                      setIssueError(null);
+                    }}
+                    className="w-full px-3.5 py-3 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-sans text-xs bg-slate-50 font-semibold text-slate-850"
+                  >
+                    <option value="" disabled>-- Selecione a Campanha --</option>
+                    {campaigns.map(camp => (
+                      <option key={camp.id} value={camp.id}>
+                        {camp.title} ({camp.status === "active" ? "Ativa" : "Pausada"} - {camp.totalTickets} números)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* 3. Choose Issue Type */}
+                <div>
+                  <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1.5">Método de Escolha das Cotas</label>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIssueNumbersType("specific");
+                        setIssueSuccess(null);
+                        setIssueError(null);
+                      }}
+                      className={`py-2 px-3 rounded-xl border font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
+                        issueNumbersType === "specific"
+                          ? "bg-slate-950 text-white border-slate-950"
+                          : "bg-white text-slate-600 border-slate-250 hover:bg-slate-50"
+                      }`}
+                    >
+                      Números Específicos
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIssueNumbersType("random");
+                        setIssueSuccess(null);
+                        setIssueError(null);
+                      }}
+                      className={`py-2 px-3 rounded-xl border font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
+                        issueNumbersType === "random"
+                          ? "bg-slate-950 text-white border-slate-950"
+                          : "bg-white text-slate-600 border-slate-250 hover:bg-slate-50"
+                      }`}
+                    >
+                      Aleatório (Automático)
+                    </button>
+                  </div>
+                </div>
+
+                {/* 4. Inputs according to selection */}
+                {issueNumbersType === "specific" ? (
+                  <div>
+                    <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Deseja lançar quais números?</label>
+                    <input
+                      type="text"
+                      value={issueSpecificNumbers}
+                      onChange={(e) => {
+                        setIssueSpecificNumbers(e.target.value);
+                        setIssueSuccess(null);
+                        setIssueError(null);
+                      }}
+                      className="w-full px-3.5 py-3 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-xs bg-slate-50 text-slate-800 font-medium"
+                      placeholder="Ex: 05, 12, 45, 99"
+                    />
+                    <span className="text-[10px] text-slate-400 block mt-1">Intercale os números desejados usando vírgulas. Todos serão formatados com o preencimento de zeros correspondente.</span>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Quantidade de Cotas Aleatórias</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={issueRandomCount}
+                      onChange={(e) => {
+                        setIssueRandomCount(Math.max(1, parseInt(e.target.value, 10) || 1));
+                        setIssueSuccess(null);
+                        setIssueError(null);
+                      }}
+                      className="w-full px-3.5 py-3 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-xs bg-slate-50 text-slate-800 font-medium"
+                    />
+                    <span className="text-[10px] text-slate-400 block mt-1">O sistema buscará as cotas atualmente livres e as reservará em instantes.</span>
+                  </div>
+                )}
+
+                {/* 5. Choose Ticket status */}
+                <div>
+                  <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Situação / Status do Lançamento</label>
+                  <select
+                    value={issueStatus}
+                    onChange={(e) => {
+                      setIssueStatus(e.target.value as TicketStatus);
+                      setIssueSuccess(null);
+                      setIssueError(null);
+                    }}
+                    className="w-full px-3.5 py-3 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-sans text-xs bg-slate-50 font-bold text-slate-800"
+                  >
+                    <option value="confirmed">Confirmado / Pago (Forte Recomendação)</option>
+                    <option value="reserved">Reservado / Pendente</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 border-t border-slate-150 p-4 flex gap-3 justify-end text-xs">
+              <button
+                type="button"
+                onClick={() => setShowIssueTicketsModal(false)}
+                className="px-4.5 py-2.5 border border-slate-250 hover:bg-slate-100 rounded-xl font-bold text-slate-600 transition"
+              >
+                Fechar / Voltar
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveIssueTickets}
+                disabled={issueLoading}
+                className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-350 text-white font-extrabold px-6 py-2.5 rounded-xl transition shadow-xs cursor-pointer flex items-center gap-1.5"
+              >
+                {issueLoading ? (
+                  <>
+                    <svg className="animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    <span>Lançando...</span>
+                  </>
+                ) : (
+                  <span>Salvar e Lançar</span>
+                )}
               </button>
             </div>
           </div>
