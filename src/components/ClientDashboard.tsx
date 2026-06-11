@@ -903,8 +903,8 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
 
                                 {/* Diagonal Sold Out Banner */}
                                 {restantes === 0 && (
-                                  <div className="absolute inset-0 bg-black/20 z-10 pointer-events-none flex items-center justify-center overflow-hidden">
-                                    <div className="bg-red-650 text-white font-black text-[10px] md:text-xs py-1.5 w-[150%] text-center uppercase tracking-widest rotate-[-25deg] shadow-lg border-y-2 border-white/20 select-none">
+                                  <div className="absolute inset-0 bg-black/30 z-10 pointer-events-none flex items-center justify-center overflow-hidden">
+                                    <div className="bg-gradient-to-r from-red-700 via-rose-500 to-red-700 text-white font-extrabold text-[11px] md:text-xs py-2 w-[160%] text-center uppercase tracking-widest rotate-[-25deg] shadow-[0_10px_20px_rgba(0,0,0,0.4)] border-y-2 border-yellow-400 animate-pulse select-none">
                                       COTAS ESGOTADAS
                                     </div>
                                   </div>
@@ -1061,8 +1061,8 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
 
                                 {/* Diagonal Sold Out Banner */}
                                 {restantes === 0 && (
-                                  <div className="absolute inset-0 bg-black/20 z-10 pointer-events-none flex items-center justify-center overflow-hidden">
-                                    <div className="bg-red-650 text-white font-black text-[10px] md:text-xs py-1.5 w-[150%] text-center uppercase tracking-widest rotate-[-25deg] shadow-lg border-y-2 border-white/20 select-none">
+                                  <div className="absolute inset-0 bg-black/30 z-10 pointer-events-none flex items-center justify-center overflow-hidden">
+                                    <div className="bg-gradient-to-r from-red-700 via-rose-500 to-red-700 text-white font-extrabold text-[11px] md:text-xs py-2 w-[160%] text-center uppercase tracking-widest rotate-[-25deg] shadow-[0_10px_20px_rgba(0,0,0,0.4)] border-y-2 border-yellow-400 animate-pulse select-none">
                                       COTAS ESGOTADAS
                                     </div>
                                   </div>
@@ -1155,8 +1155,8 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                             referrerPolicy="no-referrer"
                           />
                           {selectedCampaignIsSoldOut && (
-                            <div className="absolute inset-0 bg-black/20 z-10 pointer-events-none flex items-center justify-center overflow-hidden m-2 rounded-2xl">
-                              <div className="bg-red-650 text-white font-black text-[10px] md:text-sm py-1.5 w-[150%] text-center uppercase tracking-widest rotate-[-25deg] shadow-lg border-y-2 border-white/20 select-none">
+                            <div className="absolute inset-0 bg-black/30 z-10 pointer-events-none flex items-center justify-center overflow-hidden m-2 rounded-2xl">
+                              <div className="bg-gradient-to-r from-red-700 via-rose-500 to-red-700 text-white font-extrabold text-[11px] md:text-sm py-2 w-[160%] text-center uppercase tracking-widest rotate-[-25deg] shadow-[0_10px_20px_rgba(0,0,0,0.4)] border-y-2 border-yellow-400 animate-pulse select-none">
                                 COTAS ESGOTADAS
                               </div>
                             </div>
