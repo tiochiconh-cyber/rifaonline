@@ -7,7 +7,7 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword
 } from "firebase/auth";
-import { doc, getDoc, setDoc, collection, getDocs, query, where, limit } from "firebase/firestore";
+import { doc, getDoc, setDoc, collection, getDocs, query, where, limit, onSnapshot } from "firebase/firestore";
 import { auth, db, handleFirestoreError, OperationType } from "../firebase";
 import { validateCPF, formatCPF, formatPhone, validatePhone } from "../utils/validation";
 import { 
@@ -31,6 +31,7 @@ import {
   ChevronRight
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import AppLogo from "./AppLogo";
 
 interface LoginFormProps {
   onLoginSuccess: (user: User) => void;
@@ -72,6 +73,20 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
   const [slides, setSlides] = useState<any[]>([]);
   const [currentSlide, setCurrentSlide] = useState(0);
   const [slidesLoading, setSlidesLoading] = useState(true);
+
+  const [settings, setSettings] = useState<any>({
+    logoUrl: "",
+    logoBase64: ""
+  });
+
+  React.useEffect(() => {
+    const unsub = onSnapshot(doc(db, "settings", "global"), (d) => {
+      if (d.exists()) {
+        setSettings(d.data());
+      }
+    });
+    return () => unsub();
+  }, []);
 
   React.useEffect(() => {
     let active = true;
@@ -474,10 +489,11 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
         <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/20 rounded-full blur-3xl translate-x-12 -translate-y-12"></div>
         <div className="absolute bottom-0 left-0 w-80 h-80 bg-indigo-500/10 rounded-full blur-3xl -translate-x-1/4 translate-y-1/4"></div>
 
-        <div className="relative">
-          <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/10 hover:bg-white/15 rounded-full text-xs font-semibold tracking-wider text-indigo-300 border border-white/5 mb-3 transition">
-            <GraduationCap className="w-4 h-4 text-indigo-300" />
-            Minha Formatura
+        <div className="relative flex items-center gap-3.5 mb-2">
+          <AppLogo settings={settings as any} size="lg" className="ring-2 ring-yellow-450 shrink-0" />
+          <div>
+            <h2 className="text-xl font-black tracking-tight text-amber-400 leading-snug font-sans">Rifa do Chiquinho</h2>
+            <p className="text-[10px] text-indigo-300 uppercase font-extrabold tracking-widest leading-none">Campanhas Online</p>
           </div>
         </div>
 

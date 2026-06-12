@@ -5,6 +5,7 @@ import { Campaign, Ticket, UserProfile, TicketStatus } from "../types";
 import { validateCPF, formatCPF, formatPhone, validatePhone, getCampaignDrawProjection } from "../utils/validation";
 import RichTextEditor from "./RichTextEditor";
 import { getDiscountedPrice } from "./ClientDashboard";
+import AppLogo from "./AppLogo";
 import DashboardOverview from "./DashboardOverview";
 import PricingDashboard from "./PricingDashboard";
 import {
@@ -36,6 +37,42 @@ import {
   Percent
 } from "lucide-react";
 
+export function getCampaignRevenueStats(campaign: Campaign, tickets: Ticket[]) {
+  const confirmedTickets = tickets.filter(t => t.status === "confirmed");
+  const reservedTickets = tickets.filter(t => t.status === "reserved");
+
+  // Group confirmed
+  const confirmedGroups: { [key: string]: number } = {};
+  confirmedTickets.forEach((t) => {
+    const key = t.buyerCpf || t.buyerPhone || t.buyerEmail || t.buyerUid || "unknown";
+    confirmedGroups[key] = (confirmedGroups[key] || 0) + 1;
+  });
+
+  let confirmedRevenue = 0;
+  Object.entries(confirmedGroups).forEach(([_, count]) => {
+    const { totalPrice } = getDiscountedPrice(count, campaign.ticketPrice, campaign.progressiveDiscounts || []);
+    confirmedRevenue += totalPrice;
+  });
+
+  // Group reserved
+  const reservedGroups: { [key: string]: number } = {};
+  reservedTickets.forEach((t) => {
+    const key = t.buyerCpf || t.buyerPhone || t.buyerEmail || t.buyerUid || "unknown";
+    reservedGroups[key] = (reservedGroups[key] || 0) + 1;
+  });
+
+  let reservedRevenue = 0;
+  Object.entries(reservedGroups).forEach(([_, count]) => {
+    const { totalPrice } = getDiscountedPrice(count, campaign.ticketPrice, campaign.progressiveDiscounts || []);
+    reservedRevenue += totalPrice;
+  });
+
+  const expenses = campaign.prizeExpenses || 0;
+  const realProfit = confirmedRevenue - expenses;
+
+  return { confirmedRevenue, reservedRevenue, expenses, realProfit };
+}
+
 interface AdminPanelProps {
   onLogout: () => void;
 }
@@ -58,7 +95,9 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
     supportContact: "51999999999",
     supportEmail: "contato@rifadochiquinho.com.br",
     rulesText: "Os bilhetes reservados têm prazo de validade. Caso a transferência via PIX não seja comprovada, a cota retornará à disponibilidade geral automaticamente.",
-    autoWhatsAppRedirect: true
+    autoWhatsAppRedirect: true,
+    logoUrl: "",
+    logoBase64: ""
   });
 
   const [groupReservationsByBuyer, setGroupReservationsByBuyer] = useState(false);
@@ -75,6 +114,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
   const [newCampaignDesc, setNewCampaignDesc] = useState("");
   const [newCampaignPrice, setNewCampaignPrice] = useState(10.0);
   const [newCampaignTotal, setNewCampaignTotal] = useState(100);
+  const [newCampaignExpenses, setNewCampaignExpenses] = useState<number>(0);
   const [newCampaignDrawDate, setNewCampaignDrawDate] = useState("");
   const [newCampaignDrawId, setNewCampaignDrawId] = useState("");
   const [newCampaignImage, setNewCampaignImage] = useState("");
@@ -91,6 +131,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
   const [editCampaignDesc, setEditCampaignDesc] = useState("");
   const [editCampaignPrice, setEditCampaignPrice] = useState(10.0);
   const [editCampaignTotal, setEditCampaignTotal] = useState(100);
+  const [editCampaignExpenses, setEditCampaignExpenses] = useState<number>(0);
   const [editCampaignDrawDate, setEditCampaignDrawDate] = useState("");
   const [editCampaignDrawId, setEditCampaignDrawId] = useState("");
   const [editCampaignImage, setEditCampaignImage] = useState("");
@@ -1220,6 +1261,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
     setEditCampaignDesc(camp.description);
     setEditCampaignPrice(camp.ticketPrice);
     setEditCampaignTotal(camp.totalTickets);
+    setEditCampaignExpenses(camp.prizeExpenses || 0);
     setEditCampaignDrawDate(camp.drawDate || "");
     setEditCampaignDrawId(camp.federalLotteryDrawId || "");
     setEditCampaignImage(camp.imageUrl || "");
@@ -1242,6 +1284,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
       description: editCampaignDesc,
       ticketPrice: Number(editCampaignPrice),
       totalTickets: Number(editCampaignTotal),
+      prizeExpenses: Number(editCampaignExpenses),
     };
 
     if (editCampaignImage.trim()) {
@@ -1288,6 +1331,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
       ticketPrice: Number(newCampaignPrice),
       totalTickets: Number(newCampaignTotal),
       status: "active",
+      prizeExpenses: Number(newCampaignExpenses || 0),
       createdAt: new Date().toISOString()
     };
 
@@ -1312,6 +1356,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
       setNewCampaignDesc("");
       setNewCampaignPrice(10);
       setNewCampaignTotal(100);
+      setNewCampaignExpenses(0);
       setNewCampaignDrawDate("");
       setNewCampaignDrawId("");
       setNewCampaignImage("");
@@ -1468,6 +1513,21 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
     }
   };
 
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 1.5 * 1024 * 1024) {
+        alert("A imagem selecionada é muito grande! Escolha uma imagem de até 1.5MB.");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setSettings(prev => ({ ...prev, logoBase64: reader.result as string }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   // Global settings submit
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1601,13 +1661,11 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
     <div className="space-y-6">
       {/* Admin header */}
       <header className="bg-slate-900 rounded-3xl p-6 md:p-8 text-white shadow-lg border border-slate-800 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-        <div className="space-y-1.5 flex items-center gap-3">
-          <div className="p-2.5 bg-indigo-500/10 text-indigo-400 border border-indigo-500/25 rounded-2xl">
-            <Shield className="w-6 h-6" />
-          </div>
+        <div className="space-y-1.5 flex items-center gap-4">
+          <AppLogo settings={settings as any} size="md" className="ring-2 ring-yellow-400" />
           <div>
-            <h1 className="text-xl font-extrabold tracking-tight">Painel Administrativo da Formatura</h1>
-            <p className="text-slate-400 text-xs">Arrecadação de Fundos & Gestão de Bilhetes</p>
+            <h1 className="text-xl font-extrabold tracking-tight">Rifa do Chiquinho</h1>
+            <p className="text-slate-400 text-xs">Painel Coletor Administrativo de Campanhas</p>
           </div>
         </div>
         <button
@@ -2351,14 +2409,14 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-50 border p-5 rounded-2xl">
               <div className="space-y-1.5">
-                <label className="block font-bold text-slate-700">Chave PIX Oficial da Formatura</label>
+                <label className="block font-bold text-slate-700">Chave PIX Oficial do Chiquinho</label>
                 <input
                   type="text"
                   required
                   value={settings.pixKey}
                   onChange={(e) => setSettings({ ...settings, pixKey: e.target.value })}
                   className="w-full bg-white p-2.5 border border-slate-300 rounded-lg text-xs"
-                  placeholder="Ex: formaturapix@suaformatura.com ou celular ou CNPJ"
+                  placeholder="Ex: pix@rifadochiquinho.com.br ou celular ou CPF/CNPJ"
                 />
                 <span className="text-[10px] text-slate-400 block">Os compradores copiarão exatamente esta chave ao salvar as reservas.</span>
               </div>
@@ -2371,7 +2429,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                   value={settings.receiverName}
                   onChange={(e) => setSettings({ ...settings, receiverName: e.target.value })}
                   className="w-full bg-white p-2.5 border border-slate-300 rounded-lg text-xs"
-                  placeholder="Ex: Comissão de Formatura Estácio de Sá 2026"
+                  placeholder="Ex: Francisco Chiquinho"
                 />
               </div>
 
@@ -2444,6 +2502,41 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                 </div>
               </div>
 
+              <div className="space-y-1.5 md:col-span-2 border-t border-slate-200 pt-4 mt-2">
+                <label className="block font-extrabold text-slate-800 text-xs uppercase tracking-wider">Logotipo da Plataforma (Logo) 🎨</label>
+                <div className="bg-white border border-slate-200 p-4 rounded-xl flex flex-col sm:flex-row items-center gap-5 shadow-inner">
+                  <div className="shrink-0 flex flex-col items-center gap-1 bg-slate-50 border border-slate-100 p-2.5 rounded-2xl">
+                    <span className="text-[9px] uppercase tracking-wider font-extrabold text-slate-400">Visualização</span>
+                    <AppLogo settings={settings as any} size="md" />
+                  </div>
+                  <div className="flex-1 space-y-2 w-full text-left">
+                    <p className="text-[11px] text-slate-500 leading-relaxed font-semibold">
+                      Adicione o logotipo personalizado para as telas do cliente e de login. Caso não envie nenhuma imagem, o sistema exibirá o logotipo oficial vetorizado do <strong>Rifa do Chiquinho</strong>!
+                    </p>
+                    <div className="flex flex-wrap gap-2 items-center">
+                      <label className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-[10.5px] uppercase tracking-wider rounded-xl transition cursor-pointer shadow-sm">
+                        <span>Escolher Logotipo (.png, .jpg, .webp)</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleLogoUpload}
+                          className="hidden"
+                        />
+                      </label>
+                      {(settings.logoBase64 || settings.logoUrl) && (
+                        <button
+                          type="button"
+                          onClick={() => setSettings({ ...settings, logoBase64: "", logoUrl: "" })}
+                          className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-extrabold text-[10.5px] uppercase tracking-wider rounded-xl transition cursor-pointer"
+                        >
+                          Usar Padrão Vetorizado 🎟️
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div className="space-y-1.5 md:col-span-2">
                 <label className="block font-bold text-slate-700">Instruções Legais de Compra e Regulamento da Rifa</label>
                 <RichTextEditor
@@ -2512,6 +2605,20 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                     value={newCampaignPrice}
                     onChange={(e) => setNewCampaignPrice(Number(e.target.value))}
                     className="w-full bg-white p-2.5 border border-slate-300 rounded-lg text-xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-600 mb-1">Custo com Prêmios / Despesas (R$)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    required
+                    value={newCampaignExpenses}
+                    onChange={(e) => setNewCampaignExpenses(Number(e.target.value))}
+                    className="w-full bg-white p-2.5 border border-slate-300 rounded-lg text-xs"
+                    placeholder="Ex: 500.00 (Custos com o prêmio para cálculo de lucro real)"
                   />
                 </div>
 
@@ -2691,6 +2798,39 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                           className="w-full bg-white p-2.5 border border-slate-300 rounded-lg text-xs mt-1"
                           placeholder="https://exemplo.com/sua_foto_quadrada.jpg"
                         />
+                        {/* Preset templates for beautiful dashboard aesthetics */}
+                        <div className="flex flex-wrap gap-1.5 mt-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setNewCampaignImage("https://images.unsplash.com/photo-1523050854058-8df90110c9f1?q=80&w=800&auto=format&fit=crop");
+                              setImageError(null);
+                            }}
+                            className="bg-indigo-50 hover:bg-indigo-100 text-indigo-750 text-[10px] font-bold px-2.5 py-1 rounded-lg cursor-pointer transition"
+                          >
+                            🎓 Cap & Diploma
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setNewCampaignImage("https://images.unsplash.com/photo-1541339907198-e08756dedf3f?q=80&w=800&auto=format&fit=crop");
+                              setImageError(null);
+                            }}
+                            className="bg-indigo-50 hover:bg-indigo-100 text-indigo-750 text-[10px] font-bold px-2.5 py-1 rounded-lg cursor-pointer transition"
+                          >
+                            🎉 Celebração Chapéus
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setNewCampaignImage("https://images.unsplash.com/photo-1525921429573-05685ac9a6cf?q=80&w=800&auto=format&fit=crop");
+                              setImageError(null);
+                            }}
+                            className="bg-indigo-50 hover:bg-indigo-100 text-indigo-750 text-[10px] font-bold px-2.5 py-1 rounded-lg cursor-pointer transition"
+                          >
+                            🥳 Entrega de Diploma
+                          </button>
+                        </div>
                       </div>
 
                       {/* Display live preview aspect 1:1 */}
@@ -2776,6 +2916,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                   <tr className="bg-slate-50 border-b border-slate-100 text-slate-500 font-bold uppercase tracking-wider">
                     <th className="py-3 px-4">Campanha</th>
                     <th className="py-3 px-4">Capacidade / Preço</th>
+                    <th className="py-3 px-4">Balanço / Lucro Real</th>
                     <th className="py-3 px-4">Status</th>
                     <th className="py-3 px-4">Sorteio Federal</th>
                     <th className="py-3 px-4 text-right">Ações</th>
@@ -2785,6 +2926,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                   {filteredCampaigns.map((ca) => {
                     const tRegistered = allReservations[ca.id] || [];
                     const tConfirmed = tRegistered.filter(r => r.status === "confirmed").length;
+                    const revStats = getCampaignRevenueStats(ca, tRegistered);
 
                     return (
                       <tr key={ca.id} className="border-b border-slate-100 hover:bg-slate-50/50">
@@ -2806,6 +2948,24 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                           <span className="text-[10px] text-slate-400 font-medium block">
                             Confirmados: {tConfirmed} | Reservados: {tRegistered.length - tConfirmed}
                           </span>
+                        </td>
+                        <td className="py-4 px-4 text-slate-600">
+                          <div className="space-y-0.5">
+                            <div className="flex justify-between max-w-[150px] gap-1 font-medium text-[10px]">
+                              <span className="text-slate-400">Pagas:</span>
+                              <span className="font-bold text-slate-700">R$ {revStats.confirmedRevenue.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                            </div>
+                            <div className="flex justify-between max-w-[150px] gap-1 font-medium text-[10px]">
+                              <span className="text-slate-400">Custo Prêmios:</span>
+                              <span className="text-rose-600 font-semibold">R$ {revStats.expenses.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                            </div>
+                            <div className="flex justify-between max-w-[150px] gap-1 border-t border-dashed border-slate-200 pt-0.5 mt-0.5">
+                              <span className="text-slate-500 font-bold">Lucro Real:</span>
+                              <span className={`font-extrabold ${revStats.realProfit >= 0 ? "text-emerald-600" : "text-rose-700"}`}>
+                                R$ {revStats.realProfit.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                              </span>
+                            </div>
+                          </div>
                         </td>
                         <td className="py-4 px-4">
                           <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
@@ -2867,13 +3027,13 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                                   onClick={() => handleStartEditCampaign(ca)}
                                   className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-55 rounded transition cursor-pointer"
                                   title="Editar Campanha"
-                                >
-                                  <Edit className="w-4 h-4" />
-                                </button>
-                              </>
-                            )}
+                                  >
+                                    <Edit className="w-4 h-4" />
+                                  </button>
+                                </>
+                              )}
 
-                            <button
+                              <button
                               onClick={() => handleDeleteCampaign(ca.id)}
                               className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition cursor-pointer"
                               title="Deletar campanha"
@@ -2894,6 +3054,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
               {filteredCampaigns.map((ca) => {
                 const tRegistered = allReservations[ca.id] || [];
                 const tConfirmed = tRegistered.filter(r => r.status === "confirmed").length;
+                const revStats = getCampaignRevenueStats(ca, tRegistered);
                 return (
                   <div key={ca.id} className="bg-slate-50 border border-slate-200/65 rounded-2xl p-4 space-y-3.5 shadow-sm">
                     <div className="flex gap-3 justify-between items-start">
@@ -2928,6 +3089,24 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                       <div>
                         <span className="text-slate-400 text-[10px] block font-semibold uppercase tracking-wider">Reservas</span>
                         <strong>{tConfirmed} pagas</strong> ({tRegistered.length - tConfirmed} pend.)
+                      </div>
+                    </div>
+
+                    {/* Financial details row in mobile cards */}
+                    <div className="bg-white border border-slate-200/60 rounded-xl p-3 text-[10.5px] space-y-1 shadow-inner">
+                      <div className="flex justify-between">
+                        <span className="text-slate-400 font-semibold uppercase tracking-wider text-[8px]">Pagas (Acumulado)</span>
+                        <span className="font-bold text-slate-700">R$ {revStats.confirmedRevenue.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400 font-semibold uppercase tracking-wider text-[8px]">Custo do Prêmio</span>
+                        <span className="font-semibold text-rose-600">R$ {revStats.expenses.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                      </div>
+                      <div className="flex justify-between border-t border-slate-150 pt-1.5 mt-1">
+                        <span className="text-slate-700 font-extrabold uppercase tracking-wider text-[9px]">Lucro Real Líquido</span>
+                        <span className={`font-black ${revStats.realProfit >= 0 ? "text-emerald-600" : "text-rose-700"}`}>
+                          R$ {revStats.realProfit.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                        </span>
                       </div>
                     </div>
 
@@ -3175,6 +3354,19 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                         className="w-full bg-white p-2.5 border border-slate-300 rounded-lg text-xs"
                       />
                     </div>
+                    <div>
+                      <label className="block font-semibold text-slate-600 mb-1">Custo com Prêmios / Despesas (R$)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        required
+                        value={editCampaignExpenses}
+                        onChange={(e) => setEditCampaignExpenses(Number(e.target.value))}
+                        className="w-full bg-white p-2.5 border border-slate-300 rounded-lg text-xs"
+                        placeholder="Ex: 500.00 (Custos com o prêmio para cálculo de lucro real)"
+                      />
+                    </div>
 
                     <div className="md:col-span-2 space-y-1.5 font-sans">
                       <label className="block font-semibold text-slate-600">Descrição / Prêmios</label>
@@ -3352,6 +3544,39 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                               className="w-full bg-white p-2.5 border border-slate-300 rounded-lg text-xs mt-1"
                               placeholder="https://exemplo.com/sua_foto_quadrada.jpg"
                             />
+                            {/* Preset templates for beautiful dashboard aesthetics */}
+                            <div className="flex flex-wrap gap-1.5 mt-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditCampaignImage("https://images.unsplash.com/photo-1523050854058-8df90110c9f1?q=80&w=800&auto=format&fit=crop");
+                                  setEditImageError(null);
+                                }}
+                                className="bg-indigo-50 hover:bg-indigo-100 text-indigo-755 text-[10px] font-bold px-2.5 py-1 rounded-lg cursor-pointer transition"
+                              >
+                                🎓 Cap & Diploma
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditCampaignImage("https://images.unsplash.com/photo-1541339907198-e08756dedf3f?q=80&w=800&auto=format&fit=crop");
+                                  setEditImageError(null);
+                                }}
+                                className="bg-indigo-50 hover:bg-indigo-100 text-indigo-755 text-[10px] font-bold px-2.5 py-1 rounded-lg cursor-pointer transition"
+                              >
+                                🎉 Celebração Chapéus
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditCampaignImage("https://images.unsplash.com/photo-1525921429573-05685ac9a6cf?q=80&w=800&auto=format&fit=crop");
+                                  setEditImageError(null);
+                                }}
+                                className="bg-indigo-50 hover:bg-indigo-100 text-indigo-755 text-[10px] font-bold px-2.5 py-1 rounded-lg cursor-pointer transition"
+                              >
+                                🥳 Entrega de Diploma
+                              </button>
+                            </div>
                           </div>
 
                           {/* Display live preview aspect 1:1 */}

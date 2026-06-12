@@ -5,8 +5,9 @@ import { Campaign, Ticket, UserProfile } from "../types";
 import { isLotterySalesSuspended, getCampaignDrawProjection } from "../utils/validation";
 import RankingView from "./RankingView";
 import CelebrationConfetti from "./CelebrationConfetti";
-import { Ticket as TicketIcon, Search, Landmark, Copy, Check, Calendar, Trophy, AlertCircle, ShoppingBag, User as UserIcon, LogOut, ArrowRight, HelpCircle, Sparkles, ShieldCheck, Download, Printer } from "lucide-react";
+import { Ticket as TicketIcon, Search, Landmark, Copy, Check, Calendar, Trophy, AlertCircle, ShoppingBag, User as UserIcon, LogOut, ArrowRight, HelpCircle, Sparkles, ShieldCheck, Download, Printer, ArrowLeft, Clock, Smartphone, X } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import AppLogo from "./AppLogo";
 
 export function getDiscountedPrice(
   quantity: number,
@@ -447,7 +448,7 @@ export default function ClientDashboard({ userProfile, onLogout }: ClientDashboa
     }
   };
 
-  // Load all campaigns
+  // Load all campaigns (optimized with stable empty dependencies snapshot listener)
   useEffect(() => {
     const q = query(collection(db, "campaigns"));
     const unsubscribe = onSnapshot(
@@ -459,12 +460,6 @@ export default function ClientDashboard({ userProfile, onLogout }: ClientDashboa
         });
         setCampaigns(campaignList);
         setLoadingCampaigns(false);
-
-        // Auto-select first active campaign if none selected
-        if (campaignList.length > 0 && !selectedCampaign) {
-          const active = campaignList.find(c => c.status === "active") || campaignList[0];
-          setSelectedCampaign(active);
-        }
       },
       (error) => {
         console.error("Error watching campaigns:", error);
@@ -473,17 +468,33 @@ export default function ClientDashboard({ userProfile, onLogout }: ClientDashboa
     );
 
     return () => unsubscribe();
-  }, [selectedCampaign]);
+  }, []);
 
-  // Load tickets for selected campaign
+  // Separate effect to handle selectedCampaign auto-selection and dynamic updates
   useEffect(() => {
-    if (!selectedCampaign) {
+    if (campaigns.length > 0) {
+      setSelectedCampaign((prev) => {
+        if (!prev) {
+          const active = campaigns.find(c => c.status === "active") || campaigns[0];
+          return active;
+        }
+        // Keep selected campaign details in sync with the live list database updates
+        const updated = campaigns.find(c => c.id === prev.id);
+        return updated || prev;
+      });
+    }
+  }, [campaigns]);
+
+  // Load tickets for selected campaign (only updates when actual selectedCampaign identity changes)
+  const selectedCampaignId = selectedCampaign?.id || "";
+  useEffect(() => {
+    if (!selectedCampaignId) {
       setTickets({});
       return;
     }
 
     setLoadingTickets(true);
-    const ticketsCollectionRef = collection(db, "campaigns", selectedCampaign.id, "tickets");
+    const ticketsCollectionRef = collection(db, "campaigns", selectedCampaignId, "tickets");
 
     const unsubscribe = onSnapshot(
       ticketsCollectionRef,
@@ -502,14 +513,18 @@ export default function ClientDashboard({ userProfile, onLogout }: ClientDashboa
     );
 
     return () => unsubscribe();
-  }, [selectedCampaign]);
+  }, [selectedCampaignId]);
 
-  // Listen to active user's tickets across all registered campaigns to assemble "Minhas Compras" tab
+  // Serialized campaign IDs string to stabilize query re-registrations
+  const campaignIds = campaigns.map((c) => c.id).join(",");
+
+  // Listen to active user's tickets across all registered campaigns (optimized via campaignIds dependency)
   useEffect(() => {
-    if (!userProfile.uid || campaigns.length === 0) return;
+    if (!userProfile.uid || !campaignIds) return;
 
-    const unsubscribes = campaigns.map((campaign) => {
-      const ticketsRef = collection(db, "campaigns", campaign.id, "tickets");
+    const idsList = campaignIds.split(",").filter(Boolean);
+    const unsubscribes = idsList.map((id) => {
+      const ticketsRef = collection(db, "campaigns", id, "tickets");
       const userTicketsQuery = query(ticketsRef, where("buyerUid", "==", userProfile.uid));
 
       return onSnapshot(userTicketsQuery, (snapshot) => {
@@ -519,7 +534,7 @@ export default function ClientDashboard({ userProfile, onLogout }: ClientDashboa
         });
         setMyTickets((prev) => ({
           ...prev,
-          [campaign.id]: userTicketList,
+          [id]: userTicketList,
         }));
       });
     });
@@ -527,21 +542,22 @@ export default function ClientDashboard({ userProfile, onLogout }: ClientDashboa
     return () => {
       unsubscribes.forEach((unsub) => unsub());
     };
-  }, [userProfile.uid, campaigns]);
+  }, [userProfile.uid, campaignIds]);
 
-  // Listen to tickets across all campaigns for real-time buyer rankings
+  // Listen to tickets across all campaigns for real-time buyer rankings (optimized via campaignIds dependency)
   useEffect(() => {
-    if (campaigns.length === 0) {
+    if (!campaignIds) {
       setLoadingAllReservations(false);
       return;
     }
 
     setLoadingAllReservations(true);
+    const idsList = campaignIds.split(",").filter(Boolean);
+    const totalCampaigns = idsList.length;
     let loadedCount = 0;
-    const totalCampaigns = campaigns.length;
 
-    const unsubscribes = campaigns.map((camp) => {
-      const ref = collection(db, "campaigns", camp.id, "tickets");
+    const unsubscribes = idsList.map((id) => {
+      const ref = collection(db, "campaigns", id, "tickets");
       return onSnapshot(
         ref,
         (snapshot) => {
@@ -552,7 +568,7 @@ export default function ClientDashboard({ userProfile, onLogout }: ClientDashboa
 
           setAllReservations((prev) => ({
             ...prev,
-            [camp.id]: ticketList,
+            [id]: ticketList,
           }));
 
           loadedCount++;
@@ -561,7 +577,7 @@ export default function ClientDashboard({ userProfile, onLogout }: ClientDashboa
           }
         },
         (error) => {
-          console.error(`Error loading ranking tickets for ${camp.id}:`, error);
+          console.error(`Error loading ranking tickets for ${id}:`, error);
           loadedCount++;
           if (loadedCount >= totalCampaigns) {
             setLoadingAllReservations(false);
@@ -571,7 +587,7 @@ export default function ClientDashboard({ userProfile, onLogout }: ClientDashboa
     });
 
     return () => unsubscribes.forEach((unsub) => unsub());
-  }, [campaigns]);
+  }, [campaignIds]);
 
   // Dynamic settings state
   const [settings, setSettings] = useState({
@@ -594,6 +610,36 @@ export default function ClientDashboard({ userProfile, onLogout }: ClientDashboa
     });
     return () => unsub();
   }, []);
+
+  // Exclusive checkout / payment overlay for selected reservation on mobile
+  const [exclusiveMobilePayment, setExclusiveMobilePayment] = useState<{ campaign: Campaign; tickets: Ticket[] } | null>(null);
+  const [paymentCountdown, setPaymentCountdown] = useState<string>("02:00:00");
+
+  useEffect(() => {
+    if (!exclusiveMobilePayment) return;
+    const list = exclusiveMobilePayment.tickets;
+    const reservedAtTime = list[0]?.reservedAt ? new Date(list[0].reservedAt).getTime() : Date.now();
+    const expHours = settings.expirationHours || 24;
+    const expirationTime = reservedAtTime + expHours * 60 * 60 * 1000;
+
+    const updateTimer = () => {
+      const now = Date.now();
+      const diff = expirationTime - now;
+      if (diff <= 0) {
+        setPaymentCountdown("Tempo Esgotado ❌");
+        return;
+      }
+      const hrs = Math.floor(diff / (1000 * 60 * 60));
+      const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const secs = Math.floor((diff % (1000 * 60)) / 1000);
+      const pad = (n: number) => String(n).padStart(2, "0");
+      setPaymentCountdown(`${pad(hrs)}:${pad(mins)}:${pad(secs)}`);
+    };
+
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
+    return () => clearInterval(interval);
+  }, [exclusiveMobilePayment, settings.expirationHours]);
 
   const handleCopyPix = () => {
     navigator.clipboard.writeText(settings.pixKey);
@@ -729,6 +775,20 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
 
       const reservedCopy = [...selectedNumbers];
       setSuccessReserved(reservedCopy);
+
+      const newlyReservedTickets: Ticket[] = reservedCopy.map(num => ({
+        id: num,
+        number: num,
+        status: "reserved",
+        buyerUid: userProfile.uid,
+        buyerName: userProfile.name,
+        buyerPhone: userProfile.phone || "",
+        buyerCpf: userProfile.cpf,
+        buyerEmail: userProfile.email,
+        reservedAt: new Date().toISOString()
+      }));
+      setExclusiveMobilePayment({ campaign: selectedCampaign, tickets: newlyReservedTickets });
+
       setSelectedNumbers([]);
       addToast(`Reserva realizada com sucesso! (${reservedCount} cota${reservedCount > 1 ? "s" : ""} reservada${reservedCount > 1 ? "s" : ""})`, "success");
       
@@ -833,34 +893,35 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
   const filteredIndices = React.useMemo(() => {
     if (!selectedCampaign) return [];
     const total = selectedCampaign.totalTickets;
-    let indices = Array.from({ length: total }, (_, i) => i);
+    const padLength = total > 1000 ? 4 : total > 100 ? 3 : 2;
 
-    // Filter by tickets status gridFilter criteria
-    if (gridFilter === "available") {
-      indices = indices.filter((idx) => {
-        const numStr = padNumber(idx, total);
-        return !tickets[numStr];
-      });
-    } else if (gridFilter === "mine") {
-      indices = indices.filter((idx) => {
-        const numStr = padNumber(idx, total);
-        return tickets[numStr]?.buyerUid === userProfile.uid;
-      });
-    } else if (gridFilter === "selected") {
-      indices = indices.filter((idx) => {
-        const numStr = padNumber(idx, total);
-        return selectedNumbers.includes(numStr);
-      });
+    const indices: number[] = [];
+    const cleanSearch = ticketSearch.trim();
+    const hasSearch = !!cleanSearch;
+    const hasSelectedNumbers = selectedNumbers.length > 0;
+
+    for (let idx = 0; idx < total; idx++) {
+      const numStr = idx.toString().padStart(padLength, "0");
+
+      // Filter by status gridFilter criteria
+      if (gridFilter === "available") {
+        if (tickets[numStr]) continue;
+      } else if (gridFilter === "mine") {
+        if (tickets[numStr]?.buyerUid !== userProfile.uid) continue;
+      } else if (gridFilter === "selected") {
+        if (!hasSelectedNumbers || !selectedNumbers.includes(numStr)) continue;
+      }
+
+      // Filter by search criteria
+      if (hasSearch && !numStr.includes(cleanSearch)) {
+        continue;
+      }
+
+      indices.push(idx);
     }
 
-    if (!ticketSearch.trim()) return indices;
-    const cleanSearch = ticketSearch.trim();
-    const padLength = total > 1050 ? 4 : total > 100 ? 3 : 2;
-    return indices.filter((idx) => {
-      const numStr = idx.toString().padStart(padLength, "0");
-      return numStr.includes(cleanSearch);
-    });
-  }, [selectedCampaign, ticketSearch, gridFilter, tickets, selectedNumbers]);
+    return indices;
+  }, [selectedCampaign, ticketSearch, gridFilter, tickets, selectedNumbers, userProfile.uid]);
 
   const paginatedIndices = React.useMemo(() => {
     const start = ticketPage * TICKETS_PER_PAGE;
@@ -874,13 +935,208 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
 
   return (
     <div className="space-y-6 md:space-y-8 pb-16 pt-safe">
+      {/* EXCLUSIVE MOBILE PAYMENT OVERLAY */}
+      {exclusiveMobilePayment && (() => {
+        const { campaign: camp, tickets: list } = exclusiveMobilePayment;
+        const calc = getDiscountedPrice(list.length, camp.ticketPrice, camp.progressiveDiscounts);
+        return (
+          <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[99999] overflow-y-auto font-sans flex items-center justify-center p-2 sm:p-4 select-text animate-fadeIn">
+            {/* Modal Dialog container mimicking the screenshot */}
+            <div className="relative w-full max-w-4xl bg-white border border-slate-200 text-slate-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh] sm:max-h-[90vh] animate-fadeIn">
+              
+              {/* Header block with title and total price */}
+              <div className="bg-slate-50 border-b border-slate-200/80 p-4 sm:p-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0 relative">
+                <button
+                  onClick={() => {
+                    setExclusiveMobilePayment(null);
+                    setSuccessReserved(null);
+                  }}
+                  className="absolute top-4 sm:top-5 right-4 sm:right-5 p-1 rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-800 transition-colors cursor-pointer"
+                  title="Fechar"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+
+                <div className="flex items-center gap-2 pr-8 select-none">
+                  <Landmark className="w-5 h-5 text-indigo-600 animate-bounce" />
+                  <span className="text-sm font-extrabold text-slate-800 uppercase tracking-wider">🏦 DADOS DE PAGAMENTO VIA PIX</span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3 sm:gap-4 select-text pr-8 sm:pr-0">
+                  <div className="text-left">
+                    <span className="text-[10px] font-bold text-slate-500 block leading-none mb-1">Total a Transferir:</span>
+                    <span className="text-lg sm:text-xl font-black text-emerald-650 font-mono leading-none">
+                      R$ {calc.totalPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  
+                  <div className="bg-amber-400/10 border border-amber-300/30 px-2.5 py-1 rounded-lg flex items-center gap-1.5 shrink-0">
+                    <Clock className="w-3.5 h-3.5 text-amber-600 animate-pulse" />
+                    <div className="leading-none">
+                      <span className="text-[7.5px] text-amber-800 font-extrabold uppercase tracking-widest block mb-0.5">Expira em</span>
+                      <span className="text-xs font-mono font-black text-amber-900 leading-none">{paymentCountdown}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Scrollable Content (Responsive 2 Columns) */}
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
+                  
+                  {/* Left Column (PIX Copy options and recipient details) */}
+                  <div className="md:col-span-7 space-y-4">
+                    
+                    {/* Option 1: Copy Key */}
+                    <div className="bg-emerald-500/5 border border-emerald-500/15 p-5 rounded-2xl space-y-3.5 relative overflow-hidden shadow-xs">
+                      <span className="absolute top-3 right-3 flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                      </span>
+
+                      <span className="text-[10px] text-emerald-800 font-extrabold uppercase tracking-widest block leading-none">
+                        🚀 Opção 1: Copiar Chave (Pix Copia e Cola)
+                      </span>
+
+                      <div className="space-y-3">
+                        <div className="bg-slate-950 border-2 border-amber-400 p-4 rounded-xl text-center select-all shrink-0 transition-all shadow-md relative overflow-hidden group">
+                          <div className="absolute inset-0 bg-gradient-to-r from-amber-500/10 to-yellow-500/10 opacity-40 pointer-events-none" />
+                          <div className="relative z-10 flex flex-col items-center justify-center space-y-1">
+                            <span className="text-[8px] text-amber-400 font-black tracking-widest uppercase mb-0.5">
+                              ⚡ COPIE ESTA CHAVE EXATA ⚡
+                            </span>
+                            <span className="font-mono font-black text-sm sm:text-base text-yellow-300 break-all block leading-tight tracking-widest select-all">
+                              {settings.pixKey}
+                            </span>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={handleCopyPix}
+                          className={`w-full py-4 px-6 rounded-2xl font-black cursor-pointer transition-all flex items-center justify-center gap-2 text-xs sm:text-sm shadow-md border-2 uppercase tracking-wider relative overflow-hidden group/btn ${
+                            copiedPix 
+                              ? "bg-gradient-to-r from-emerald-500 to-emerald-700 text-white border-emerald-400 shadow-emerald-500/25 scale-[1.02]" 
+                              : "bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-600 hover:from-amber-600 hover:via-yellow-500 hover:to-amber-700 text-slate-950 border-yellow-300 shadow-amber-500/30 hover:scale-[1.02]"
+                          }`}
+                        >
+                          {copiedPix ? (
+                            <div className="flex items-center gap-2">
+                              <Check className="w-5 h-5 text-white stroke-[3px] animate-bounce" />
+                              <span>CHAVE PIX COPIADA! ✓</span>
+                            </div>
+                          ) : (
+                            <>
+                              <Copy className="w-5 h-5 text-slate-900 stroke-[3px] transition-transform duration-300 group-hover/btn:scale-110" />
+                              <span>CLIQUE PARA COPIAR A CHAVE PIX 📋</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+
+                      <p className="text-[10px] text-slate-500 leading-normal font-medium text-center">
+                        Toque no botão acima para copiar. Abra o app do seu banco, escolha <strong>Pix Copia e Cola</strong> (or chave de transferência) e cole o código.
+                      </p>
+                    </div>
+
+                    {/* Recipient breakdown details */}
+                    <div className="bg-slate-50 border border-slate-200/80 p-4 rounded-2xl space-y-2.5">
+                      <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest block">Dados do Favorecido</span>
+                      <div className="space-y-2">
+                        {settings.receiverName && (
+                          <div className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-slate-100">
+                            <span className="text-slate-500 font-bold text-[10px] uppercase tracking-wider">Favorecido:</span>
+                            <span className="font-extrabold text-slate-800 text-xs text-right truncate max-w-[205px] select-all">{settings.receiverName}</span>
+                          </div>
+                        )}
+                        {settings.bankName && (
+                          <div className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-slate-100">
+                            <span className="text-slate-500 font-bold text-[10px] uppercase tracking-wider">Banco / Instituição:</span>
+                            <span className="font-extrabold text-slate-800 text-xs text-right select-all">{settings.bankName}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right Column (Steps and Tickets Reservation information list) */}
+                  <div className="md:col-span-5 flex flex-col justify-between space-y-4">
+                    {/* Passos importantes steps element mimicking screenshot exactly */}
+                    <div className="bg-indigo-950 text-indigo-50 p-5 rounded-2xl space-y-3 border border-indigo-900 shadow-sm grow flex flex-col justify-center">
+                      <span className="text-[11px] text-indigo-300 font-black uppercase tracking-wider block">⚠️ PASSOS IMPORTANTES:</span>
+                      <ul className="text-[11px] space-y-2.5 leading-relaxed text-indigo-200">
+                        <li className="flex items-start gap-1.5">
+                          <span className="bg-indigo-800 text-white w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center shrink-0 mt-0.5">1</span>
+                          <span>Realize a transferência no valor exato de <strong>R$ {calc.totalPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>.</span>
+                        </li>
+                        <li className="flex items-start gap-1.5">
+                          <span className="bg-indigo-800 text-white w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center shrink-0 mt-0.5">2</span>
+                          <span>Anote ou tire print do comprovante da transação.</span>
+                        </li>
+                        <li className="flex items-start gap-1.5">
+                          <span className="bg-indigo-800 text-white w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center shrink-0 mt-0.5">3</span>
+                          <span>Clique em <strong>Confirmar no WhatsApp</strong> para enviar o comprovante.</span>
+                        </li>
+                      </ul>
+                    </div>
+
+                    {/* Compact reserved list visualizer */}
+                    <div className="bg-slate-50 border border-slate-200/85 p-3.5 rounded-2xl text-xs space-y-2">
+                      <span className="text-[9px] text-slate-450 font-black uppercase tracking-wide block leading-none">Cotas em Processo de Reserva ({list.length})</span>
+                      <div className="flex flex-wrap gap-1 p-2 rounded-xl bg-white border border-slate-150 max-h-[70px] overflow-y-auto">
+                        {list.map(t => (
+                          <span key={t.id} className="font-mono text-xs bg-indigo-50 border border-indigo-100 text-indigo-750 px-1.5 py-0.5 rounded font-extrabold select-all">
+                            #{t.number}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+
+              {/* Action feet buttons mimicking screenshot exactly */}
+              <div className="bg-slate-50 border-t border-slate-150 p-4 sm:px-6 flex flex-col sm:flex-row justify-end gap-3 shrink-0 select-none">
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleWhatsAppRedirect(list, camp);
+                    setConfettiKey((prev) => prev + 1);
+                  }}
+                  className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs sm:text-sm rounded-xl cursor-pointer flex items-center justify-center gap-2 transition-all shadow-md shadow-emerald-500/10 border border-emerald-500/20 uppercase tracking-wider active:scale-[0.98]"
+                >
+                  <svg className="w-5 h-5 shrink-0 fill-current" viewBox="0 0 24 24">
+                    <path d="M12.012 2c-5.506 0-9.989 4.478-9.99 9.984a9.96 9.96 0 0 0 1.335 4.978L2 22l5.133-1.343a9.894 9.894 0 0 0 4.873 1.344h.004c5.507 0 9.99-4.478 9.99-9.984a9.97 9.97 0 0 0-2.926-7.064A9.923 9.923 0 0 0 12.012 2zm5.794 13.978c-.244.685-1.22 1.258-1.685 1.31-.415.048-.954.072-1.554-.12a14.2 14.2 0 0 1-5.323-3.26c-1.423-1.416-2.5-3.155-2.775-3.626-.275-.471-.03-.725.207-.962.214-.213.473-.553.71-.83.235-.276.314-.471.472-.786.158-.314.079-.588-.04-.844-.118-.256-.944-2.274-1.298-3.125-.347-.831-.699-.718-.959-.731-.248-.013-.016-.284 0-.749.106-1.14.53-.393.424-1.5 1.464-1.5 3.568 0 2.102 1.533 4.133 1.747 4.419.215.285 3.018 4.606 7.311 6.467 1.02.443 1.815.707 2.437.904 1.025.326 1.958.28 2.696.17.822-.123 2.533-1.035 2.89-2.035.356-1 .356-1.857.248-2.035-.108-.178-.396-.285-.84-.508z" />
+                  </svg>
+                  <span>Confirmar no WhatsApp</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setExclusiveMobilePayment(null);
+                    setSuccessReserved(null);
+                  }}
+                  className="px-6 py-3 bg-slate-900 border border-slate-800 hover:bg-slate-850 hover:text-white text-slate-300 font-extrabold text-xs sm:text-sm rounded-xl transition-all cursor-pointer uppercase tracking-wider text-center"
+                >
+                  Concluir e Voltar
+                </button>
+              </div>
+
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Client Header bar - DESKTOP ONLY */}
       <header className="hidden lg:flex bg-slate-900 rounded-3xl p-8 text-white shadow-lg border border-slate-800 justify-between items-center gap-6">
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-2">
-            <GraduationCapIcon className="w-6 h-6 text-indigo-400 shrink-0" />
-            <h1 className="text-xl font-extrabold tracking-tight">Rifa Formatura</h1>
-          </div>
+        <div className="flex items-center gap-5">
+          <AppLogo settings={settings as any} size="lg" className="ring-2 ring-amber-400" />
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-extrabold tracking-tight text-amber-400 font-sans">Rifa do Chiquinho</h1>
+            </div>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-400">
             <span>Cliente: <strong className="text-slate-100">{userProfile.name}</strong></span>
             <span className="text-slate-700">|</span>
@@ -890,6 +1146,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
             <span className="text-slate-700">|</span>
             <span>Contato: <a href={`mailto:${settings.supportEmail || "contato@rifadochiquinho.com.br"}`} className="text-indigo-400 hover:underline hover:text-indigo-300 font-medium transition-colors">{settings.supportEmail || "contato@rifadochiquinho.com.br"}</a></span>
           </div>
+        </div>
         </div>
         <div className="flex items-center gap-3">
           {myTotalTicketsCount > 0 && (
@@ -926,11 +1183,9 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
       <header className="flex lg:hidden flex-col gap-4 bg-gradient-to-br from-slate-900 to-indigo-950 p-4 rounded-3xl border border-slate-800/80 text-white shadow-md">
         <div className="flex items-center justify-between w-full">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-550 to-indigo-650 border border-indigo-400/30 text-white flex items-center justify-center font-extrabold text-sm shadow-md shrink-0">
-              {userProfile.name ? userProfile.name.slice(0, 2).toUpperCase() : "U"}
-            </div>
+            <AppLogo settings={settings as any} size="sm" className="ring-1 ring-amber-400" />
             <div className="space-y-0.5">
-              <span className="text-[9px] text-slate-400 uppercase tracking-widest font-black leading-none block">Bem-vindo(a) Apoio</span>
+              <span className="text-[9px] text-amber-400 uppercase tracking-widest font-black leading-none block">Rifa do Chiquinho</span>
               <h2 className="text-sm font-black text-white leading-tight truncate max-w-[140px]">{userProfile.name}</h2>
             </div>
           </div>
@@ -1436,75 +1691,9 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                         dangerouslySetInnerHTML={{ __html: selectedCampaign.description || "" }}
                       />
                       
-                      {selectedCampaign.progressiveDiscounts && selectedCampaign.progressiveDiscounts.length > 0 && (
-                        <div className="mt-2.5 bg-indigo-50/70 border border-indigo-200/60 p-3 rounded-xl space-y-1.5 shadow-2xs">
-                          <h4 className="text-[10px] uppercase tracking-wider font-extrabold text-indigo-900 flex items-center gap-1">
-                            <span>🔥 Desconto Progressivo Especial</span>
-                          </h4>
-                          <div className="flex flex-wrap gap-2 text-xs">
-                            {selectedCampaign.progressiveDiscounts.map((tier, idx) => {
-                              const pct = tier.discountPercentage !== undefined
-                                ? tier.discountPercentage
-                                : selectedCampaign.ticketPrice > 0
-                                  ? Math.max(0, Math.round((1 - tier.discountPrice / selectedCampaign.ticketPrice) * 100))
-                                  : 0;
-                              
-                              const finalPrice = tier.discountPercentage !== undefined
-                                ? selectedCampaign.ticketPrice * (1 - tier.discountPercentage / 100)
-                                : tier.discountPrice;
 
-                              return (
-                                <span key={idx} className="bg-white px-2.5 py-1 rounded-lg border border-indigo-150/60 flex items-center gap-1.5 text-[11px] text-indigo-950 font-semibold shadow-3xs">
-                                  <span>{tier.minQuantity}+ cotas:</span>
-                                  <span className="bg-emerald-100 text-emerald-800 text-[9px] px-1.5 py-0.5 rounded-md font-bold">{pct}% OFF</span>
-                                  <span className="text-indigo-650">R$ {finalPrice.toFixed(2)} cada</span>
-                                </span>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
 
-                      {/* Probable Federal Lottery Draw Dynamic Prediction */}
-                      {selectedCampaign.status === "active" && (
-                        <div className="mt-3 bg-[#f3f9e4] border border-lime-300 text-emerald-950 p-3.5 rounded-xl space-y-2.5 shadow-2xs">
-                          <h4 className="text-[10.5px] uppercase tracking-wider font-extrabold text-emerald-900 flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                            <span>📈 Projeção Inteligente de Sorteio (Meta 100%)</span>
-                          </h4>
-                          {(() => {
-                            const campTicketsList = allReservations[selectedCampaign.id] || [];
-                            const proj = getCampaignDrawProjection(selectedCampaign, campTicketsList);
-                            return (
-                              <div className="space-y-1.5 text-xs text-slate-700 leading-relaxed font-semibold">
-                                <p className="flex flex-wrap items-center gap-1.5 py-0.5 text-slate-700 text-xs md:text-[13px] leading-relaxed">
-                                  Com base no ritmo de vendas atual desta campanha (<strong className="text-slate-900 font-bold bg-slate-100 border border-slate-250/70 px-1.5 py-0.5 rounded text-[11px] font-mono">{proj.salesVelocity} cotas/dia</strong>), prevemos a conclusão das reservas em aproximadamente <strong className="text-emerald-800 font-black text-sm md:text-base bg-emerald-150 border border-emerald-300 shadow-sm px-2 py-1 rounded-lg inline-flex items-center mx-0.5">{proj.daysRemainingEst} dias</strong>.
-                                </p>
-                                <div className="p-3 bg-white/95 rounded-lg border border-lime-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 shadow-3xs">
-                                  <div>
-                                    <span className="text-[9.5px] uppercase font-extrabold text-slate-450 block tracking-wider leading-none mb-1">PROVÁVEL CONCURSO LOTERIA FEDERAL</span>
-                                    <span className="text-xs md:text-[13px] font-black text-slate-800 block leading-tight">{proj.formattedProbableDrawDate}</span>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <span className={`text-[9px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 shadow-4xs ${
-                                      proj.confidenceRating === "high" 
-                                        ? "bg-emerald-100 text-emerald-800" 
-                                        : proj.confidenceRating === "medium"
-                                          ? "bg-indigo-100 text-indigo-800"
-                                          : "bg-amber-100 text-amber-800"
-                                    }`}>
-                                      Confiança: {proj.confidenceRating === "high" ? "Alta" : proj.confidenceRating === "medium" ? "Média" : "Inicial"}
-                                    </span>
-                                  </div>
-                                </div>
-                                <p className="text-[9px] text-slate-500 font-medium italic leading-tight">
-                                  *Os sorteios pela Loteria Federal ocorrem às quartas-feiras e sábados às 19:00h (Brasília). A estimativa recalcula dinamicamente em tempo real conforme novos bilhetes são preenchidos ou liberados.
-                                </p>
-                              </div>
-                            );
-                          })()}
-                        </div>
-                      )}
+
                     </div>
                   </div>
 
@@ -1551,202 +1740,54 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                   {/* RESERVATION NOTIFICATIONS */}
                   {selectedCampaign.status === "active" && (
                     <div className="p-6 md:p-8 space-y-6">
-                      {successReserved && successReserved.length > 0 && (() => {
-                        const calc = getDiscountedPrice(successReserved.length, selectedCampaign.ticketPrice, selectedCampaign.progressiveDiscounts);
-                        return (
-                          <>
-                            <CelebrationConfetti key={confettiKey} />
-                            <div className="bg-indigo-55 border border-indigo-200 rounded-xl p-5 text-slate-750 animate-fadeIn space-y-4">
-                              <div className="flex items-start gap-4">
-                                <div className="flex flex-wrap gap-1 hover:max-h-none overflow-y-auto max-h-[84px] shrink-0 max-w-[160px] bg-indigo-100/50 p-1 rounded-xl border border-indigo-200/50">
-                                  {successReserved.map((num) => (
-                                    <div key={num} className="p-1 px-1.5 bg-indigo-600 text-white rounded-lg font-bold text-xs font-mono">
-                                      #{num}
-                                    </div>
-                                  ))}
-                                </div>
-                                <div className="space-y-1 flex-1">
-                                  <h4 className="font-bold text-slate-800 text-sm leading-none flex items-center gap-1.5 pt-1">
-                                    {successReserved.length === 1 ? "Cota Reservada" : "Cotas Reservadas"} com Sucesso! 🎟️
-                                  </h4>
-                                  <p className="text-xs text-slate-650 leading-normal pt-1">
-                                    Sua reserva temporária de <strong className="text-slate-900">{successReserved.length} cota(s)</strong> está ativa. Faça o PIX do valor total destacado abaixo para oficializar.
-                                  </p>
-                                </div>
-                              </div>
-
-                              {/* DESTAQUE PRINCIPAL DO VALOR TOTAL */}
-                              <div className="bg-gradient-to-br from-indigo-600 to-indigo-750 text-white rounded-2xl p-5 shadow-md border border-indigo-500/20 text-center space-y-1 relative overflow-hidden">
-                                <div className="absolute top-0 right-0 w-24 h-24 bg-white/5 rounded-full translate-x-8 -translate-y-8 select-none pointer-events-none" />
-                                <div className="absolute bottom-0 left-0 w-20 h-20 bg-black/10 rounded-full -translate-x-6 translate-y-6 select-none pointer-events-none" />
-                                <span className="text-[10px] md:text-xs font-black uppercase tracking-widest text-indigo-200/90">Valor Total a Pagar</span>
-                                <div className="text-3xl md:text-4xl font-extrabold tracking-tight font-sans text-white">
-                                  R$ {calc.totalPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                </div>
-                                <span className="inline-block text-[11px] md:text-xs text-indigo-100/95 font-medium bg-indigo-800/40 border border-indigo-500/30 px-3 py-1 rounded-full">
-                                  {successReserved.length} cota(s) • R$ {calc.unitPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} cada {calc.appliedDiscount ? "(Desconto Progressivo Aplicado!)" : ""}
-                                </span>
-                              </div>
-
-                              {/* Manual Payment Step */}
-                              <div className="bg-indigo-50/50 border border-indigo-150 rounded-2xl p-6 space-y-6">
-                                <div className="font-extrabold text-slate-900 border-b border-indigo-150/60 pb-4 flex items-center justify-between">
-                                  <span className="text-sm uppercase tracking-wider flex items-center gap-2 text-indigo-900">
-                                    <Landmark className="w-5 h-5 text-indigo-600 animate-bounce" /> DADOS DE PAGAMENTO VIA PIX
-                                  </span>
-                                  <div className="text-right">
-                                    <span className="text-xs font-bold text-slate-500 block">Total a Transferir:</span>
-                                    <span className="text-lg font-black text-emerald-650 font-mono">
-                                      R$ {calc.totalPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                    </span>
-                                  </div>
-                                </div>
-
-                                <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-                                  {/* PIX Key copy block (Left space 7 columns) */}
-                                  <div className="md:col-span-7 space-y-4">
-                                    <div className="bg-emerald-500/5 border border-emerald-500/20 p-5 rounded-2xl space-y-3 relative overflow-hidden shadow-xs">
-                                      {/* Glowing indicator */}
-                                      <span className="absolute top-2 right-2 flex h-2 w-2">
-                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                                      </span>
-
-                                      <span className="text-[10px] text-emerald-800 font-extrabold uppercase tracking-widest block">
-                                        🚀 Opção 1: Copiar Chave (Pix Copia e Cola)
-                                      </span>
-                                      
-                                      {/* Big high visibility Key container holding copy buttons */}
-                                      <div className="space-y-3">
-                                        <div className="bg-slate-950 border-2 border-amber-400 p-5 rounded-2xl text-center select-all shrink-0 transition-all shadow-xl relative overflow-hidden group">
-                                          <div className="absolute inset-0 bg-gradient-to-r from-amber-500/10 to-yellow-500/10 opacity-50 pointer-events-none group-hover:opacity-75 transition-opacity duration-300" />
-                                          <div className="relative z-10 flex flex-col items-center justify-center space-y-1 select-all">
-                                            <span className="text-[9px] text-amber-400 font-black tracking-widest uppercase mb-1">
-                                              👇 COPIE ESTA CHAVE EXATA 👇
-                                            </span>
-                                            <span className="font-mono font-black text-base md:text-xl text-yellow-300 break-all block leading-tight tracking-widest select-all">
-                                              {settings.pixKey}
-                                            </span>
-                                          </div>
-                                        </div>
-
-                                        <button
-                                          type="button"
-                                          onClick={handleCopyPix}
-                                          className={`w-full py-4.5 px-6 rounded-2xl font-black cursor-pointer transition-all flex items-center justify-center gap-3 text-base shadow-xl border-2 uppercase tracking-wider relative overflow-hidden group/btn ${
-                                            copiedPix 
-                                              ? "bg-gradient-to-r from-emerald-500 to-emerald-700 text-white border-emerald-400 shadow-emerald-500/25 scale-[1.03]" 
-                                              : "bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-600 hover:from-amber-600 hover:via-yellow-500 hover:to-amber-700 text-slate-950 border-yellow-300 shadow-amber-500/30 hover:scale-[1.03] animate-pulse"
-                                          }`}
-                                        >
-                                          {copiedPix ? (
-                                            <>
-                                              <Check className="w-6 h-6 text-white stroke-[3px] animate-bounce" />
-                                              <span>CHAVE PIX COPIADA! ✓</span>
-                                            </>
-                                          ) : (
-                                            <>
-                                              <Copy className="w-6 h-6 text-slate-900 stroke-[3px] transition-transform duration-300 group-hover/btn:scale-125 group-hover/btn:rotate-12 animate-pulse" />
-                                              <span>CLIQUE PARA COPIAR A CHAVE PIX 📋</span>
-                                            </>
-                                          )}
-                                        </button>
-                                      </div>
-
-                                      <p className="text-[10px] text-slate-500 leading-normal font-medium text-center">
-                                        Toque no botão acima para copiar. Abra o app do seu banco, escolha <strong>Pix Copia e Cola</strong> (ou chave de transferência) e cole o código.
-                                      </p>
-                                    </div>
-
-                                    {/* Recipient breakdown details */}
-                                    <div className="bg-white border border-slate-150 p-4 rounded-2xl space-y-2.5">
-                                      <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest block">Dados do Favorecido</span>
-                                      <div className="space-y-2">
-                                        {settings.receiverName && (
-                                          <div className="flex justify-between items-center bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                                            <span className="text-slate-500 font-bold text-[10.5px] uppercase tracking-wider">Favorecido:</span>
-                                            <span className="font-extrabold text-slate-800 text-xs md:text-sm text-right truncate max-w-[200px]">{settings.receiverName}</span>
-                                          </div>
-                                        )}
-                                        {settings.bankName && (
-                                          <div className="flex justify-between items-center bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                                            <span className="text-slate-500 font-bold text-[10.5px] uppercase tracking-wider">Banco / Instituição:</span>
-                                            <span className="font-extrabold text-slate-800 text-xs md:text-sm text-right">{settings.bankName}</span>
-                                          </div>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  {/* Instructions Box (Right space 5 columns) */}
-                                  <div className="md:col-span-5 flex flex-col justify-between space-y-4">
-                                    {/* How to Confirm instructions */}
-                                    <div className="bg-indigo-950 text-indigo-50 p-5 rounded-2xl space-y-3 border border-indigo-900 shadow-sm grow flex flex-col justify-center">
-                                      <span className="text-[11px] text-indigo-300 font-black uppercase tracking-wider block">⚠️ Passos Importantes:</span>
-                                      <ul className="text-[11px] space-y-2 leading-relaxed text-indigo-200">
-                                        <li className="flex items-start gap-1.5">
-                                          <span className="bg-indigo-800 text-white w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center shrink-0 mt-0.5">1</span>
-                                          <span>Realize a transferência no valor exato de <strong>R$ {calc.totalPrice.toFixed(2)}</strong>.</span>
-                                        </li>
-                                        <li className="flex items-start gap-1.5">
-                                          <span className="bg-indigo-800 text-white w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center shrink-0 mt-0.5">2</span>
-                                          <span>Anote ou tire print do comprovante da transação.</span>
-                                        </li>
-                                        <li className="flex items-start gap-1.5">
-                                          <span className="bg-indigo-800 text-white w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center shrink-0 mt-0.5">3</span>
-                                          <span>Clique em <strong>Confirmar no WhatsApp</strong> para enviar o comprovante.</span>
-                                        </li>
-                                      </ul>
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-
-                              <div className="flex flex-col sm:flex-row justify-end gap-2 text-xs">
+                      {successReserved && successReserved.length > 0 && (
+                        <>
+                          <CelebrationConfetti key={confettiKey} />
+                          <div className="bg-emerald-50 border border-emerald-200 text-emerald-950 rounded-2xl p-5 flex gap-4 text-xs leading-relaxed shadow-sm animate-fadeIn">
+                            <Check className="w-6 h-6 text-emerald-600 shrink-0 mt-0.5 bg-emerald-100 rounded-full p-0.5" />
+                            <div className="space-y-1.5 flex-1 select-text">
+                              <h5 className="font-extrabold text-[14px] text-emerald-950 uppercase tracking-tight flex items-center gap-1.5">
+                                Reserva Efetuada com Sucesso! 🎉
+                              </h5>
+                              <p className="font-semibold text-emerald-800">
+                                Seus {successReserved.length} bilhetes (#{successReserved.join(", #")}) foram pré-reservados com sucesso sob o seu CPF.
+                              </p>
+                              <p className="text-slate-500 font-medium">
+                                Um popup exclusivo de pagamento PIX foi iniciado. Se tiver fechado ele acidentalmente, não se preocupe: você pode reabri-lo a qualquer momento na aba <strong className="text-slate-800">Minhas Compras</strong> utilizando o botão <strong className="text-slate-900 bg-amber-100 border border-amber-300 px-1 py-0.5 rounded text-[10px]">Pagar PIX 💵</strong>.
+                              </p>
+                              <div className="pt-2 flex gap-2">
                                 <button
-                                  type="button"
-                                  onClick={() => setConfettiKey((prev) => prev + 1)}
-                                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg cursor-pointer flex items-center justify-center gap-1.5 transition-colors shadow-sm"
-                                  title="Disparar confete comemorativo"
-                                >
-                                  <span>Celebrar! 🎉</span>
-                                </button>
-                                <button
-                                  type="button"
                                   onClick={() => {
-                                    const tempTickets = successReserved.map(num => ({
-                                      id: num,
-                                      number: num,
-                                      status: "reserved" as const,
-                                      buyerUid: userProfile.uid,
-                                      buyerName: userProfile.name,
-                                      buyerPhone: userProfile.phone || "",
-                                      buyerCpf: userProfile.cpf,
-                                      buyerEmail: userProfile.email,
-                                      reservedAt: new Date().toISOString(),
-                                    }));
-                                    handleWhatsAppRedirect(tempTickets, selectedCampaign);
-                                    setConfettiKey((prev) => prev + 1); // trigger some more confetti on whatsapp redirection!
+                                    setExclusiveMobilePayment({
+                                      campaign: selectedCampaign,
+                                      tickets: successReserved.map(num => ({
+                                        id: num,
+                                        number: num,
+                                        status: "reserved",
+                                        buyerUid: userProfile.uid,
+                                        buyerName: userProfile.name,
+                                        buyerPhone: userProfile.phone || "",
+                                        buyerCpf: userProfile.cpf,
+                                        buyerEmail: userProfile.email,
+                                        reservedAt: new Date().toISOString()
+                                      }))
+                                    });
                                   }}
-                                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg cursor-pointer flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+                                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-[11px] shadow-sm cursor-pointer transition-colors"
                                 >
-                                  <svg className="w-4 h-4 shrink-0 fill-current" viewBox="0 0 24 24">
-                                    <path d="M12.012 2c-5.506 0-9.989 4.478-9.99 9.984a9.96 9.96 0 0 0 1.335 4.978L2 22l5.133-1.343a9.894 9.894 0 0 0 4.873 1.344h.004c5.507 0 9.99-4.478 9.99-9.984a9.97 9.97 0 0 0-2.926-7.064A9.923 9.923 0 0 0 12.012 2zm5.794 13.978c-.244.685-1.22 1.258-1.685 1.31-.415.048-.954.072-1.554-.12a14.2 14.2 0 0 1-5.323-3.26c-1.423-1.416-2.5-3.155-2.775-3.626-.275-.471-.03-.725.207-.962.214-.213.473-.553.71-.83.235-.276.314-.471.472-.786.158-.314.079-.588-.04-.844-.118-.256-.944-2.274-1.298-3.125-.347-.831-.699-.718-.959-.731-.248-.013-.016-.284 0-.749.106-1.14.53-.393.424-1.5 1.464-1.5 3.568 0 2.102 1.533 4.133 1.747 4.419.215.285 3.018 4.606 7.311 6.467 1.02.443 1.815.707 2.437.904 1.025.326 1.958.28 2.696.17.822-.123 2.533-1.035 2.89-2.035.356-1 .356-1.857.248-2.035-.108-.178-.396-.285-.84-.508z" />
-                                  </svg>
-                                  <span>Confirmar no WhatsApp</span>
+                                  Abrir Tela de Pagamento 💳
                                 </button>
                                 <button
-                                  type="button"
                                   onClick={() => setSuccessReserved(null)}
-                                  className="px-4 py-2 bg-slate-900 text-white font-bold rounded-lg cursor-pointer hover:bg-slate-800"
+                                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-bold text-[11px] cursor-pointer transition-colors animate-fadeIn"
                                 >
-                                  Concluir e Voltar
+                                  Entendi
                                 </button>
                               </div>
                             </div>
-                          </>
-                        );
-                      })()}
+                          </div>
+                        </>
+                      )}
 
                       {/* ACTIVE RESERVATION SELECTION CARD */}
                       {selectedNumbers.length > 0 && (
@@ -1764,7 +1805,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                                 </span>
                               ))}
                             </div>
-                            Ao confirmar, estes números serão temporariamente reservados sob seu nome por 2(Duas) horas. Para garanti-los, você deve realizar a transferência manual via PIX.
+                            Ao confirmar as cotas selecionadas, estes números serão temporariamente reservados sob seu CPF por 2(Duas) horas e você será levado **imediatamente** para a página exclusiva de pagamento PIX e envio de comprovante.
                           </div>
 
                           {/* DESTACADO VALOR TOTAL DA RESERVA SELECIONADA */}
@@ -1811,9 +1852,9 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                             <button
                               onClick={handleReserveTickets}
                               disabled={reserving}
-                              className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg shadow-md shadow-indigo-500/20 cursor-pointer text-center flex items-center gap-1"
+                              className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-md shadow-emerald-500/20 cursor-pointer text-center flex items-center gap-1 transition-all active:scale-95"
                             >
-                              {reserving ? "Reservando..." : `Confirmar Pré-Reserva de ${selectedNumbers.length} Cota(s)`}
+                              {reserving ? "Reservando..." : `Confirmar Pré-Reserva de ${selectedNumbers.length} Cota(s) 💳`}
                             </button>
                           </div>
                         </div>
@@ -1951,145 +1992,9 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                           </div>
                         )}
 
-                        {/* Search and Pagination Controls */}
-                        <div className="bg-slate-100/50 p-3 rounded-2xl border border-slate-200/60 grid grid-cols-1 md:grid-cols-2 gap-3 items-center">
-                          <div className="relative">
-                            <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                              <Search className="w-4 h-4" />
-                            </span>
-                            <input
-                              type="text"
-                              value={ticketSearch}
-                              onChange={(e) => setTicketSearch(e.target.value.replace(/\D/g, ""))}
-                              placeholder="Buscar número específico..."
-                              className="w-full bg-white pl-9 pr-4 py-2 border border-slate-200 rounded-xl text-xs font-medium placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-650"
-                            />
-                            {ticketSearch && (
-                              <button
-                                onClick={() => setTicketSearch("")}
-                                className="absolute inset-y-0 right-0 pr-3 flex items-center text-xs font-bold text-slate-400 hover:text-slate-600"
-                              >
-                                Limpar
-                              </button>
-                            )}
-                          </div>
 
-                          {totalPages > 1 && (
-                            <div className="flex items-center justify-between md:justify-end gap-2.5 text-xs text-slate-650">
-                              <button
-                                disabled={ticketPage === 0}
-                                onClick={() => setTicketPage(prev => Math.max(0, prev - 1))}
-                                className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg disabled:opacity-50 font-bold hover:bg-slate-50 transition cursor-pointer"
-                              >
-                                Anterior
-                              </button>
-                              <span className="font-semibold text-slate-700 text-[11px]">
-                                Página <strong>{ticketPage + 1}</strong> de {totalPages}
-                              </span>
-                              <button
-                                disabled={ticketPage >= totalPages - 1}
-                                onClick={() => setTicketPage(prev => Math.min(totalPages - 1, prev + 1))}
-                                className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg disabled:opacity-50 font-bold hover:bg-slate-50 transition cursor-pointer"
-                              >
-                                Próxima
-                              </button>
-                            </div>
-                          )}
-                        </div>
 
-                        {/* CONTROLES DE FILTRO INTERATIVO DA MATRIZ & TAMANHO DOS BOTÕES */}
-                        <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-150 animate-fadeIn">
-                          {/* Filter Tabs */}
-                          <div className="flex flex-wrap gap-1 bg-white p-1 rounded-xl border border-slate-200/50 flex-1">
-                            <button
-                              type="button"
-                              onClick={() => setGridFilter("all")}
-                              className={`flex-1 text-center py-1.5 px-1.5 rounded-lg font-bold text-[10px] transition-all cursor-pointer ${
-                                gridFilter === "all"
-                                  ? "bg-slate-900 text-white shadow-sm"
-                                  : "text-slate-500 hover:text-slate-800"
-                              }`}
-                            >
-                              🔍 Todos ({filteredIndices.length})
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setGridFilter("available")}
-                              className={`flex-1 text-center py-1.5 px-1.5 rounded-lg font-bold text-[10px] transition-all cursor-pointer ${
-                                gridFilter === "available"
-                                  ? "bg-indigo-600 text-white shadow-sm"
-                                  : "text-slate-500 hover:text-slate-805"
-                              }`}
-                            >
-                              🟢 Livres
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setGridFilter("mine")}
-                              className={`flex-1 text-center py-1.5 px-1.5 rounded-lg font-bold text-[10px] transition-all cursor-pointer ${
-                                gridFilter === "mine"
-                                  ? "bg-amber-500 text-slate-955 shadow-sm"
-                                  : "text-slate-500 hover:text-slate-805"
-                              }`}
-                            >
-                              🕒 Meus
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setGridFilter("selected")}
-                              className={`flex-1 text-center py-1.5 px-1.5 rounded-lg font-bold text-[10px] transition-all cursor-pointer ${
-                                gridFilter === "selected"
-                                  ? "bg-indigo-650 text-white shadow-sm"
-                                  : "text-slate-500 hover:text-slate-805"
-                              }`}
-                            >
-                              ⭐ Escolhidos ({selectedNumbers.length})
-                            </button>
-                          </div>
 
-                          {/* Mobile Columns Size Changer */}
-                          <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shrink-0 justify-between sm:justify-start">
-                            <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">Botões:</span>
-                            <div className="flex items-center gap-1">
-                              <button
-                                type="button"
-                                onClick={() => setMobileColumns(4)}
-                                className={`w-7 h-7 rounded-lg text-[10px] font-black flex items-center justify-center transition-all cursor-pointer ${
-                                  mobileColumns === 4
-                                    ? "bg-indigo-600 text-white shadow-3xs"
-                                    : "bg-slate-50 text-slate-500 hover:bg-slate-100"
-                                }`}
-                                title="Botões Grandes (4 colunas)"
-                              >
-                                G
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setMobileColumns(5)}
-                                className={`w-7 h-7 rounded-lg text-[10px] font-black flex items-center justify-center transition-all cursor-pointer ${
-                                  mobileColumns === 5
-                                    ? "bg-indigo-600 text-white shadow-3xs"
-                                    : "bg-slate-50 text-slate-500 hover:bg-slate-100"
-                                }`}
-                                title="Botões Médios (5 colunas)"
-                              >
-                                M
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setMobileColumns(6)}
-                                className={`w-7 h-7 rounded-lg text-[10px] font-black flex items-center justify-center transition-all cursor-pointer ${
-                                  mobileColumns === 6
-                                    ? "bg-indigo-600 text-white shadow-3xs"
-                                    : "bg-slate-50 text-slate-500 hover:bg-slate-100"
-                                }`}
-                                title="Botões Pequenos (6 colunas)"
-                              >
-                                P
-                              </button>
-                            </div>
-                          </div>
-                        </div>
 
                         {loadingTickets ? (
                           <div className={`grid ${mobileColumns === 4 ? "grid-cols-4" : mobileColumns === 6 ? "grid-cols-6" : "grid-cols-5"} sm:grid-cols-10 gap-2`}>
@@ -2201,13 +2106,22 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                               <div className="flex items-center gap-1.5 shrink-0">
                                 <span className="text-[10px] text-slate-400">{tList.length} cota(s)</span>
                                 {tList.filter(t => t.status === "reserved").length > 0 && (
-                                  <button
-                                    onClick={() => handleWhatsAppRedirect(tList.filter(t => t.status === "reserved"), camp)}
-                                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md cursor-pointer transition flex items-center gap-0.5"
-                                    title="Enviar comprovante de reserva desta campanha por WhatsApp"
-                                  >
-                                    <span>WhatsApp 💬</span>
-                                  </button>
+                                  <div className="flex gap-1 items-center">
+                                    <button
+                                      onClick={() => setExclusiveMobilePayment({ campaign: camp, tickets: tList.filter(t => t.status === "reserved") })}
+                                      className="bg-amber-500 hover:bg-amber-600 text-slate-950 text-[9px] font-extrabold px-1.5 py-0.5 rounded-md cursor-pointer transition flex items-center gap-0.5 animate-pulse"
+                                      title="Abrir página exclusiva de pagamento e PIX da reserva"
+                                    >
+                                      <span>Pagar PIX 💵</span>
+                                    </button>
+                                    <button
+                                      onClick={() => handleWhatsAppRedirect(tList.filter(t => t.status === "reserved"), camp)}
+                                      className="bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md cursor-pointer transition flex items-center gap-0.5"
+                                      title="Enviar comprovante de reserva desta campanha por WhatsApp"
+                                    >
+                                      <span>WhatsApp 💬</span>
+                                    </button>
+                                  </div>
                                 )}
                                 {confirmedTickets.length > 0 && (
                                   <button
@@ -2267,95 +2181,14 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
 
                   {/* Quick Copy PIX helper inside reservations list */}
                   {myTotalTicketsCount > 0 && (Object.values(myTickets).flat() as Ticket[]).some(t => t.status === "reserved") && (
-                    <div className="bg-amber-50/70 border border-amber-200/60 rounded-2xl p-4 text-xs text-slate-700 space-y-2.5 animate-fadeIn">
+                    <div className="bg-amber-50/70 border border-amber-200/60 rounded-2xl p-4 text-xs text-slate-700 space-y-1.5 animate-fadeIn">
                       <div className="flex items-center gap-1.5 font-bold text-amber-800">
                         <Landmark className="w-4 h-4 text-amber-600 shrink-0" />
-                        <span>Transferência Pix Pendente</span>
+                        <span>Pagamento Pix Pendente</span>
                       </div>
-
-                      {/* VALOR TOTAL PENDENTE COM GRANDE VISIBILIDADE */}
-                      {(() => {
-                        let totalSum = 0;
-                        let countSum = 0;
-                        (Object.entries(myTickets) as [string, Ticket[]][]).forEach(([campaignId, tList]) => {
-                          const pCount = tList.filter(t => t.status === "reserved").length;
-                          if (pCount > 0) {
-                            const camp = campaigns.find(c => c.id === campaignId);
-                            if (camp) {
-                              const calc = getDiscountedPrice(pCount, camp.ticketPrice, camp.progressiveDiscounts);
-                              totalSum += calc.totalPrice;
-                              countSum += pCount;
-                            }
-                          }
-                        });
-                        return (
-                          <div className="bg-amber-500 text-white rounded-xl p-3.5 text-center flex flex-col justify-center items-center shadow-sm space-y-0.5 border border-amber-450">
-                            <span className="text-[9px] uppercase font-bold tracking-wider text-amber-100">Valor Total Devido (PIX)</span>
-                            <span className="text-2xl font-black font-sans leading-none">R$ {totalSum.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                            <span className="text-[10px] text-amber-50 font-medium">{countSum} cota(s) aguardando pagamento</span>
-                          </div>
-                        );
-                      })()}
-
-                      <p className="text-[11.5px] leading-relaxed text-slate-700 font-medium">
-                        Realize a transferência acima via PIX das suas cotas pendentes nos dados abaixo para confirmar suas reservas:
+                      <p className="text-[11px] text-slate-600 leading-normal font-medium">
+                        Para visualizar a chave PIX, dados do favorecido ou enviar o comprovante, utilize os botões <strong className="text-slate-900 font-extrabold font-sans">Pagar PIX 💵</strong> e <strong className="text-slate-900 font-extrabold font-sans">WhatsApp 💬</strong> ao lado da sua reserva acima.
                       </p>
-                      <div className="space-y-3 bg-amber-50/60 border border-amber-200 rounded-xl p-4 shadow-xs">
-                        <div className="bg-slate-950 border-2 border-amber-400 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-md relative overflow-hidden group">
-                          <div className="absolute inset-0 bg-gradient-to-r from-amber-500/5 to-yellow-500/5 pointer-events-none" />
-                          <div className="flex-1 min-w-0 w-full relative z-10 select-all text-center sm:text-left">
-                            <span className="text-[9px] text-amber-400 font-extrabold block font-sans tracking-widest uppercase">👇 COPIAR ESTA CHAVE PIX 👇</span>
-                            <span className="break-all block font-extrabold text-[14px] md:text-[15px] text-yellow-300 font-mono tracking-wide bg-amber-500/10 px-2.5 py-2 rounded-lg border border-amber-500/20 mt-1 select-all">{settings.pixKey}</span>
-                          </div>
-                          <button
-                            onClick={handleCopyPix}
-                            className={`w-full sm:w-auto px-5 py-3.5 rounded-xl font-black cursor-pointer transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider shadow-lg border-2 shrink-0 group/pill ${
-                              copiedPix
-                                ? "bg-emerald-600 border-emerald-500 text-white"
-                                : "bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 border-amber-400 active:scale-95 animate-pulse"
-                            }`}
-                            title="Copiar chave PIX"
-                          >
-                            {copiedPix ? (
-                              <>
-                                <Check className="w-4 h-4 text-white stroke-[3px] animate-bounce" />
-                                <span>Copiada!</span>
-                              </>
-                            ) : (
-                              <>
-                                <Copy className="w-4 h-4 text-slate-900 stroke-[3px] transition-transform duration-300 group-hover/pill:scale-125 group-hover/pill:rotate-12 animate-pulse" />
-                                <span>Copiar Chave</span>
-                              </>
-                            )}
-                          </button>
-                        </div>
-                        <div className="space-y-2 text-xs">
-                          {settings.receiverName && (
-                            <div className="text-[11px] text-slate-650 bg-white/80 border border-slate-100/50 p-2 rounded-lg flex justify-between items-center font-sans">
-                              <span className="font-bold text-slate-400 text-[10px] uppercase tracking-wider">Favorecido:</span>
-                              <strong className="text-slate-905 font-black text-sm">{settings.receiverName}</strong>
-                            </div>
-                          )}
-                          {settings.bankName && (
-                            <div className="text-[11px] text-slate-650 bg-white/80 border border-slate-100/50 p-2 rounded-lg flex justify-between items-center font-sans">
-                              <span className="font-bold text-slate-400 text-[10px] uppercase tracking-wider">Banco:</span>
-                              <strong className="text-slate-905 font-black text-sm">{settings.bankName}</strong>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      <p className="text-[10px] text-slate-500 leading-normal bg-white/40 p-1.5 rounded-lg border border-slate-200/10">
-                        💡 Realize o pagamento em até <strong>{settings.expirationHours} horas</strong>. Buscaremos no extrato pelo seu CPF <strong>{userProfile.cpf}</strong> para validar os números!
-                      </p>
-                      <button
-                        onClick={() => handleWhatsAppRedirect()}
-                        className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 shadow-sm border border-emerald-500/15"
-                      >
-                        <svg className="w-4 h-4 shrink-0 fill-current" viewBox="0 0 24 24">
-                          <path d="M12.012 2c-5.506 0-9.989 4.478-9.99 9.984a9.96 9.96 0 0 0 1.335 4.978L2 22l5.133-1.343a9.894 9.894 0 0 0 4.873 1.344h.004c5.507 0 9.99-4.478 9.99-9.984a9.97 9.97 0 0 0-2.926-7.064A9.923 9.923 0 0 0 12.012 2zm5.794 13.978c-.244.685-1.22 1.258-1.685 1.31-.415.048-.954.072-1.554-.12a14.2 14.2 0 0 1-5.323-3.26c-1.423-1.416-2.5-3.155-2.775-3.626-.275-.471-.03-.725.207-.962.214-.213.473-.553.71-.83.235-.276.314-.471.472-.786.158-.314.079-.588-.04-.844-.118-.256-.944-2.274-1.298-3.125-.347-.831-.699-.718-.959-.731-.248-.013-.532-.016-.816-.016-.284 0-.749.106-1.14.53-.393.424-1.5 1.464-1.5 3.568 0 2.102 1.533 4.133 1.747 4.419.215.285 3.018 4.606 7.311 6.467 1.02.443 1.815.707 2.437.904 1.025.326 1.958.28 2.696.17.822-.123 2.533-1.035 2.89-2.035.356-1 .356-1.857.248-2.035-.108-.178-.396-.285-.84-.508z" />
-                        </svg>
-                        <span>Confirmar no WhatsApp (Comissão)</span>
-                      </button>
                     </div>
                   )}
                 </div>
@@ -2399,13 +2232,22 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                         <div className="flex items-center gap-1.5 shrink-0">
                           <span className="text-[10px] text-slate-400">{tList.length} cota(s)</span>
                           {tList.filter(t => t.status === "reserved").length > 0 && (
-                            <button
-                              onClick={() => handleWhatsAppRedirect(tList.filter(t => t.status === "reserved"), camp)}
-                              className="bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md cursor-pointer transition flex items-center gap-0.5"
-                              title="Enviar comprovante de reserva desta campanha por WhatsApp"
-                            >
-                              <span>WhatsApp 💬</span>
-                            </button>
+                            <div className="flex gap-1 items-center">
+                              <button
+                                onClick={() => setExclusiveMobilePayment({ campaign: camp, tickets: tList.filter(t => t.status === "reserved") })}
+                                className="bg-amber-500 hover:bg-amber-650 text-slate-950 text-[9px] font-extrabold px-1.5 py-0.5 rounded-md cursor-pointer transition flex items-center gap-0.5 animate-pulse"
+                                title="Abrir página exclusiva de pagamento e PIX da reserva"
+                              >
+                                <span>Pagar PIX 💵</span>
+                              </button>
+                              <button
+                                onClick={() => handleWhatsAppRedirect(tList.filter(t => t.status === "reserved"), camp)}
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md cursor-pointer transition flex items-center gap-0.5"
+                                title="Enviar comprovante de reserva desta campanha por WhatsApp"
+                              >
+                                <span>WhatsApp 💬</span>
+                              </button>
+                            </div>
                           )}
                           {confirmedTickets.length > 0 && (
                             <button
@@ -2465,99 +2307,14 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
 
             {/* Quick Copy PIX helper inside reservations list for mobile */}
             {myTotalTicketsCount > 0 && (Object.values(myTickets).flat() as Ticket[]).some(t => t.status === "reserved") && (
-              <div className="bg-amber-50/70 border border-amber-200/60 rounded-2xl p-4 text-xs text-slate-705 space-y-2.5 animate-fadeIn">
+              <div className="bg-amber-50/70 border border-amber-200/60 rounded-2xl p-4 text-xs text-slate-705 space-y-1.5 animate-fadeIn">
                 <div className="flex items-center gap-1.5 font-bold text-amber-850">
                   <Landmark className="w-4 h-4 text-amber-600 shrink-0" />
-                  <span>Transferência Pix Pendente</span>
+                  <span>Pagamento Pix Pendente</span>
                 </div>
-
-                {/* VALOR TOTAL PENDENTE COM GRANDE VISIBILIDADE */}
-                {(() => {
-                  let totalSum = 0;
-                  let countSum = 0;
-                  (Object.entries(myTickets) as [string, Ticket[]][]).forEach(([campaignId, tList]) => {
-                    const pCount = tList.filter(t => t.status === "reserved").length;
-                    if (pCount > 0) {
-                      const camp = campaigns.find(c => c.id === campaignId);
-                      if (camp) {
-                        const calc = getDiscountedPrice(pCount, camp.ticketPrice, camp.progressiveDiscounts);
-                        totalSum += calc.totalPrice;
-                        countSum += pCount;
-                      }
-                    }
-                  });
-                  return (
-                    <div className="bg-gradient-to-br from-amber-500 to-amber-600 text-white rounded-2xl p-5 text-center flex flex-col justify-center items-center shadow-md space-y-1 border border-amber-400">
-                      <span className="text-[10px] uppercase font-black tracking-widest text-amber-100/95">VALOR TOTAL DO PIX A SER PAGO</span>
-                      <span className="text-3xl font-extrabold font-sans tracking-tight leading-none">
-                        R$ {totalSum.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </span>
-                      <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-700/30 rounded-full border border-amber-400/20 text-xs text-amber-50 font-semibold mt-1">
-                        <span>🎟️ {countSum} cota{countSum > 1 ? "s" : ""} reservada{countSum > 1 ? "s" : ""}</span>
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                 <p className="text-[11.5px] leading-relaxed text-slate-705 font-medium">
-                  Realize a transferência acima via PIX das suas cotas pendentes nos dados abaixo para confirmar suas reservas:
+                <p className="text-[11px] text-slate-600 leading-normal font-medium">
+                  Para visualizar a chave PIX, dados do favorecido ou enviar o comprovante, utilize os botões <strong className="text-slate-900 font-extrabold font-sans">Pagar PIX 💵</strong> e <strong className="text-slate-900 font-extrabold font-sans">WhatsApp 💬</strong> ao lado da sua de reserva acima.
                 </p>
-                <div className="space-y-3 bg-amber-50/60 border border-amber-200 rounded-xl p-4 shadow-xs">
-                  <div className="bg-slate-950 border-2 border-amber-400 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-md relative overflow-hidden group">
-                    <div className="absolute inset-0 bg-gradient-to-r from-amber-500/5 to-yellow-500/5 pointer-events-none" />
-                    <div className="flex-1 min-w-0 w-full relative z-10 select-all text-center sm:text-left">
-                      <span className="text-[9px] text-amber-400 font-extrabold block font-sans tracking-widest uppercase">👇 COPIAR ESTA CHAVE PIX 👇</span>
-                      <span className="break-all block font-extrabold text-[14px] md:text-[15px] text-yellow-300 font-mono tracking-wide bg-amber-500/10 px-2.5 py-2 rounded-lg border border-amber-500/20 mt-1 select-all">{settings.pixKey}</span>
-                    </div>
-                    <button
-                      onClick={handleCopyPix}
-                      className={`w-full sm:w-auto px-5 py-3.5 rounded-xl font-black cursor-pointer transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider shadow-lg border-2 shrink-0 group/pill ${
-                        copiedPix
-                          ? "bg-emerald-600 border-emerald-500 text-white"
-                          : "bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 border-amber-400 active:scale-95 animate-pulse"
-                      }`}
-                      title="Copiar chave PIX"
-                    >
-                      {copiedPix ? (
-                        <>
-                          <Check className="w-4 h-4 text-white stroke-[3px] animate-bounce" />
-                          <span>Copiada!</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-4 h-4 text-slate-900 stroke-[3px] transition-transform duration-300 group-hover/pill:scale-125 group-hover/pill:rotate-12 animate-pulse" />
-                          <span>Copiar Chave</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                  <div className="space-y-2 text-xs">
-                    {settings.receiverName && (
-                      <div className="text-[11px] text-slate-650 bg-white/80 border border-slate-100/50 p-2 rounded-lg flex justify-between items-center font-sans">
-                        <span className="font-bold text-slate-400 text-[10px] uppercase tracking-wider">Favorecido:</span>
-                        <strong className="text-slate-905 font-black text-sm">{settings.receiverName}</strong>
-                      </div>
-                    )}
-                    {settings.bankName && (
-                      <div className="text-[11px] text-slate-650 bg-white/80 border border-slate-100/50 p-2 rounded-lg flex justify-between items-center font-sans">
-                        <span className="font-bold text-slate-400 text-[10px] uppercase tracking-wider">Banco:</span>
-                        <strong className="text-slate-905 font-black text-sm">{settings.bankName}</strong>
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <p className="text-[10px] text-slate-505 leading-normal bg-white/40 p-1.5 rounded-lg border border-slate-200/10">
-                  💡 Realize o pagamento em até <strong>{settings.expirationHours} horas</strong>. Buscaremos no extrato pelo seu CPF <strong>{userProfile.cpf}</strong> para validar os números!
-                </p>
-                <button
-                  onClick={() => handleWhatsAppRedirect()}
-                  className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 shadow-sm border border-emerald-500/15"
-                >
-                  <svg className="w-4 h-4 shrink-0 fill-current" viewBox="0 0 24 24">
-                    <path d="M12.012 2c-5.506 0-9.989 4.478-9.99 9.984a9.96 9.96 0 0 0 1.335 4.978L2 22l5.133-1.343a9.894 9.894 0 0 0 4.873 1.344h.004c5.507 0 9.99-4.478 9.99-9.984a9.97 9.97 0 0 0-2.926-7.064A9.923 9.923 0 0 0 12.012 2zm5.794 13.978c-.244.685-1.22 1.258-1.685 1.31-.415.048-.954.072-1.554-.12a14.2 14.2 0 0 1-5.323-3.26c-1.423-1.416-2.5-3.155-2.775-3.626-.275-.471-.03-.725.207-.962.214-.213.473-.553.71-.83.235-.276.314-.471.472-.786.158-.314.079-.588-.04-.844-.118-.256-.944-2.274-1.298-3.125-.347-.831-.699-.718-.959-.731-.248-.013-.532-.016-.816-.016-.284 0-.749.106-1.14.53-.393.424-1.5 1.464-1.5 3.568 0 2.102 1.533 4.133 1.747 4.419.215.285 3.018 4.606 7.311 6.467 1.02.443 1.815.707 2.437.904 1.025.326 1.958.28 2.696.17.822-.123 2.533-1.035 2.89-2.035.356-1 .356-1.857.248-2.035-.108-.178-.396-.285-.84-.508z" />
-                  </svg>
-                  <span>Confirmar no WhatsApp (Comissão)</span>
-                </button>
               </div>
             )}
 
@@ -2599,9 +2356,9 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                   <button
                     onClick={handleReserveTickets}
                     disabled={reserving}
-                    className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition shadow-md shadow-indigo-500/10 cursor-pointer flex items-center justify-center gap-1 active:scale-95 disabled:opacity-50"
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-md shadow-emerald-500/15 cursor-pointer flex items-center justify-center gap-1 active:scale-95 disabled:opacity-50"
                   >
-                    {reserving ? "Reservando..." : "Confirmar 🚀"}
+                    {reserving ? "Reservando..." : "Reservar e Pagar 💳"}
                   </button>
                 </div>
               </div>
@@ -2661,10 +2418,10 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                       document.getElementById("quadro-bilhetes")?.scrollIntoView({ behavior: "smooth" });
                     }
                   }}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black uppercase tracking-wider px-4 py-2 rounded-xl active:scale-95 transition-all flex items-center gap-1 shadow-md shadow-indigo-600/30 cursor-pointer"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black uppercase tracking-wider px-4 py-2.5 rounded-xl active:scale-95 transition-all flex items-center gap-1 shadow-md shadow-emerald-600/30 cursor-pointer"
                 >
-                  <span>Reservar</span>
-                  <ArrowRight className="w-3.5 h-3.5 text-white" />
+                  <span>Pagar Reserva 💳</span>
+                  <ArrowRight className="w-3.5 h-3.5 text-white animate-pulse" />
                 </button>
               </div>
             )}

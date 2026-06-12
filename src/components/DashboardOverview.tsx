@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import * as d3 from "d3";
 import { Campaign, Ticket } from "../types";
-import { AlertCircle, Coins, CheckCircle2, Percent, Users, TrendingUp } from "lucide-react";
+import { AlertCircle, Coins, CheckCircle2, Percent, Users, TrendingUp, TrendingDown } from "lucide-react";
 import RankingView from "./RankingView";
 import GraduationGoalWidget from "./GraduationGoalWidget";
+import { getDiscountedPrice } from "./ClientDashboard";
 
 interface DashboardOverviewProps {
   campaigns: Campaign[];
@@ -19,24 +20,60 @@ export default function DashboardOverview({ campaigns, allReservations, clientsC
     let totalReservedCount = 0;
     let totalRevenue = 0;
     let pendingPixRevenue = 0;
+    let totalExpenses = 0;
 
     campaigns.forEach((camp) => {
       totalTickets += camp.totalTickets;
+      totalExpenses += camp.prizeExpenses || 0;
+
       const tickets = allReservations[camp.id] || [];
-      tickets.forEach((t) => {
-        if (t.status === "confirmed") {
-          totalConfirmedCount++;
-          totalRevenue += camp.ticketPrice;
-        } else if (t.status === "reserved") {
-          totalReservedCount++;
-          pendingPixRevenue += camp.ticketPrice;
-        }
+      const confirmedTickets = tickets.filter((t) => t.status === "confirmed");
+      const reservedTickets = tickets.filter((t) => t.status === "reserved");
+
+      // Group confirmed tickets by buyer contact (CPF or Phone)
+      const confirmedGroups: { [key: string]: number } = {};
+      confirmedTickets.forEach((t) => {
+        const buyerKey = t.buyerCpf || t.buyerPhone || t.buyerEmail || t.buyerUid || "unknown";
+        confirmedGroups[buyerKey] = (confirmedGroups[buyerKey] || 0) + 1;
       });
+
+      let campConfirmedRevenue = 0;
+      Object.entries(confirmedGroups).forEach(([_, count]) => {
+        const { totalPrice } = getDiscountedPrice(
+          count,
+          camp.ticketPrice,
+          camp.progressiveDiscounts || []
+        );
+        campConfirmedRevenue += totalPrice;
+      });
+
+      // Group reserved tickets by buyer contact (CPF or Phone)
+      const reservedGroups: { [key: string]: number } = {};
+      reservedTickets.forEach((t) => {
+        const buyerKey = t.buyerCpf || t.buyerPhone || t.buyerEmail || t.buyerUid || "unknown";
+        reservedGroups[buyerKey] = (reservedGroups[buyerKey] || 0) + 1;
+      });
+
+      let campPendingRevenue = 0;
+      Object.entries(reservedGroups).forEach(([_, count]) => {
+        const { totalPrice } = getDiscountedPrice(
+          count,
+          camp.ticketPrice,
+          camp.progressiveDiscounts || []
+        );
+        campPendingRevenue += totalPrice;
+      });
+
+      totalConfirmedCount += confirmedTickets.length;
+      totalReservedCount += reservedTickets.length;
+      totalRevenue += campConfirmedRevenue;
+      pendingPixRevenue += campPendingRevenue;
     });
 
     const totalSold = totalConfirmedCount + totalReservedCount;
     const totalAvailable = Math.max(0, totalTickets - totalSold);
     const occupancyRate = totalTickets > 0 ? (totalSold / totalTickets) * 100 : 0;
+    const netProfit = totalRevenue - totalExpenses;
 
     return {
       totalTickets,
@@ -47,6 +84,8 @@ export default function DashboardOverview({ campaigns, allReservations, clientsC
       totalRevenue,
       pendingPixRevenue,
       occupancyRate,
+      totalExpenses,
+      netProfit
     };
   }, [campaigns, allReservations]);
 
@@ -62,20 +101,53 @@ export default function DashboardOverview({ campaigns, allReservations, clientsC
   const campaignFinancials = useMemo(() => {
     return campaigns.map((camp) => {
       const tickets = allReservations[camp.id] || [];
-      let confirmedAmount = 0;
-      let pendingAmount = 0;
-      tickets.forEach((t) => {
-        if (t.status === "confirmed") {
-          confirmedAmount += camp.ticketPrice;
-        } else if (t.status === "reserved") {
-          pendingAmount += camp.ticketPrice;
-        }
+      const confirmedTickets = tickets.filter((t) => t.status === "confirmed");
+      const reservedTickets = tickets.filter((t) => t.status === "reserved");
+
+      // Group confirmed
+      const confirmedGroups: { [key: string]: number } = {};
+      confirmedTickets.forEach((t) => {
+        const buyerKey = t.buyerCpf || t.buyerPhone || t.buyerEmail || t.buyerUid || "unknown";
+        confirmedGroups[buyerKey] = (confirmedGroups[buyerKey] || 0) + 1;
       });
+
+      let confirmedAmount = 0;
+      Object.entries(confirmedGroups).forEach(([_, count]) => {
+        const { totalPrice } = getDiscountedPrice(
+          count,
+          camp.ticketPrice,
+          camp.progressiveDiscounts || []
+        );
+        confirmedAmount += totalPrice;
+      });
+
+      // Group reserved
+      const reservedGroups: { [key: string]: number } = {};
+      reservedTickets.forEach((t) => {
+        const buyerKey = t.buyerCpf || t.buyerPhone || t.buyerEmail || t.buyerUid || "unknown";
+        reservedGroups[buyerKey] = (reservedGroups[buyerKey] || 0) + 1;
+      });
+
+      let pendingAmount = 0;
+      Object.entries(reservedGroups).forEach(([_, count]) => {
+        const { totalPrice } = getDiscountedPrice(
+          count,
+          camp.ticketPrice,
+          camp.progressiveDiscounts || []
+        );
+        pendingAmount += totalPrice;
+      });
+
+      const expenses = camp.prizeExpenses || 0;
+      const profit = confirmedAmount - expenses;
+
       return {
         id: camp.id,
         title: camp.title,
         confirmed: confirmedAmount,
         pending: pendingAmount,
+        expenses,
+        profit,
         totalPotential: camp.totalTickets * camp.ticketPrice,
       };
     });
@@ -96,23 +168,23 @@ export default function DashboardOverview({ campaigns, allReservations, clientsC
       </div>
 
       {/* Grid boxes for numerical high levels */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         {/* TOTAL SOLD WIDGET */}
         <div className="bg-white border border-slate-150 p-5 rounded-2xl space-y-3 shadow-xs hover:shadow-sm transition-all duration-300 relative overflow-hidden group">
-          <div className="absolute top-0 left-0 w-1.5 h-full bg-indigo-500" />
+          <div className="absolute top-0 left-0 w-1.5 h-full" style={{ backgroundColor: "#6366f1" }} />
           <div className="flex justify-between items-start">
-            <span className="text-[10px] uppercase font-extrabold text-slate-400 tracking-wider">Total de Cotas Vendidas</span>
+            <span className="text-[10px] uppercase font-extrabold text-slate-400 tracking-wider">Cotas Vendidas</span>
             <div className="p-2 bg-indigo-50 rounded-xl">
               <Percent className="w-4 h-4 text-indigo-600" />
             </div>
           </div>
           <div>
-            <p className="font-extrabold font-mono text-2xl md:text-3xl text-slate-800">
+            <p className="font-extrabold font-mono text-xl sm:text-2xl text-slate-800">
               {stats.totalSold} <span className="text-xs text-slate-400 font-sans font-medium">/ {stats.totalTickets}</span>
             </p>
             <div className="flex items-center gap-1 mt-1 text-[10px] text-slate-400">
               <span className="font-bold text-indigo-600">{stats.occupancyRate.toFixed(1)}%</span>
-              <span>taxa de ocupação acumulada</span>
+              <span>taxa de ocupação</span>
             </div>
           </div>
         </div>
@@ -121,18 +193,60 @@ export default function DashboardOverview({ campaigns, allReservations, clientsC
         <div className="bg-white border border-slate-150 p-5 rounded-2xl space-y-3 shadow-xs hover:shadow-sm transition-all duration-300 relative overflow-hidden group">
           <div className="absolute top-0 left-0 w-1.5 h-full bg-emerald-500" />
           <div className="flex justify-between items-start">
-            <span className="text-[10px] uppercase font-extrabold text-slate-400 tracking-wider">Faturamento Confirmado</span>
+            <span className="text-[10px] uppercase font-extrabold text-slate-400 tracking-wider font-sans">Faturamento Confirmado</span>
             <div className="p-2 bg-emerald-50 rounded-xl">
               <Coins className="w-4 h-4 text-emerald-600" />
             </div>
           </div>
           <div>
-            <p className="font-extrabold font-mono text-2xl md:text-3xl text-slate-800">
+            <p className="font-extrabold font-mono text-xl sm:text-2xl text-slate-800">
               R$ {stats.totalRevenue.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
             <div className="flex items-center gap-1 mt-1 text-[10px] text-emerald-600 font-semibold bg-emerald-50 w-fit px-2 py-0.5 rounded-md">
               <CheckCircle2 className="w-3 h-3" />
-              <span>{stats.totalConfirmedCount} cotas liquidadas</span>
+              <span>{stats.totalConfirmedCount} pagas</span>
+            </div>
+          </div>
+        </div>
+
+        {/* EXPENSES / CUSTO COM PREMIOS */}
+        <div className="bg-white border border-slate-150 p-5 rounded-2xl space-y-3 shadow-xs hover:shadow-sm transition-all duration-300 relative overflow-hidden group">
+          <div className="absolute top-0 left-0 w-1.5 h-full bg-rose-500" />
+          <div className="flex justify-between items-start">
+            <span className="text-[10px] uppercase font-extrabold text-slate-400 tracking-wider">Custo de Prêmios</span>
+            <div className="p-2 bg-rose-50 rounded-xl">
+              <TrendingDown className="w-4 h-4 text-rose-600" />
+            </div>
+          </div>
+          <div>
+            <p className="font-extrabold font-mono text-xl sm:text-2xl text-rose-700">
+              R$ {stats.totalExpenses.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+            </p>
+            <div className="flex items-center mt-1 text-[10px] text-rose-700 font-semibold bg-rose-50 w-fit px-2 py-0.5 rounded-md">
+              <span>Despesas lançadas</span>
+            </div>
+          </div>
+        </div>
+
+        {/* NET PROFIT / LUCRO REAL */}
+        <div className="bg-violet-50/50 border border-violet-100 p-5 rounded-2xl space-y-3 shadow-xs hover:shadow-sm transition-all duration-300 relative overflow-hidden group">
+          <div className="absolute top-0 left-0 w-1.5 h-full bg-gradient-to-b from-indigo-500 to-violet-600" />
+          <div className="flex justify-between items-start">
+            <span className="text-[10px] uppercase font-extrabold text-violet-600 tracking-wider">Lucro Real Líquido</span>
+            <div className="p-2 bg-violet-100 rounded-xl">
+              <TrendingUp className="w-4 h-4 text-violet-700 animate-bounce" />
+            </div>
+          </div>
+          <div>
+            <p className={`font-black font-mono text-xl sm:text-2xl ${stats.netProfit >= 0 ? "text-violet-800" : "text-rose-700"}`}>
+              R$ {stats.netProfit.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+            </p>
+            <div className={`flex items-center mt-1 text-[10px] font-semibold w-fit px-2 py-0.5 rounded-md ${stats.netProfit >= 0 ? "text-violet-700 bg-violet-100" : "text-rose-700 bg-rose-50"}`}>
+              <span>
+                {stats.totalRevenue > 0 
+                  ? `${((stats.netProfit / stats.totalRevenue) * 100).toFixed(1)}% Margem` 
+                  : "0.0% Margem"}
+              </span>
             </div>
           </div>
         </div>
@@ -141,18 +255,18 @@ export default function DashboardOverview({ campaigns, allReservations, clientsC
         <div className="bg-white border border-slate-150 p-5 rounded-2xl space-y-3 shadow-xs hover:shadow-sm transition-all duration-300 relative overflow-hidden group">
           <div className="absolute top-0 left-0 w-1.5 h-full bg-amber-500" />
           <div className="flex justify-between items-start">
-            <span className="text-[10px] uppercase font-extrabold text-slate-400 tracking-wider">Faturamento Pendente PIX</span>
+            <span className="text-[10px] uppercase font-extrabold text-slate-400 tracking-wider">Pendente PIX</span>
             <div className="p-2 bg-amber-50 rounded-xl">
               <AlertCircle className="w-4 h-4 text-amber-600" />
             </div>
           </div>
           <div>
-            <p className="font-extrabold font-mono text-2xl md:text-3xl text-slate-800">
+            <p className="font-extrabold font-mono text-xl sm:text-2xl text-slate-800">
               R$ {stats.pendingPixRevenue.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
             <div className="flex items-center gap-1 mt-1 text-[10px] text-amber-700 font-semibold bg-amber-50 w-fit px-2 py-0.5 rounded-md">
               <span className="animate-ping w-1.5 h-1.5 bg-amber-500 rounded-full inline-block mr-1" />
-              <span>{stats.totalReservedCount} na fila de verificação</span>
+              <span>{stats.totalReservedCount} na fila</span>
             </div>
           </div>
         </div>
@@ -167,11 +281,11 @@ export default function DashboardOverview({ campaigns, allReservations, clientsC
             </div>
           </div>
           <div>
-            <p className="font-extrabold font-mono text-2xl md:text-3xl text-slate-800">
+            <p className="font-extrabold font-mono text-xl sm:text-2xl text-slate-800">
               {clientsCount} <span className="text-xs text-slate-400 font-sans font-medium">cadastros</span>
             </p>
             <div className="flex items-center gap-1 mt-1 text-[10px] text-slate-400">
-              <span>Acesso unificado e instantâneo</span>
+              <span>Acesso instantâneo</span>
             </div>
           </div>
         </div>

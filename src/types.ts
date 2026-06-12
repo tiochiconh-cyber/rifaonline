@@ -26,6 +26,7 @@ export interface Campaign {
   federalLotteryDrawId?: string;
   winningNumber?: string;
   federalLotteryNumber?: string;
+  prizeExpenses?: number; // Cost/expenses spent on the prizes of this campaign
   createdAt: string;
   progressiveDiscounts?: { minQuantity: number; discountPrice: number; discountPercentage?: number }[];
 }

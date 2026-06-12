@@ -10,17 +10,15 @@ const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
 
-// Connectivity Test
-async function testConnection() {
+// Connectivity Test (Passive validation)
+export async function testConnection() {
   try {
     await getDocFromServer(doc(db, "test", "connection"));
+    return true;
   } catch (error) {
-    if (error instanceof Error && error.message.includes("the client is offline")) {
-      console.warn("Please check your Firebase configuration: Client is offline.");
-    }
+    return false;
   }
 }
-testConnection();
 
 // Structured Metadata Error Handler for Secure Red-Team debugging
 export enum OperationType {
