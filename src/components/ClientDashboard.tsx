@@ -83,6 +83,8 @@ export default function ClientDashboard({ userProfile, onLogout }: ClientDashboa
   // Responsive mobile states
   const [gridFilter, setGridFilter] = useState<"all" | "available" | "mine" | "selected">("all");
   const [showFullDescriptionMobile, setShowFullDescriptionMobile] = useState(false);
+  const [mobileColumns, setMobileColumns] = useState<number>(5);
+  const [customQuantity, setCustomQuantity] = useState<number>(10);
 
   // LGPD Privacy hooks
   const [showLgpdModal, setShowLgpdModal] = useState(false);
@@ -1015,7 +1017,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                         <p className="text-slate-400 text-[10px] mt-0.5">Em breve teremos novas oportunidades! Fique de olho.</p>
                       </div>
                     ) : (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 animate-fadeIn">
+                      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6 animate-fadeIn">
                         {activeCampaigns.map((camp) => {
                           const isSelected = selectedCampaign?.id === camp.id;
                           const userTicketsCount = myTickets[camp.id]?.length || 0;
@@ -1042,14 +1044,14 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                                   boardEl.scrollIntoView({ behavior: "smooth", block: "start" });
                                 }
                               }}
-                              className={`group relative flex flex-col text-left bg-white rounded-3xl border overflow-hidden p-4 md:p-5 transition-all duration-300 cursor-pointer w-full ${
+                              className={`group relative flex flex-col text-left bg-white rounded-2xl md:rounded-3xl border overflow-hidden p-3 md:p-5 transition-all duration-300 cursor-pointer w-full ${
                                 isSelected
                                   ? "border-emerald-500 ring-4 ring-emerald-500/15 shadow-lg transform scale-[1.01]"
                                   : "border-slate-200 hover:border-slate-350 hover:shadow-lg hover:-translate-y-0.5"
                               }`}
                             >
                               {/* Thumbnail Image Container ("Foto da Campanha") */}
-                              <div className="relative aspect-square w-full overflow-hidden bg-slate-50 rounded-2xl border border-slate-100 shrink-0 mb-4">
+                              <div className="relative aspect-[4/3] sm:aspect-square w-full overflow-hidden bg-slate-50 rounded-xl md:rounded-2xl border border-slate-100 shrink-0 mb-3">
                                 {camp.imageUrl ? (
                                    <img
                                      src={camp.imageUrl}
@@ -1059,103 +1061,112 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                                    />
                                 ) : (
                                   <div className="w-full h-full bg-gradient-to-tr from-slate-900 via-indigo-950 to-indigo-900 flex flex-col items-center justify-center p-2 text-center">
-                                    <span className="text-2xl md:text-3xl.5 filter drop-shadow">🎓</span>
-                                    <span className="text-[8px] md:text-[9px] text-indigo-300 font-bold tracking-widest uppercase mt-1 font-mono">Formandos</span>
+                                    <span className="text-xl md:text-3xl.5 filter drop-shadow">🎓</span>
+                                    <span className="text-[7px] md:text-[9px] text-indigo-300 font-bold tracking-widest uppercase mt-0.5 font-mono">Formandos</span>
                                   </div>
                                 )}
 
                                 {/* Diagonal Sold Out Banner */}
                                 {restantes === 0 && (
                                   <div className="absolute inset-0 bg-black/30 z-10 pointer-events-none flex items-center justify-center overflow-hidden">
-                                    <div className="bg-gradient-to-r from-red-700 via-rose-500 to-red-700 text-white font-extrabold text-[11px] md:text-xs py-2 w-[160%] text-center uppercase tracking-widest rotate-[-25deg] shadow-[0_10px_20px_rgba(0,0,0,0.4)] border-y-2 border-yellow-400 animate-pulse select-none">
-                                      COTAS ESGOTADAS
+                                    <div className="bg-gradient-to-r from-red-700 via-rose-500 to-red-700 text-white font-extrabold text-[8px] md:text-xs py-1.5 w-[160%] text-center uppercase tracking-widest rotate-[-25deg] shadow-[0_10px_20px_rgba(0,0,0,0.4)] border-y border-yellow-400 animate-pulse select-none">
+                                      ESGOTADO
                                     </div>
                                   </div>
                                 )}
 
                                 {/* Floating Price Tag ("Valor Cota") */}
-                                <div className="absolute top-2.5 left-2.5 bg-[#82C943] text-white font-black text-xs md:text-sm px-3.5 py-1.5 rounded-xl shadow-lg border border-white/10 flex items-center justify-center">
+                                <div className="absolute top-1.5 left-1.5 md:top-2.5 md:left-2.5 bg-[#82C943] text-white font-black text-[9px] sm:text-xs md:text-sm px-2 py-0.5 md:px-3.5 md:py-1.5 rounded-lg md:rounded-xl shadow-lg border border-white/10 flex items-center justify-center font-mono">
                                   R$ {camp.ticketPrice.toFixed(2)}
                                 </div>
 
                                 {/* Floating status badges */}
-                                <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5">
+                                <div className="absolute top-1.5 right-1.5 md:top-2.5 md:right-2.5 flex items-center gap-1">
                                   {userTicketsCount > 0 && (
-                                    <span className="bg-indigo-600 text-white text-[8px] md:text-[9px] font-black px-2 py-0.5 rounded-full shadow-md">
-                                      {userTicketsCount} Reservado(s)
+                                    <span className="bg-indigo-600 text-white text-[7px] md:text-[9px] font-black px-1.5 py-0.5 rounded-full shadow-md">
+                                      {userTicketsCount} Reservado
                                     </span>
                                   )}
-                                  <span className="bg-slate-950/75 backdrop-blur-sm text-white px-2 py-0.5 md:px-2.5 md:py-1 text-[8px] md:text-[9.5px] font-bold rounded-full flex items-center gap-1 border border-white/10">
-                                    <span className="w-1 md:w-1.5 h-1 md:h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                  <span className="bg-slate-950/75 backdrop-blur-sm text-white px-1.5 py-0.5 md:px-2.5 md:py-1 text-[7px] md:text-[9.5px] font-bold rounded-full flex items-center gap-1 border border-white/10">
+                                    <span className="w-1 h-1 md:w-1.5 md:h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                                     Ativa
                                   </span>
                                 </div>
                               </div>
 
                               {/* Title and Description */}
-                              <div className="space-y-1 mb-3.5 flex-1 flex flex-col justify-start">
-                                <h3 className="font-extrabold text-slate-800 text-sm md:text-base leading-snug group-hover:text-emerald-600 transition-colors line-clamp-1">
+                              <div className="space-y-1 mb-2 flex-1 flex flex-col justify-start">
+                                <h3 className="font-extrabold text-slate-800 text-[11px] xs:text-xs sm:text-sm md:text-base leading-snug group-hover:text-emerald-600 transition-colors line-clamp-2">
                                   {camp.title}
                                 </h3>
-                                <p className="text-slate-450 text-[10px] md:text-xs line-clamp-2 leading-relaxed">
+                                <p className="hidden md:block text-slate-450 text-[10px] md:text-xs line-clamp-2 leading-relaxed">
                                   {camp.description ? stripHtml(camp.description) : "Participe desta rifa e garanta sua chance de ganhar prêmios incríveis enquanto apoia nossa comissão de formatura."}
                                 </p>
                               </div>
 
+                              {/* Compact horizontal stats for mobile */}
+                              <div className="flex sm:hidden justify-between items-center bg-slate-50 border border-slate-100 rounded-xl px-2 py-1 select-none text-[9px] font-bold text-slate-600 w-full mb-2 font-mono">
+                                <span>{camp.totalTickets} <span className="font-medium text-slate-400">cotas</span></span>
+                                <span className="text-slate-200">|</span>
+                                <span>{restantes} <span className="font-medium text-slate-400">restam</span></span>
+                              </div>
+
                               {/* The Trio of Info Boxes (Cotas, Vendidas, Restantes) */}
-                              <div className="grid grid-cols-3 gap-1.5 md:gap-2.5 mb-3">
+                              <div className="hidden sm:grid grid-cols-3 gap-1.5 md:gap-2.5 mb-3 w-full">
                                 <div className="bg-[#f0f8db]/80 border border-lime-200/60 rounded-2xl p-2 md:p-2.5 flex flex-col items-center justify-center text-center">
                                   <span className="text-emerald-700 font-extrabold text-[9px] md:text-[11px] uppercase tracking-wider">Cotas</span>
                                   <span className="text-emerald-800 font-black text-xs md:text-sm mt-0.5">{camp.totalTickets}</span>
                                 </div>
                                 <div className="bg-[#f1f9db]/85 border border-lime-200/60 rounded-2xl p-2 md:p-2.5 flex flex-col items-center justify-center text-center">
-                                  <span className="text-amber-700 font-extrabold text-[9px] md:text-[11px] uppercase tracking-wider">Vendidas</span>
+                                  <span className="text-amber-700 font-extrabold text-[9px] md:text-[11px] uppercase tracking-wider font-semibold">Vendidas</span>
                                   <span className="text-amber-800 font-black text-xs md:text-sm mt-0.5">{vendidas}</span>
                                 </div>
                                 <div className="bg-[#f1f9db]/85 border border-lime-200/60 rounded-2xl p-2 md:p-2.5 flex flex-col items-center justify-center text-center">
-                                  <span className="text-red-500 font-extrabold text-[9px] md:text-[11px] uppercase tracking-wider">Restantes</span>
+                                  <span className="text-red-500 font-extrabold text-[9px] md:text-[11px] uppercase tracking-wider font-semibold">Restantes</span>
                                   <span className="text-red-700 font-black text-xs md:text-sm mt-0.5">{restantes}</span>
                                 </div>
                               </div>
 
                               {/* Dynamic Projection Box based on sales velocity */}
-                              {(() => {
-                                const proj = getCampaignDrawProjection(camp, campTickets);
-                                return (
-                                  <div className="mb-4 bg-indigo-50/50 border border-indigo-100/60 rounded-2xl p-2.5 flex flex-col justify-center space-y-1 w-full text-left">
-                                    <div className="flex justify-between items-center text-[10px]">
-                                      <span className="text-indigo-950 font-extrabold uppercase tracking-wider flex items-center gap-1">
-                                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-650 animate-pulse" />
-                                        Sorteio Provável
-                                      </span>
-                                      <span className={`font-extrabold text-[9px] px-1.5 py-0.2 rounded-md ${
-                                        proj.confidenceRating === "high" 
-                                          ? "bg-emerald-100 text-emerald-800" 
-                                          : proj.confidenceRating === "medium"
-                                            ? "bg-indigo-100 text-indigo-800"
-                                            : "bg-amber-100 text-amber-700"
-                                      }`}>
-                                        Confiança: {proj.confidenceRating === "high" ? "Alta" : proj.confidenceRating === "medium" ? "Média" : "Baixa"}
-                                      </span>
+                              <div className="hidden sm:block w-full">
+                                {(() => {
+                                  const proj = getCampaignDrawProjection(camp, campTickets);
+                                  return (
+                                    <div className="mb-4 bg-indigo-50/50 border border-indigo-100/60 rounded-2xl p-2.5 flex flex-col justify-center space-y-1 w-full text-left">
+                                      <div className="flex justify-between items-center text-[10px]">
+                                        <span className="text-indigo-950 font-extrabold uppercase tracking-wider flex items-center gap-1 font-semibold">
+                                          <span className="w-1.5 h-1.5 rounded-full bg-indigo-650 animate-pulse" />
+                                          Sorteio Provável
+                                        </span>
+                                        <span className={`font-extrabold text-[9px] px-1.5 py-0.2 rounded-md ${
+                                          proj.confidenceRating === "high" 
+                                            ? "bg-emerald-100 text-emerald-800" 
+                                            : proj.confidenceRating === "medium"
+                                              ? "bg-indigo-100 text-indigo-800"
+                                              : "bg-amber-100 text-amber-700"
+                                        }`}>
+                                          Confiança: {proj.confidenceRating === "high" ? "Alta" : proj.confidenceRating === "medium" ? "Média" : "Baixa"}
+                                        </span>
+                                      </div>
+                                      <div className="text-[11.5px] font-black text-slate-800 leading-snug tracking-tight">
+                                        {proj.formattedProbableDrawDate.split(" às ")[0]}
+                                      </div>
+                                      <div className="text-[9.5px] text-slate-500 flex items-center justify-between font-semibold">
+                                        <span>Est: ~{proj.daysRemainingEst} dias</span>
+                                        <span>Velo: {proj.salesVelocity}/dia</span>
+                                      </div>
                                     </div>
-                                    <div className="text-[11.5px] font-black text-slate-800 leading-snug tracking-tight">
-                                      {proj.formattedProbableDrawDate.split(" às ")[0]}
-                                    </div>
-                                    <div className="text-[9.5px] text-slate-500 flex items-center justify-between font-semibold">
-                                      <span>Est: ~{proj.daysRemainingEst} dias</span>
-                                      <span>Velo: {proj.salesVelocity}/dia</span>
-                                    </div>
-                                  </div>
-                                );
-                              })()}
+                                  );
+                                })()}
+                              </div>
 
                               {/* Comprar Bilhetes Button */}
-                              <div className={`w-full text-center text-xs md:text-sm font-black py-2.5 md:py-3.5 px-4 rounded-2xl transition-all duration-200 border ${
+                              <div className={`w-full text-center text-[10px] sm:text-xs md:text-sm font-black py-1.5 sm:py-2.5 md:py-3 px-3 rounded-lg sm:rounded-2xl transition-all duration-200 border mt-auto ${
                                 isSelected
                                   ? "bg-green-600 text-white border-green-600 shadow-md"
-                                  : "bg-[#82C943] text-white border-[#82C943] hover:bg-[#72b834] hover:border-[#72b834] shadow-md shadow-green-500/10"
+                                  : "bg-[#82C943] text-white border-[#82C943] hover:bg-[#72b834] hover:border-[#72b834]"
                               }`}>
-                                {isSelected ? "Comprar Bilhetes ✓" : "Comprar Bilhetes"}
+                                {isSelected ? "Comprar ✓" : "Ver Cotas 🎫"}
                               </div>
                             </button>
                           );
@@ -1173,7 +1184,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                           Sorteios Realizados & Encerrados ({closedCampaigns.length})
                         </h3>
                       </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 animate-fadeIn">
+                      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6 animate-fadeIn">
                         {closedCampaigns.map((camp) => {
                           const isSelected = selectedCampaign?.id === camp.id;
                           const userTicketsCount = myTickets[camp.id]?.length || 0;
@@ -1200,14 +1211,14 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                                   boardEl.scrollIntoView({ behavior: "smooth", block: "start" });
                                 }
                               }}
-                              className={`group relative flex flex-col text-left bg-white rounded-3xl border overflow-hidden p-4 md:p-5 transition-all duration-300 cursor-pointer w-full opacity-90 hover:opacity-100 ${
+                              className={`group relative flex flex-col text-left bg-white rounded-2xl md:rounded-3xl border overflow-hidden p-3 md:p-5 transition-all duration-300 cursor-pointer w-full opacity-90 hover:opacity-100 ${
                                 isSelected
                                   ? "border-amber-500 ring-4 ring-amber-500/15 shadow-lg transform scale-[1.01]"
                                   : "border-slate-200 hover:border-amber-350 hover:shadow-lg hover:-translate-y-0.5"
                               }`}
                             >
                               {/* Thumbnail Image Container ("Foto da Campanha" - Concluido) */}
-                              <div className="relative aspect-square w-full overflow-hidden bg-slate-50 rounded-2xl border border-slate-100 shrink-0 mb-4 grayscale group-hover:grayscale-0 transition-all duration-350">
+                              <div className="relative aspect-[4/3] sm:aspect-square w-full overflow-hidden bg-slate-50 rounded-xl md:rounded-2xl border border-slate-100 shrink-0 mb-3 grayscale group-hover:grayscale-0 transition-all duration-350">
                                 {camp.imageUrl ? (
                                    <img
                                      src={camp.imageUrl}
@@ -1225,64 +1236,71 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                                 {/* Diagonal Sold Out Banner */}
                                 {restantes === 0 && (
                                   <div className="absolute inset-0 bg-black/30 z-10 pointer-events-none flex items-center justify-center overflow-hidden">
-                                    <div className="bg-gradient-to-r from-red-700 via-rose-500 to-red-700 text-white font-extrabold text-[11px] md:text-xs py-2 w-[160%] text-center uppercase tracking-widest rotate-[-25deg] shadow-[0_10px_20px_rgba(0,0,0,0.4)] border-y-2 border-yellow-400 animate-pulse select-none">
-                                      COTAS ESGOTADAS
+                                    <div className="bg-gradient-to-r from-red-700 via-rose-500 to-red-700 text-white font-extrabold text-[8px] md:text-xs py-1.5 w-[160%] text-center uppercase tracking-widest rotate-[-25deg] shadow-[0_10px_20px_rgba(0,0,0,0.4)] border-y border-yellow-400 animate-pulse select-none">
+                                      ESGOTADO
                                     </div>
                                   </div>
                                 )}
 
                                 {/* Floating Winner Number Tag */}
-                                <div className="absolute top-2.5 left-2.5 bg-amber-500 text-white font-black text-xs md:text-sm px-3.5 py-1.5 rounded-xl shadow-lg border border-white/10 flex items-center justify-center gap-1.5">
+                                <div className="absolute top-1.5 left-1.5 md:top-2.5 md:left-2.5 bg-amber-500 text-white font-black text-[9px] sm:text-xs md:text-sm px-2 py-0.5 md:px-3.5 md:py-1.5 rounded-lg md:rounded-xl shadow-lg border border-white/10 flex items-center justify-center gap-1 font-mono">
                                   🏆 Nº {camp.winningNumber || "Sorteado"}
                                 </div>
 
                                 {/* Floating status badge (right side) */}
-                                <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5">
+                                <div className="absolute top-1.5 right-1.5 md:top-2.5 md:right-2.5 flex items-center gap-1">
                                   {userTicketsCount > 0 && (
-                                    <span className="bg-slate-600 text-white text-[8px] md:text-[9.5px] font-black px-2 py-0.5 rounded-full shadow-md">
-                                      {userTicketsCount} Adquirido(s)
+                                    <span className="bg-slate-600 text-white text-[7px] md:text-[9.5px] font-black px-1.5 py-0.5 rounded-full shadow-md">
+                                      {userTicketsCount} Adquirido
                                     </span>
                                   )}
-                                  <span className="bg-slate-900/85 backdrop-blur-sm text-white px-2 py-0.5 md:px-2.5 md:py-1 text-[8px] md:text-[9.5px] font-bold rounded-full flex items-center gap-1 border border-white/10">
-                                    <Trophy className="w-2.5 h-2.5 text-amber-450 animate-bounce" />
+                                  <span className="bg-slate-900/85 backdrop-blur-sm text-white px-1.5 py-0.5 md:px-2.5 md:py-1 text-[7px] md:text-[9.5px] font-bold rounded-full flex items-center gap-1 border border-white/10">
+                                    <Trophy className="w-2 h-2 text-amber-450 animate-bounce" />
                                     Encerrada
                                   </span>
                                 </div>
                               </div>
 
                               {/* Title and Description */}
-                              <div className="space-y-1 mb-3.5 flex-1 flex flex-col justify-start">
-                                <h3 className="font-extrabold text-slate-800 text-sm md:text-base leading-snug group-hover:text-amber-600 transition-colors line-clamp-1">
+                              <div className="space-y-1 mb-2 flex-1 flex flex-col justify-start">
+                                <h3 className="font-extrabold text-slate-800 text-[11px] xs:text-xs sm:text-sm md:text-base leading-snug group-hover:text-amber-600 transition-colors line-clamp-2">
                                   {camp.title}
                                 </h3>
-                                <p className="text-slate-450 text-[10px] md:text-xs line-clamp-2 leading-relaxed">
+                                <p className="hidden md:block text-slate-450 text-[10px] md:text-xs line-clamp-2 leading-relaxed">
                                   {camp.description ? stripHtml(camp.description) : "Confira os detalhes e o bilhete contemplado para este sorteio encerrado de formatura."}
                                 </p>
                               </div>
 
+                              {/* Compact horizontal stats for mobile */}
+                              <div className="flex sm:hidden justify-between items-center bg-slate-50 border border-slate-100 rounded-xl px-2 py-1.5 text-[9px] text-slate-600 font-bold w-full mb-2.5 select-none font-mono">
+                                <span>{camp.totalTickets} <span className="font-medium text-slate-400">cotas</span></span>
+                                <span className="text-slate-200">|</span>
+                                <span>{restantes} <span className="font-medium text-slate-400">sobra</span></span>
+                              </div>
+
                               {/* The Trio of Info Boxes (Cotas, Vendidas, Restantes) */}
-                              <div className="grid grid-cols-3 gap-1.5 md:gap-2.5 mb-4">
+                              <div className="hidden sm:grid grid-cols-3 gap-1.5 md:gap-2.5 mb-4 w-full">
                                 <div className="bg-slate-50 border border-slate-100 rounded-2xl p-2 md:p-2.5 flex flex-col items-center justify-center text-center">
                                   <span className="text-slate-500 font-extrabold text-[9px] md:text-[11px] uppercase tracking-wider">Cotas</span>
                                   <span className="text-slate-700 font-black text-xs md:text-sm mt-0.5">{camp.totalTickets}</span>
                                 </div>
                                 <div className="bg-slate-50 border border-slate-100 rounded-2xl p-2 md:p-2.5 flex flex-col items-center justify-center text-center">
-                                  <span className="text-slate-500 font-extrabold text-[9px] md:text-[11px] uppercase tracking-wider">Vendidas</span>
+                                  <span className="text-slate-500 font-extrabold text-[9px] md:text-[11px] uppercase tracking-wider font-semibold">Vendidas</span>
                                   <span className="text-slate-700 font-black text-xs md:text-sm mt-0.5">{vendidas}</span>
                                 </div>
                                 <div className="bg-slate-50 border border-slate-100 rounded-2xl p-2 md:p-2.5 flex flex-col items-center justify-center text-center">
-                                  <span className="text-slate-450 font-extrabold text-[9px] md:text-[11px] uppercase tracking-wider">Sobra</span>
+                                  <span className="text-slate-450 font-extrabold text-[9px] md:text-[11px] uppercase tracking-wider font-semibold">Sobra</span>
                                   <span className="text-slate-600 font-black text-xs md:text-sm mt-0.5">{restantes}</span>
                                 </div>
                               </div>
 
                               {/* Resultado / Ver Ganhador Button */}
-                              <div className={`w-full text-center text-xs md:text-sm font-black py-2.5 md:py-3.5 px-4 rounded-2xl transition-all duration-200 border ${
+                              <div className={`w-full text-center text-[10px] sm:text-xs md:text-sm font-black py-1.5 sm:py-2.5 md:py-3 px-3 rounded-lg sm:rounded-2xl transition-all duration-200 border mt-auto ${
                                 isSelected
                                   ? "bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/10"
                                   : "bg-slate-100 text-slate-700 border-slate-200 hover:bg-amber-100 hover:text-amber-800 hover:border-amber-200 shadow-sm"
                               }`}>
-                                {isSelected ? "Resultado Selecionado ✓" : "Ver Ganhador 🏆"}
+                                {isSelected ? "Ganhador ✓" : "Ganhador 🏆"}
                               </div>
                             </button>
                           );
@@ -1666,7 +1684,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
 
                       {/* ACTIVE RESERVATION SELECTION CARD */}
                       {selectedNumbers.length > 0 && (
-                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 text-slate-800 space-y-3 animate-fadeIn">
+                        <div id="checkout-summary-card" className="bg-amber-50 border border-amber-200 rounded-xl p-5 text-slate-800 space-y-3 animate-fadeIn">
                           <h4 className="font-bold text-slate-800 text-sm flex items-center gap-1.5">
                             <AlertCircle className="w-4 h-4 text-amber-600 animate-pulse" />
                             Deseja reservar as cotas selecionadas?
@@ -1806,9 +1824,9 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                                     key={count}
                                     type="button"
                                     onClick={() => handleQuickSelectRandom(count)}
-                                    className={`relative py-2.5 px-1 sm:px-3 rounded-xl shadow-xs transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 text-center flex flex-col items-center justify-center cursor-pointer border font-black text-xs ${
+                                    className={`relative py-2.5 px-1 sm:px-3 rounded-xl shadow-xs transition-all duration-205 hover:-translate-y-0.5 active:translate-y-0 text-center flex flex-col items-center justify-center cursor-pointer border font-black text-xs ${
                                       isSelectedCount
-                                        ? "bg-emerald-600 border-emerald-600 text-white shadow-md"
+                                        ? "bg-emerald-600 border-emerald-600 text-white shadow-md font-bold"
                                         : "bg-[#82C943] border-[#82C943] hover:bg-[#72b834] hover:border-[#72b834] text-white"
                                     }`}
                                   >
@@ -1819,6 +1837,50 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                                   </button>
                                 );
                               })}
+                            </div>
+
+                            {/* Seletor Customizado de Quantidade para Mobile */}
+                            <div className="pt-3.5 border-t border-dashed border-emerald-500/20 flex flex-col sm:flex-row items-center justify-between gap-3 bg-emerald-500/5 p-3.5 rounded-2xl">
+                              <div className="space-y-0.5 text-center sm:text-left">
+                                <span className="text-[10.5px] text-emerald-800 font-extrabold uppercase tracking-wider block">Qualquer Quantidade</span>
+                                <p className="text-[9.5px] text-slate-500 font-medium">Defina um lote personalizado com facilidade</p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <div className="flex items-center bg-white border-2 border-slate-200 rounded-xl overflow-hidden shadow-xs h-10 select-none">
+                                  <button
+                                    type="button"
+                                    onClick={() => setCustomQuantity(q => Math.max(1, q - 1))}
+                                    className="px-3 bg-slate-50 text-slate-700 font-black text-sm hover:bg-slate-100 h-full border-r border-slate-200 active:bg-slate-200 transition-all outline-none"
+                                  >
+                                    -
+                                  </button>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    max={selectedCampaign.totalTickets}
+                                    value={customQuantity}
+                                    onChange={(e) => {
+                                      const val = Math.min(selectedCampaign.totalTickets, Math.max(1, parseInt(e.target.value) || 1));
+                                      setCustomQuantity(val);
+                                    }}
+                                    className="w-12 text-center font-mono font-black text-xs text-slate-800 bg-transparent py-1 h-full outline-none focus:ring-0"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => setCustomQuantity(q => Math.min(selectedCampaign.totalTickets, q + 1))}
+                                    className="px-3 bg-slate-50 text-slate-700 font-black text-sm hover:bg-slate-100 h-full border-l border-slate-200 active:bg-slate-200 transition-all outline-none"
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleQuickSelectRandom(customQuantity)}
+                                  className="h-10 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-md shadow-emerald-600/10 flex items-center justify-center gap-1 shrink-0 cursor-pointer"
+                                >
+                                  <span>Pegar {customQuantity} Cotas 🎲</span>
+                                </button>
+                              </div>
                             </div>
                           </div>
                         )}
@@ -1869,8 +1931,102 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                           )}
                         </div>
 
+                        {/* CONTROLES DE FILTRO INTERATIVO DA MATRIZ & TAMANHO DOS BOTÕES */}
+                        <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-150 animate-fadeIn">
+                          {/* Filter Tabs */}
+                          <div className="flex flex-wrap gap-1 bg-white p-1 rounded-xl border border-slate-200/50 flex-1">
+                            <button
+                              type="button"
+                              onClick={() => setGridFilter("all")}
+                              className={`flex-1 text-center py-1.5 px-1.5 rounded-lg font-bold text-[10px] transition-all cursor-pointer ${
+                                gridFilter === "all"
+                                  ? "bg-slate-900 text-white shadow-sm"
+                                  : "text-slate-500 hover:text-slate-800"
+                              }`}
+                            >
+                              🔍 Todos ({filteredIndices.length})
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setGridFilter("available")}
+                              className={`flex-1 text-center py-1.5 px-1.5 rounded-lg font-bold text-[10px] transition-all cursor-pointer ${
+                                gridFilter === "available"
+                                  ? "bg-indigo-600 text-white shadow-sm"
+                                  : "text-slate-500 hover:text-slate-805"
+                              }`}
+                            >
+                              🟢 Livres
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setGridFilter("mine")}
+                              className={`flex-1 text-center py-1.5 px-1.5 rounded-lg font-bold text-[10px] transition-all cursor-pointer ${
+                                gridFilter === "mine"
+                                  ? "bg-amber-500 text-slate-955 shadow-sm"
+                                  : "text-slate-500 hover:text-slate-805"
+                              }`}
+                            >
+                              🕒 Meus
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setGridFilter("selected")}
+                              className={`flex-1 text-center py-1.5 px-1.5 rounded-lg font-bold text-[10px] transition-all cursor-pointer ${
+                                gridFilter === "selected"
+                                  ? "bg-indigo-650 text-white shadow-sm"
+                                  : "text-slate-500 hover:text-slate-805"
+                              }`}
+                            >
+                              ⭐ Escolhidos ({selectedNumbers.length})
+                            </button>
+                          </div>
+
+                          {/* Mobile Columns Size Changer */}
+                          <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shrink-0 justify-between sm:justify-start">
+                            <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">Botões:</span>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => setMobileColumns(4)}
+                                className={`w-7 h-7 rounded-lg text-[10px] font-black flex items-center justify-center transition-all cursor-pointer ${
+                                  mobileColumns === 4
+                                    ? "bg-indigo-600 text-white shadow-3xs"
+                                    : "bg-slate-50 text-slate-500 hover:bg-slate-100"
+                                }`}
+                                title="Botões Grandes (4 colunas)"
+                              >
+                                G
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setMobileColumns(5)}
+                                className={`w-7 h-7 rounded-lg text-[10px] font-black flex items-center justify-center transition-all cursor-pointer ${
+                                  mobileColumns === 5
+                                    ? "bg-indigo-600 text-white shadow-3xs"
+                                    : "bg-slate-50 text-slate-500 hover:bg-slate-100"
+                                }`}
+                                title="Botões Médios (5 colunas)"
+                              >
+                                M
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setMobileColumns(6)}
+                                className={`w-7 h-7 rounded-lg text-[10px] font-black flex items-center justify-center transition-all cursor-pointer ${
+                                  mobileColumns === 6
+                                    ? "bg-indigo-600 text-white shadow-3xs"
+                                    : "bg-slate-50 text-slate-500 hover:bg-slate-100"
+                                }`}
+                                title="Botões Pequenos (6 colunas)"
+                              >
+                                P
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
                         {loadingTickets ? (
-                          <div className="grid grid-cols-5 sm:grid-cols-10 gap-2">
+                          <div className={`grid ${mobileColumns === 4 ? "grid-cols-4" : mobileColumns === 6 ? "grid-cols-6" : "grid-cols-5"} sm:grid-cols-10 gap-2`}>
                             {Array.from({ length: 40 }).map((_, idx) => (
                               <div key={idx} className="h-10 bg-slate-100 animate-pulse rounded-lg"></div>
                             ))}
@@ -1883,7 +2039,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                           </div>
                         ) : (
                           /* Grid drawing loop based on total size limit */
-                          <div className="grid grid-cols-5 sm:grid-cols-10 gap-2 max-h-[450px] overflow-y-auto p-1.5 bg-slate-50 border border-slate-100 rounded-2xl w-full">
+                          <div className={`grid ${mobileColumns === 4 ? "grid-cols-4 animate-fadeIn" : mobileColumns === 6 ? "grid-cols-6 animate-fadeIn" : "grid-cols-5"} sm:grid-cols-10 gap-1.5 sm:gap-2 max-h-[450px] overflow-y-auto p-1.5 bg-slate-50 border border-slate-100 rounded-2xl w-full`}>
                             {paginatedIndices.map((idx) => {
                               const numStr = padNumber(idx, selectedCampaign.totalTickets);
                               const tInfo = tickets[numStr];
@@ -2404,6 +2560,48 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                 © {new Date().getFullYear()} - Rifa do Chiquinho - Todos os direitos reservados
               </span>
             </footer>
+
+            {/* STICKY BOTTOM CARD SUMMARY WHENEVER USER SELECTS TICKETS ON MOBILE */}
+            {selectedCampaign && selectedNumbers.length > 0 && activeTab === "rifas" && selectedCampaign.status === "active" && (
+              <div className="fixed bottom-[64px] left-3 right-3 z-40 bg-slate-900 border border-slate-800 text-white rounded-2xl shadow-2xl p-3 flex items-center justify-between animate-fadeIn lg:hidden select-none">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center animate-pulse">
+                    <ShoppingBag className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest block leading-none">Cotas Selecionadas</span>
+                    <span className="text-sm font-black tracking-tight mt-0.5 block">
+                      {selectedNumbers.length} {selectedNumbers.length === 1 ? "cota" : "cotas"} •{" "}
+                      {(() => {
+                        const priceResult = getDiscountedPrice(selectedNumbers.length, selectedCampaign.ticketPrice, selectedCampaign.progressiveDiscounts);
+                        return (
+                          <span className="text-emerald-400 font-extrabold font-mono">
+                            R$ {priceResult.totalPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        );
+                      })()}
+                    </span>
+                  </div>
+                </div>
+                
+                <button
+                  type="button"
+                  onClick={() => {
+                    const card = document.getElementById("checkout-summary-card");
+                    if (card) {
+                      card.scrollIntoView({ behavior: "smooth" });
+                    } else {
+                      // fallback if card is not rendered yet, trigger scroll to matric grid
+                      document.getElementById("quadro-bilhetes")?.scrollIntoView({ behavior: "smooth" });
+                    }
+                  }}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black uppercase tracking-wider px-4 py-2 rounded-xl active:scale-95 transition-all flex items-center gap-1 shadow-md shadow-indigo-600/30 cursor-pointer"
+                >
+                  <span>Reservar</span>
+                  <ArrowRight className="w-3.5 h-3.5 text-white" />
+                </button>
+              </div>
+            )}
 
             {/* FIXED FLOATING FOOTER NAVIGATION TABS FOR HEALTHY MOBILE THUMB CONTROL */}
             <div className="fixed bottom-0 left-0 right-0 z-45 bg-white/95 backdrop-blur-md border-t border-slate-200/75 shadow-[0_-4px_24px_rgba(0,0,0,0.06)] px-2 py-1.5 flex justify-around items-center lg:hidden select-none">
