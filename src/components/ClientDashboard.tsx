@@ -48,6 +48,86 @@ export function stripHtml(html: string): string {
     .trim();
 }
 
+export function getCampaignPlaceholderImage(title: string, id: string): string {
+  const normTitle = (title || "").toLowerCase();
+  
+  // Categorized curated premium visual assets
+  if (normTitle.includes("formatura") || normTitle.includes("formand") || normTitle.includes("baile") || normTitle.includes("colação") || normTitle.includes("comissão") || normTitle.includes("diploma")) {
+    const grads = [
+      "https://images.unsplash.com/photo-1523050854058-8df90110c9f1?q=80&w=600&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1541339907198-e08756dedf3f?q=80&w=600&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1525921429571-473f9d0c6471?q=80&w=600&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1507537297725-24a1c029d3ca?q=80&w=600&auto=format&fit=crop"
+    ];
+    const index = Math.abs(id.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0)) % grads.length;
+    return grads[index];
+  }
+  
+  if (normTitle.includes("carro") || normTitle.includes("veiculo") || normTitle.includes("moto") || normTitle.includes("bmw") || normTitle.includes("honda") || normTitle.includes("yamaha") || normTitle.includes("auto") || normTitle.includes("rodas")) {
+    const vehicles = [
+      "https://images.unsplash.com/photo-1503376780353-7e6692767b70?q=80&w=600&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1558981806-ec527fa84c39?q=80&w=600&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1494976388531-d1058494cdd8?q=80&w=600&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?q=80&w=600&auto=format&fit=crop"
+    ];
+    const index = Math.abs(id.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0)) % vehicles.length;
+    return vehicles[index];
+  }
+  
+  if (normTitle.includes("pix") || normTitle.includes("dinheiro") || normTitle.includes("grana") || normTitle.includes("reais") || normTitle.includes("mil") || normTitle.includes("gold") || normTitle.includes("ouro")) {
+    const money = [
+      "https://images.unsplash.com/photo-1616077168079-7e09a677fb2c?q=80&w=600&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1563013544-824ae1d704d3?q=80&w=600&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1502920514313-52581002a659?q=80&w=600&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?q=80&w=600&auto=format&fit=crop"
+    ];
+    const index = Math.abs(id.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0)) % money.length;
+    return money[index];
+  }
+
+  if (normTitle.includes("iphone") || normTitle.includes("celular") || normTitle.includes("macbook") || normTitle.includes("playstation") || normTitle.includes("ps5") || normTitle.includes("eletronico") || normTitle.includes("fone") || normTitle.includes("tech")) {
+    const tech = [
+      "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?q=80&w=600&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1565849320607-45e0c52fec3b?q=80&w=600&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1606813907291-d86efa9b94db?q=80&w=600&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1593642632823-8f785ba67e45?q=80&w=600&auto=format&fit=crop"
+    ];
+    const index = Math.abs(id.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0)) % tech.length;
+    return tech[index];
+  }
+
+  if (normTitle.includes("festa") || normTitle.includes("balada") || normTitle.includes("churras") || normTitle.includes("cerveja") || normTitle.includes("show") || normTitle.includes("ingresso")) {
+    const entertainment = [
+      "https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?q=80&w=600&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1492684223066-81342ee5ff30?q=80&w=600&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1533174072545-7a4b6ad7a6c3?q=80&w=600&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?q=80&w=600&auto=format&fit=crop"
+    ];
+    const index = Math.abs(id.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0)) % entertainment.length;
+    return entertainment[index];
+  }
+
+  if (normTitle.includes("viagem") || normTitle.includes("resort") || normTitle.includes("praia") || normTitle.includes("passagem") || normTitle.includes("hotel") || normTitle.includes("ferias")) {
+    const travel = [
+      "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=600&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1436491865332-7a61a109cc05?q=80&w=600&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?q=80&w=600&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1488646953014-85cb44e25828?q=80&w=600&auto=format&fit=crop"
+    ];
+    const index = Math.abs(id.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0)) % travel.length;
+    return travel[index];
+  }
+
+  // Fallbacks: beautiful general raffle celebration items
+  const fallbacks = [
+    "https://images.unsplash.com/photo-1513151233558-d860c5398176?q=80&w=600&auto=format&fit=crop",
+    "https://images.unsplash.com/photo-1527529482837-4698179dc6ce?q=80&w=600&auto=format&fit=crop",
+    "https://images.unsplash.com/photo-1492684223066-81342ee5ff30?q=80&w=600&auto=format&fit=crop"
+  ];
+  const itemIndex = Math.abs(id.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0)) % fallbacks.length;
+  return fallbacks[itemIndex];
+}
+
 interface ClientDashboardProps {
   userProfile: UserProfile;
   onLogout: () => void;
@@ -1052,19 +1132,12 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                             >
                               {/* Thumbnail Image Container ("Foto da Campanha") */}
                               <div className="relative aspect-[4/3] sm:aspect-square w-full overflow-hidden bg-slate-50 rounded-xl md:rounded-2xl border border-slate-100 shrink-0 mb-3">
-                                {camp.imageUrl ? (
-                                   <img
-                                     src={camp.imageUrl}
-                                     alt={camp.title}
-                                     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                                     referrerPolicy="no-referrer"
-                                   />
-                                ) : (
-                                  <div className="w-full h-full bg-gradient-to-tr from-slate-900 via-indigo-950 to-indigo-900 flex flex-col items-center justify-center p-2 text-center">
-                                    <span className="text-xl md:text-3xl.5 filter drop-shadow">🎓</span>
-                                    <span className="text-[7px] md:text-[9px] text-indigo-300 font-bold tracking-widest uppercase mt-0.5 font-mono">Formandos</span>
-                                  </div>
-                                )}
+                                <img
+                                  src={camp.imageUrl || getCampaignPlaceholderImage(camp.title, camp.id)}
+                                  alt={camp.title}
+                                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                  referrerPolicy="no-referrer"
+                                />
 
                                 {/* Diagonal Sold Out Banner */}
                                 {restantes === 0 && (
@@ -1219,19 +1292,12 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                             >
                               {/* Thumbnail Image Container ("Foto da Campanha" - Concluido) */}
                               <div className="relative aspect-[4/3] sm:aspect-square w-full overflow-hidden bg-slate-50 rounded-xl md:rounded-2xl border border-slate-100 shrink-0 mb-3 grayscale group-hover:grayscale-0 transition-all duration-350">
-                                {camp.imageUrl ? (
-                                   <img
-                                     src={camp.imageUrl}
-                                     alt={camp.title}
-                                     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                                     referrerPolicy="no-referrer"
-                                   />
-                                ) : (
-                                  <div className="w-full h-full bg-gradient-to-tr from-slate-900 via-indigo-950 to-indigo-900 flex flex-col items-center justify-center p-2 text-center">
-                                    <span className="text-2xl md:text-3.5xl filter drop-shadow">🎓</span>
-                                    <span className="text-[8px] md:text-[9px] text-slate-400 font-bold tracking-widest uppercase mt-1 font-mono">Concluído</span>
-                                  </div>
-                                )}
+                                <img
+                                  src={camp.imageUrl || getCampaignPlaceholderImage(camp.title, camp.id)}
+                                  alt={camp.title}
+                                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                  referrerPolicy="no-referrer"
+                                />
 
                                 {/* Diagonal Sold Out Banner */}
                                 {restantes === 0 && (
