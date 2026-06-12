@@ -39,11 +39,12 @@ export default function App() {
 
   // App Settings State
   const [settings, setSettings] = useState({
-    pixKey: "formaturapix@suaformatura.com",
+    pixKey: "contato@rifadochiquinho.com.br",
     bankName: "Banco Central",
-    receiverName: "Comissão de Formatura Integrada",
+    receiverName: "Apoio Rifa do Chiquinho",
     expirationHours: 24,
     supportContact: "51999999999",
+    supportEmail: "contato@rifadochiquinho.com.br",
     rulesText: "Os bilhetes reservados têm prazo de validade. Caso a transferência via PIX não seja comprovada, a cota retornará à disponibilidade geral automaticamente.",
   });
 

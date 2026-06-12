@@ -493,11 +493,12 @@ export default function ClientDashboard({ userProfile, onLogout }: ClientDashboa
 
   // Dynamic settings state
   const [settings, setSettings] = useState({
-    pixKey: "formaturapix@suaformatura.com",
+    pixKey: "contato@rifadochiquinho.com.br",
     bankName: "Banco Central",
-    receiverName: "Comissão de Formatura Integrada",
+    receiverName: "Apoio Rifa do Chiquinho",
     expirationHours: 24,
     supportContact: "51999999999",
+    supportEmail: "contato@rifadochiquinho.com.br",
     rulesText: "Os bilhetes reservados têm prazo de validade. Caso a transferência via PIX não seja comprovada, a cota retornará à disponibilidade geral automaticamente.",
     backgroundAudioUrl: "",
     autoWhatsAppRedirect: true,
@@ -653,24 +654,6 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
       setTimeout(() => {
         addToast("Atenção: Seu pagamento está com status pendente de homologação via PIX.", "warning");
       }, 700);
-
-      // Auto-redirect to WhatsApp if enabled
-      if (settings.autoWhatsAppRedirect !== false) {
-        const tempTickets = reservedCopy.map(num => ({
-          id: num,
-          number: num,
-          status: "reserved" as const,
-          buyerUid: userProfile.uid,
-          buyerName: userProfile.name,
-          buyerPhone: userProfile.phone || "",
-          buyerCpf: userProfile.cpf,
-          buyerEmail: userProfile.email,
-          reservedAt: new Date().toISOString(),
-        }));
-        setTimeout(() => {
-          handleWhatsAppRedirect(tempTickets, selectedCampaign);
-        }, 1200);
-      }
     } catch (err: any) {
       console.error("Failed to reserve tickets:", err);
       const errMsg = err?.message || String(err);
@@ -822,6 +805,8 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
             <span>CPF: <strong className="text-slate-100">{userProfile.cpf}</strong></span>
             <span className="text-slate-700">|</span>
             <span>Cidade: <strong className="text-slate-100">{userProfile.city}</strong></span>
+            <span className="text-slate-700">|</span>
+            <span>Contato: <a href={`mailto:${settings.supportEmail || "contato@rifadochiquinho.com.br"}`} className="text-indigo-400 hover:underline hover:text-indigo-300 font-medium transition-colors">{settings.supportEmail || "contato@rifadochiquinho.com.br"}</a></span>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -1503,15 +1488,6 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                                   <p className="text-xs text-slate-650 leading-normal pt-1">
                                     Sua reserva temporária de <strong className="text-slate-900">{successReserved.length} cota(s)</strong> está ativa. Faça o PIX do valor total destacado abaixo para oficializar.
                                   </p>
-                                  {settings.autoWhatsAppRedirect !== false && (
-                                    <div className="flex items-center gap-2 mt-2 text-[10px] md:text-xs text-emerald-750 bg-emerald-50 border border-emerald-150 px-3 py-1.5 rounded-xl font-bold w-fit animate-pulse shadow-sm">
-                                      <span className="flex h-2.5 w-2.5 relative">
-                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-                                      </span>
-                                      <span>Abrindo o WhatsApp automaticamente para confirmar sua reserva... 🚀</span>
-                                    </div>
-                                  )}
                                 </div>
                               </div>
 
@@ -1529,64 +1505,114 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                               </div>
 
                               {/* Manual Payment Step */}
-                              <div className="bg-indigo-50/50 border border-indigo-100 rounded-2xl p-5 space-y-4">
-                                <div className="font-extrabold text-slate-900 border-b border-indigo-100/60 pb-3 flex items-center justify-between">
-                                  <span className="text-xs uppercase tracking-wider flex items-center gap-1.5 text-indigo-850">
-                                    <Landmark className="w-4 h-4 text-indigo-600" /> Dados de Pagamento
+                              <div className="bg-indigo-50/50 border border-indigo-150 rounded-2xl p-6 space-y-6">
+                                <div className="font-extrabold text-slate-900 border-b border-indigo-150/60 pb-4 flex items-center justify-between">
+                                  <span className="text-sm uppercase tracking-wider flex items-center gap-2 text-indigo-900">
+                                    <Landmark className="w-5 h-5 text-indigo-600 animate-bounce" /> DADOS DE PAGAMENTO VIA PIX
                                   </span>
-                                  <span className="text-xs font-black text-indigo-700 bg-indigo-100/80 border border-indigo-200 px-3 py-1 rounded-full">
-                                    Total: R$ {calc.totalPrice.toFixed(2)}
-                                  </span>
+                                  <div className="text-right">
+                                    <span className="text-xs font-bold text-slate-500 block">Total a Transferir:</span>
+                                    <span className="text-lg font-black text-emerald-650 font-mono">
+                                      R$ {calc.totalPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </span>
+                                  </div>
                                 </div>
-                                <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
-                                  {/* PIX Key highlight column */}
-                                  <div className="md:col-span-7 space-y-2.5 bg-white border border-indigo-100/80 p-4 rounded-xl shadow-xs">
-                                    <span className="text-[11px] text-indigo-700 font-extrabold uppercase tracking-wider block">Chave PIX Oficial para Transferência</span>
-                                    <div className="flex items-center gap-2 font-mono bg-indigo-50/70 p-3.5 border border-indigo-100 rounded-xl justify-between text-indigo-950 font-bold text-sm md:text-base shadow-inner">
-                                      <span className="select-all truncate">{settings.pixKey}</span>
-                                      <button
-                                        onClick={handleCopyPix}
-                                        className="text-indigo-600 hover:text-indigo-800 p-2 bg-white border border-indigo-200 shadow-xs hover:border-indigo-400 rounded-lg cursor-pointer shrink-0 transition-all flex items-center gap-1 shrink-0"
-                                        title="Copiar chave"
-                                      >
-                                        {copiedPix ? (
-                                          <>
-                                            <Check className="w-4 h-4 text-emerald-600" />
-                                            <span className="text-[10px] font-sans font-bold text-emerald-600">Copiada</span>
-                                          </>
-                                        ) : (
-                                          <>
-                                            <Copy className="w-4 h-4" />
-                                            <span className="text-[10px] font-sans font-bold">Copiar</span>
-                                          </>
-                                        )}
-                                      </button>
+
+                                <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+                                  {/* PIX Key copy block (Left space 7 columns) */}
+                                  <div className="md:col-span-7 space-y-4">
+                                    <div className="bg-emerald-500/5 border border-emerald-500/20 p-5 rounded-2xl space-y-3 relative overflow-hidden shadow-xs">
+                                      {/* Glowing indicator */}
+                                      <span className="absolute top-2 right-2 flex h-2 w-2">
+                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                      </span>
+
+                                      <span className="text-[10px] text-emerald-800 font-extrabold uppercase tracking-widest block">
+                                        🚀 Opção 1: Copiar Chave (Pix Copia e Cola)
+                                      </span>
+                                      
+                                      {/* Big high visibility Key container holding copy buttons */}
+                                      <div className="space-y-3">
+                                        <div className="bg-slate-950 border-2 border-amber-400 p-5 rounded-2xl text-center select-all shrink-0 transition-all shadow-xl relative overflow-hidden group">
+                                          <div className="absolute inset-0 bg-gradient-to-r from-amber-500/10 to-yellow-500/10 opacity-50 pointer-events-none group-hover:opacity-75 transition-opacity duration-300" />
+                                          <div className="relative z-10 flex flex-col items-center justify-center space-y-1 select-all">
+                                            <span className="text-[9px] text-amber-400 font-black tracking-widest uppercase mb-1">
+                                              👇 COPIE ESTA CHAVE EXATA 👇
+                                            </span>
+                                            <span className="font-mono font-black text-base md:text-xl text-yellow-300 break-all block leading-tight tracking-widest select-all">
+                                              {settings.pixKey}
+                                            </span>
+                                          </div>
+                                        </div>
+
+                                        <button
+                                          type="button"
+                                          onClick={handleCopyPix}
+                                          className={`w-full py-4.5 px-6 rounded-2xl font-black cursor-pointer transition-all flex items-center justify-center gap-3 text-base shadow-xl border-2 uppercase tracking-wider relative overflow-hidden group/btn ${
+                                            copiedPix 
+                                              ? "bg-gradient-to-r from-emerald-500 to-emerald-700 text-white border-emerald-400 shadow-emerald-500/25 scale-[1.03]" 
+                                              : "bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-600 hover:from-amber-600 hover:via-yellow-500 hover:to-amber-700 text-slate-950 border-yellow-300 shadow-amber-500/30 hover:scale-[1.03] animate-pulse"
+                                          }`}
+                                        >
+                                          {copiedPix ? (
+                                            <>
+                                              <Check className="w-6 h-6 text-white stroke-[3px] animate-bounce" />
+                                              <span>CHAVE PIX COPIADA! ✓</span>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <Copy className="w-6 h-6 text-slate-900 stroke-[3px] transition-transform duration-300 group-hover/btn:scale-125 group-hover/btn:rotate-12 animate-pulse" />
+                                              <span>CLIQUE PARA COPIAR A CHAVE PIX 📋</span>
+                                            </>
+                                          )}
+                                        </button>
+                                      </div>
+
+                                      <p className="text-[10px] text-slate-500 leading-normal font-medium text-center">
+                                        Toque no botão acima para copiar. Abra o app do seu banco, escolha <strong>Pix Copia e Cola</strong> (ou chave de transferência) e cole o código.
+                                      </p>
                                     </div>
-                                    
-                                    {/* Favorecido and Banco detail inside the payment card */}
-                                    <div className="pt-3 mt-3 border-t border-indigo-50/80 space-y-2">
-                                      {settings.receiverName && (
-                                        <div className="flex justify-between items-center bg-slate-50/80 p-2.5 rounded-lg border border-slate-100">
-                                          <span className="text-slate-500 font-bold text-[11px] uppercase tracking-wider">Favorecido:</span>
-                                          <span className="font-extrabold text-slate-900 text-sm">{settings.receiverName}</span>
-                                        </div>
-                                      )}
-                                      {settings.bankName && (
-                                        <div className="flex justify-between items-center bg-slate-50/80 p-2.5 rounded-lg border border-slate-100">
-                                          <span className="text-slate-500 font-bold text-[11px] uppercase tracking-wider">Banco:</span>
-                                          <span className="font-extrabold text-slate-900 text-sm">{settings.bankName}</span>
-                                        </div>
-                                      )}
+
+                                    {/* Recipient breakdown details */}
+                                    <div className="bg-white border border-slate-150 p-4 rounded-2xl space-y-2.5">
+                                      <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest block">Dados do Favorecido</span>
+                                      <div className="space-y-2">
+                                        {settings.receiverName && (
+                                          <div className="flex justify-between items-center bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                                            <span className="text-slate-500 font-bold text-[10.5px] uppercase tracking-wider">Favorecido:</span>
+                                            <span className="font-extrabold text-slate-800 text-xs md:text-sm text-right truncate max-w-[200px]">{settings.receiverName}</span>
+                                          </div>
+                                        )}
+                                        {settings.bankName && (
+                                          <div className="flex justify-between items-center bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                                            <span className="text-slate-500 font-bold text-[10.5px] uppercase tracking-wider">Banco / Instituição:</span>
+                                            <span className="font-extrabold text-slate-800 text-xs md:text-sm text-right">{settings.bankName}</span>
+                                          </div>
+                                        )}
+                                      </div>
                                     </div>
                                   </div>
 
-                                  {/* Instructions */}
-                                  <div className="md:col-span-5 flex flex-col justify-between space-y-3 bg-indigo-900/5 border border-indigo-950/5 p-4 rounded-xl text-xs text-indigo-950">
-                                    <div className="space-y-1.5">
-                                      <span className="text-[11px] text-indigo-950 font-black uppercase tracking-wider block">Como Confirmar?</span>
-                                      <p className="leading-relaxed text-slate-700">
-                                        Envie o comprovante para o suporte ou simplesmente aguarde! O sistema revisará o extrato buscando o CPF/cadastro <strong className="text-indigo-900 font-extrabold">{userProfile.cpf}</strong> em até <strong>{settings.expirationHours} horas</strong> para validar seus números.
-                                      </p>
+                                  {/* Instructions Box (Right space 5 columns) */}
+                                  <div className="md:col-span-5 flex flex-col justify-between space-y-4">
+                                    {/* How to Confirm instructions */}
+                                    <div className="bg-indigo-950 text-indigo-50 p-5 rounded-2xl space-y-3 border border-indigo-900 shadow-sm grow flex flex-col justify-center">
+                                      <span className="text-[11px] text-indigo-300 font-black uppercase tracking-wider block">⚠️ Passos Importantes:</span>
+                                      <ul className="text-[11px] space-y-2 leading-relaxed text-indigo-200">
+                                        <li className="flex items-start gap-1.5">
+                                          <span className="bg-indigo-800 text-white w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center shrink-0 mt-0.5">1</span>
+                                          <span>Realize a transferência no valor exato de <strong>R$ {calc.totalPrice.toFixed(2)}</strong>.</span>
+                                        </li>
+                                        <li className="flex items-start gap-1.5">
+                                          <span className="bg-indigo-800 text-white w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center shrink-0 mt-0.5">2</span>
+                                          <span>Anote ou tire print do comprovante da transação.</span>
+                                        </li>
+                                        <li className="flex items-start gap-1.5">
+                                          <span className="bg-indigo-800 text-white w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center shrink-0 mt-0.5">3</span>
+                                          <span>Clique em <strong>Confirmar no WhatsApp</strong> para enviar o comprovante.</span>
+                                        </li>
+                                      </ul>
                                     </div>
                                   </div>
                                 </div>
@@ -2049,29 +2075,34 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                         );
                       })()}
 
-                      <p className="text-[11px] leading-relaxed text-slate-600">
-                        Faça a transferência acima via PIX das suas cotas pendentes nos dados abaixo para confirmar suas reservas:
+                      <p className="text-[11.5px] leading-relaxed text-slate-700 font-medium">
+                        Realize a transferência acima via PIX das suas cotas pendentes nos dados abaixo para confirmar suas reservas:
                       </p>
                       <div className="space-y-3 bg-amber-50/60 border border-amber-200 rounded-xl p-4 shadow-xs">
-                        <div className="bg-white border border-amber-100 rounded-lg p-3 flex items-center justify-between gap-1.5 font-mono text-[11px] text-slate-800 shadow-2xs">
-                          <div className="flex-1 min-w-0">
-                            <span className="text-[9px] text-amber-800 font-extrabold block font-sans tracking-wide uppercase">CHAVE PIX</span>
-                            <span className="truncate block font-extrabold text-[13px] text-indigo-950 font-mono select-all">{settings.pixKey}</span>
+                        <div className="bg-slate-950 border-2 border-amber-400 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-md relative overflow-hidden group">
+                          <div className="absolute inset-0 bg-gradient-to-r from-amber-500/5 to-yellow-500/5 pointer-events-none" />
+                          <div className="flex-1 min-w-0 w-full relative z-10 select-all text-center sm:text-left">
+                            <span className="text-[9px] text-amber-400 font-extrabold block font-sans tracking-widest uppercase">👇 COPIAR ESTA CHAVE PIX 👇</span>
+                            <span className="break-all block font-extrabold text-[14px] md:text-[15px] text-yellow-300 font-mono tracking-wide bg-amber-500/10 px-2.5 py-2 rounded-lg border border-amber-500/20 mt-1 select-all">{settings.pixKey}</span>
                           </div>
                           <button
                             onClick={handleCopyPix}
-                            className="text-amber-700 hover:text-amber-900 p-2 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg cursor-pointer shrink-0 transition-all flex items-center gap-1 select-none"
+                            className={`w-full sm:w-auto px-5 py-3.5 rounded-xl font-black cursor-pointer transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider shadow-lg border-2 shrink-0 group/pill ${
+                              copiedPix
+                                ? "bg-emerald-600 border-emerald-500 text-white"
+                                : "bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 border-amber-400 active:scale-95 animate-pulse"
+                            }`}
                             title="Copiar chave PIX"
                           >
                             {copiedPix ? (
                               <>
-                                <Check className="w-3.5 h-3.5 text-emerald-600 animate-scaleIn" />
-                                <span className="text-[9px] font-sans font-black text-emerald-600">Copiada</span>
+                                <Check className="w-4 h-4 text-white stroke-[3px] animate-bounce" />
+                                <span>Copiada!</span>
                               </>
                             ) : (
                               <>
-                                <Copy className="w-3.5 h-3.5" />
-                                <span className="text-[9px] font-sans font-black">Copiar</span>
+                                <Copy className="w-4 h-4 text-slate-900 stroke-[3px] transition-transform duration-300 group-hover/pill:scale-125 group-hover/pill:rotate-12 animate-pulse" />
+                                <span>Copiar Chave</span>
                               </>
                             )}
                           </button>
@@ -2246,29 +2277,34 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                   );
                 })()}
 
-                <p className="text-[11px] leading-relaxed text-slate-655">
-                  Faça a transferência acima via PIX das suas cotas pendentes nos dados abaixo para confirmar suas reservas:
+                 <p className="text-[11.5px] leading-relaxed text-slate-705 font-medium">
+                  Realize a transferência acima via PIX das suas cotas pendentes nos dados abaixo para confirmar suas reservas:
                 </p>
                 <div className="space-y-3 bg-amber-50/60 border border-amber-200 rounded-xl p-4 shadow-xs">
-                  <div className="bg-white border border-amber-100 rounded-lg p-3 flex items-center justify-between gap-1.5 font-mono text-[11px] text-slate-800 shadow-2xs">
-                    <div className="flex-1 min-w-0">
-                      <span className="text-[9px] text-amber-800 font-extrabold block font-sans tracking-wide uppercase">CHAVE PIX</span>
-                      <span className="truncate block font-extrabold text-[13px] text-indigo-950 font-mono select-all">{settings.pixKey}</span>
+                  <div className="bg-slate-950 border-2 border-amber-400 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-md relative overflow-hidden group">
+                    <div className="absolute inset-0 bg-gradient-to-r from-amber-500/5 to-yellow-500/5 pointer-events-none" />
+                    <div className="flex-1 min-w-0 w-full relative z-10 select-all text-center sm:text-left">
+                      <span className="text-[9px] text-amber-400 font-extrabold block font-sans tracking-widest uppercase">👇 COPIAR ESTA CHAVE PIX 👇</span>
+                      <span className="break-all block font-extrabold text-[14px] md:text-[15px] text-yellow-300 font-mono tracking-wide bg-amber-500/10 px-2.5 py-2 rounded-lg border border-amber-500/20 mt-1 select-all">{settings.pixKey}</span>
                     </div>
                     <button
                       onClick={handleCopyPix}
-                      className="text-amber-700 hover:text-amber-900 p-2 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg cursor-pointer shrink-0 transition-all flex items-center gap-1 select-none"
+                      className={`w-full sm:w-auto px-5 py-3.5 rounded-xl font-black cursor-pointer transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wider shadow-lg border-2 shrink-0 group/pill ${
+                        copiedPix
+                          ? "bg-emerald-600 border-emerald-500 text-white"
+                          : "bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 border-amber-400 active:scale-95 animate-pulse"
+                      }`}
                       title="Copiar chave PIX"
                     >
                       {copiedPix ? (
                         <>
-                          <Check className="w-3.5 h-3.5 text-emerald-600 animate-scaleIn" />
-                          <span className="text-[9px] font-sans font-black text-emerald-600">Copiada</span>
+                          <Check className="w-4 h-4 text-white stroke-[3px] animate-bounce" />
+                          <span>Copiada!</span>
                         </>
                       ) : (
                         <>
-                          <Copy className="w-3.5 h-3.5" />
-                          <span className="text-[9px] font-sans font-black">Copiar</span>
+                          <Copy className="w-4 h-4 text-slate-900 stroke-[3px] transition-transform duration-300 group-hover/pill:scale-125 group-hover/pill:rotate-12 animate-pulse" />
+                          <span>Copiar Chave</span>
                         </>
                       )}
                     </button>
@@ -2348,6 +2384,26 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                 </div>
               </div>
             )}
+
+            {/* OFFICIAL CONTACT SUPPORT FOOTER */}
+            <footer className="mt-12 mb-8 text-center px-4 max-w-xl mx-auto space-y-2.5 select-text relative z-10">
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-100 border border-slate-250/50 text-[11px] text-slate-600 font-bold shadow-2xs">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span>Suporte Ativo por E-mail</span>
+              </div>
+              <p className="text-xs text-slate-500 font-semibold leading-relaxed">
+                Dúvidas sobre reservas, comprovantes ou sorteios? Entre em contato pelo e-mail oficial:
+              </p>
+              <div className="font-mono text-xs md:text-sm font-black text-indigo-950 bg-white border border-slate-200 px-4 py-2.5 rounded-2xl w-fit mx-auto shadow-sm hover:scale-[1.01] transition-all">
+                <a href={`mailto:${settings.supportEmail || "contato@rifadochiquinho.com.br"}`} className="text-indigo-600 hover:text-indigo-800 flex items-center justify-center gap-1.5 break-all">
+                  <span>✉️</span>
+                  <span>{settings.supportEmail || "contato@rifadochiquinho.com.br"}</span>
+                </a>
+              </div>
+              <span className="text-[10px] text-slate-400 font-extrabold block uppercase tracking-widest pt-2">
+                © {new Date().getFullYear()} - Rifa do Chiquinho - Todos os direitos reservados
+              </span>
+            </footer>
 
             {/* FIXED FLOATING FOOTER NAVIGATION TABS FOR HEALTHY MOBILE THUMB CONTROL */}
             <div className="fixed bottom-0 left-0 right-0 z-45 bg-white/95 backdrop-blur-md border-t border-slate-200/75 shadow-[0_-4px_24px_rgba(0,0,0,0.06)] px-2 py-1.5 flex justify-around items-center lg:hidden select-none">

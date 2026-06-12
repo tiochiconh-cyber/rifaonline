@@ -51,11 +51,12 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
 
   // Global dynamically editable settings
   const [settings, setSettings] = useState({
-    pixKey: "formaturapix@suaformatura.com",
+    pixKey: "contato@rifadochiquinho.com.br",
     bankName: "Banco Central",
-    receiverName: "Comissão de Formatura Integrada",
+    receiverName: "Apoio Rifa do Chiquinho",
     expirationHours: 24,
     supportContact: "51999999999",
+    supportEmail: "contato@rifadochiquinho.com.br",
     rulesText: "Os bilhetes reservados têm prazo de validade. Caso a transferência via PIX não seja comprovada, a cota retornará à disponibilidade geral automaticamente.",
     autoWhatsAppRedirect: true
   });
@@ -2410,6 +2411,18 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                   onChange={(e) => setSettings({ ...settings, supportContact: e.target.value.replace(/\D/g, "") })}
                   className="w-full bg-white p-2.5 border border-slate-300 rounded-lg text-xs"
                   placeholder="Ex: 51999999999"
+                />
+              </div>
+
+              <div className="space-y-1.5 md:col-span-2">
+                <label className="block font-bold text-slate-700">E-mail de Suporte / Contato Oficial</label>
+                <input
+                  type="email"
+                  required
+                  value={settings.supportEmail || "contato@rifadochiquinho.com.br"}
+                  onChange={(e) => setSettings({ ...settings, supportEmail: e.target.value })}
+                  className="w-full bg-white p-2.5 border border-slate-300 rounded-lg text-xs"
+                  placeholder="Ex: contato@rifadochiquinho.com.br"
                 />
               </div>
 
