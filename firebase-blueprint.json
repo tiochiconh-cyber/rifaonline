@@ -85,6 +85,10 @@
           "type": "string",
           "description": "Scheduled date or reference of the Federal Lottery draw"
         },
+        "drawHour": {
+          "type": "string",
+          "description": "Time of the draw (e.g. 19:00)"
+        },
         "federalLotteryDrawId": {
           "type": "string",
           "description": "ID of the Federal Lottery draw"

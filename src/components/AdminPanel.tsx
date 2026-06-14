@@ -171,6 +171,17 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
   const [editClientRole, setEditClientRole] = useState<"client" | "admin" | "">("client");
   const [editClientError, setEditClientError] = useState("");
 
+  // Create Client Manually States
+  const [showCreateClientModal, setShowCreateClientModal] = useState(false);
+  const [createClientName, setCreateClientName] = useState("");
+  const [createClientCpf, setCreateClientCpf] = useState("");
+  const [createClientPhone, setCreateClientPhone] = useState("");
+  const [createClientCity, setCreateClientCity] = useState("");
+  const [createClientEmail, setCreateClientEmail] = useState("");
+  const [createClientError, setCreateClientError] = useState("");
+  const [createClientSuccess, setCreateClientSuccess] = useState("");
+  const [createClientLoading, setCreateClientLoading] = useState(false);
+
   // Manual Ticket Allocation Flow (Lançar Cotas)
   const [showIssueTicketsModal, setShowIssueTicketsModal] = useState(false);
   const [issueSelectedClient, setIssueSelectedClient] = useState<UserProfile | null>(null);
@@ -208,7 +219,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
     const ticketRows = Math.ceil(ticketsCount / itemsPerRow);
     
     // Dynamic height calculation
-    const baseHeight = 520; // header details, text notes, etc.
+    const baseHeight = 540; // header details, text notes, etc.
     const calculatedHeight = baseHeight + (ticketRows * rowHeight);
     
     canvas.width = 600;
@@ -285,6 +296,20 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
     y += 20;
     ctx.fillText(`CPF: ${receiptClientCpf || "Não informado"}`, 35, y);
     ctx.fillText(`E-mail: ${receiptClientEmail || "Não informado"}`, 320, y);
+
+    y += 20;
+    // Find the date & time of reservation
+    const firstReservedAt = receiptTickets.find(t => t.reservedAt)?.reservedAt;
+    let reservationTimeText = "Não informada";
+    if (firstReservedAt) {
+      try {
+        const rDate = new Date(firstReservedAt);
+        reservationTimeText = rDate.toLocaleString("pt-BR");
+      } catch (e) {
+        reservationTimeText = String(firstReservedAt);
+      }
+    }
+    ctx.fillText(`Data/Hora de Reserva: ${reservationTimeText}`, 35, y);
 
     y += 35;
     ctx.strokeStyle = "#E2E8F0";
@@ -517,6 +542,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
   const [drawingCampaignId, setDrawingCampaignId] = useState<string | null>(null);
   const [drawWinnerCode, setDrawWinnerCode] = useState("");
   const [drawWinnerDate, setDrawWinnerDate] = useState("");
+  const [drawWinnerHour, setDrawWinnerHour] = useState("");
   const [drawWinnerContestId, setDrawWinnerContestId] = useState("");
 
   const handleExportTicketsCSV = () => {
@@ -820,6 +846,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
     setDrawingCampaignId(ca.id);
     setDrawWinnerCode("");
     setDrawWinnerDate(ca.drawDate || new Date().toISOString().split("T")[0]);
+    setDrawWinnerHour(ca.drawHour || "");
     setDrawWinnerContestId(ca.federalLotteryDrawId || "");
   };
 
@@ -935,6 +962,97 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
       alert("Cadastro do cliente atualizado com absoluto sucesso!");
     } catch (err: any) {
       handleFirestoreError(err, OperationType.WRITE, `users/${editingClient.uid}`);
+    }
+  };
+
+  const handleCreateClient = async () => {
+    if (!createClientName.trim()) {
+      setCreateClientError("Nome do cliente é obrigatório.");
+      return;
+    }
+    const cleanCpf = createClientCpf.replace(/\D/g, "");
+    if (cleanCpf.length < 11 || cleanCpf.length > 15) {
+      setCreateClientError("CPF inválido (deve conter no mínimo 11 dígitos).");
+      return;
+    }
+    const cleanPhone = createClientPhone.replace(/\D/g, "");
+    if (!cleanPhone) {
+      setCreateClientError("WhatsApp/Celular é obrigatório.");
+      return;
+    }
+    if (!createClientCity.trim()) {
+      setCreateClientError("Cidade/Estado é obrigatória.");
+      return;
+    }
+    if (!createClientEmail.trim()) {
+      setCreateClientError("E-mail é obrigatório.");
+      return;
+    }
+    
+    setCreateClientLoading(true);
+    setCreateClientError("");
+    setCreateClientSuccess("");
+
+    try {
+      // Check for duplicates
+      const usersRef = collection(db, "users");
+      const cpfQuery = query(usersRef, where("cpf", "==", cleanCpf));
+      const phoneQuery = query(usersRef, where("phone", "==", cleanPhone));
+
+      const [cpfSnap, phoneSnap] = await Promise.all([
+        getDocs(cpfQuery),
+        getDocs(phoneQuery),
+      ]);
+
+      if (!cpfSnap.empty) {
+        setCreateClientError("Este CPF já está associado a outro participante.");
+        setCreateClientLoading(false);
+        return;
+      }
+
+      if (!phoneSnap.empty) {
+        setCreateClientError("Este WhatsApp/Celular já está associado a outro participante.");
+        setCreateClientLoading(false);
+        return;
+      }
+
+      const newClientRef = doc(collection(db, "users"));
+      const newUid = newClientRef.id;
+
+      const newUser: UserProfile = {
+        uid: newUid,
+        name: createClientName.trim(),
+        cpf: cleanCpf,
+        phone: cleanPhone,
+        city: createClientCity.trim(),
+        email: createClientEmail.trim().toLowerCase(),
+        role: "client",
+        createdAt: new Date().toISOString(),
+      };
+
+      await setDoc(newClientRef, newUser);
+      
+      setCreateClientSuccess("Participante cadastrado com sucesso!");
+      
+      // Clear fields
+      setCreateClientName("");
+      setCreateClientCpf("");
+      setCreateClientPhone("");
+      setCreateClientCity("");
+      setCreateClientEmail("");
+
+      // Automatically select this new client in the tickets allocation selection!
+      setIssueSelectedClient(newUser);
+
+      // Close modal after a short delay
+      setTimeout(() => {
+        setShowCreateClientModal(false);
+        setCreateClientSuccess("");
+      }, 1500);
+    } catch (err: any) {
+      setCreateClientError(`Erro ao cadastrar: ${err?.message || String(err)}`);
+    } finally {
+      setCreateClientLoading(false);
     }
   };
 
@@ -1432,11 +1550,13 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
         winningNumber: finalWinningNumber,
         federalLotteryNumber: drawWinnerCode.trim(),
         drawDate: drawWinnerDate.trim(),
+        drawHour: drawWinnerHour.trim(),
         federalLotteryDrawId: drawWinnerContestId.trim()
       });
       setDrawingCampaignId(null);
       setDrawWinnerCode("");
       setDrawWinnerDate("");
+      setDrawWinnerHour("");
       setDrawWinnerContestId("");
     } catch (err) {
       console.error("Error drawing campaign:", err);
@@ -3236,14 +3356,23 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                       />
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-3 gap-2">
                       <div>
-                        <label className="block font-semibold text-slate-600 mb-1 text-[10px]">Data do Sorteio</label>
+                        <label className="block font-semibold text-slate-600 mb-1 text-[10px]">Data Sorteio</label>
                         <input
                           type="date"
                           value={drawWinnerDate}
                           onChange={(e) => setDrawWinnerDate(e.target.value)}
-                          className="w-full py-2 px-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50 font-medium"
+                          className="w-full py-2 px-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50 font-medium text-xs text-center"
+                        />
+                      </div>
+                      <div>
+                        <label className="block font-semibold text-slate-600 mb-1 text-[10px]">Hora Sorteio</label>
+                        <input
+                          type="time"
+                          value={drawWinnerHour}
+                          onChange={(e) => setDrawWinnerHour(e.target.value)}
+                          className="w-full py-2 px-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50 font-medium text-xs text-center"
                         />
                       </div>
                       <div>
@@ -3252,7 +3381,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                           type="text"
                           value={drawWinnerContestId}
                           onChange={(e) => setDrawWinnerContestId(e.target.value)}
-                          className="w-full py-2 px-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50 font-medium"
+                          className="w-full py-2 px-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50 font-medium text-xs text-center"
                           placeholder="Ex: 5873"
                         />
                       </div>
@@ -3702,6 +3831,9 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                                 {ca.drawDate && (
                                   <> em <strong className="text-slate-600 font-semibold">{ca.drawDate.split("-").reverse().join("/")}</strong></>
                                 )}
+                                {ca.drawHour && (
+                                  <> às <strong className="text-slate-600 font-semibold">{ca.drawHour}</strong></>
+                                )}
                               </p>
                             </div>
                           </div>
@@ -3784,25 +3916,44 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                 <h2 className="font-extrabold text-slate-800 text-lg">Histórico de Clientes Cadastrados</h2>
                 <p className="text-xs text-slate-400">Consulte a base de participantes, contatos do WhatsApp e CPFs vinculados.</p>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setIssueSelectedClient(clients.length > 0 ? clients[0] : null);
-                  const activeCamps = campaigns.filter(c => c.status === "active");
-                  setIssueCampaignId(activeCamps.length > 0 ? activeCamps[0].id : "");
-                  setIssueNumbersType("specific");
-                  setIssueSpecificNumbers("");
-                  setIssueRandomCount(1);
-                  setIssueStatus("confirmed");
-                  setIssueError(null);
-                  setIssueSuccess(null);
-                  setShowIssueTicketsModal(true);
-                }}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs px-4 py-2.5 rounded-xl transition flex items-center gap-1.5 self-start sm:self-auto cursor-pointer shadow-xs"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Lançar Cotas Manuais</span>
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCreateClientName("");
+                    setCreateClientCpf("");
+                    setCreateClientPhone("");
+                    setCreateClientCity("");
+                    setCreateClientEmail("");
+                    setCreateClientError("");
+                    setCreateClientSuccess("");
+                    setShowCreateClientModal(true);
+                  }}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs px-4 py-2.5 rounded-xl transition flex items-center gap-1.5 self-start sm:self-auto cursor-pointer shadow-xs"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Cadastrar Novo Cliente</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIssueSelectedClient(clients.length > 0 ? clients[0] : null);
+                    const activeCamps = campaigns.filter(c => c.status === "active");
+                    setIssueCampaignId(activeCamps.length > 0 ? activeCamps[0].id : "");
+                    setIssueNumbersType("specific");
+                    setIssueSpecificNumbers("");
+                    setIssueRandomCount(1);
+                    setIssueStatus("confirmed");
+                    setIssueError(null);
+                    setIssueSuccess(null);
+                    setShowIssueTicketsModal(true);
+                  }}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs px-4 py-2.5 rounded-xl transition flex items-center gap-1.5 self-start sm:self-auto cursor-pointer shadow-xs"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Lançar Cotas Manuais</span>
+                </button>
+              </div>
             </div>
 
             <div className="relative max-w-md text-xs">
@@ -4986,7 +5137,25 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
               <div className="space-y-4">
                 {/* 1. Select Client */}
                 <div>
-                  <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Cliente Beneficiário</label>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="text-[10px] uppercase font-bold text-slate-500 block">Cliente Beneficiário</label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCreateClientName("");
+                        setCreateClientCpf("");
+                        setCreateClientPhone("");
+                        setCreateClientCity("");
+                        setCreateClientEmail("");
+                        setCreateClientError("");
+                        setCreateClientSuccess("");
+                        setShowCreateClientModal(true);
+                      }}
+                      className="text-[11px] text-indigo-600 hover:text-indigo-800 font-extrabold flex items-center gap-1 cursor-pointer"
+                    >
+                      <span>+ Cadastrar Cliente</span>
+                    </button>
+                  </div>
                   <select
                     value={issueSelectedClient?.uid || ""}
                     onChange={(e) => {
@@ -5145,6 +5314,156 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                   </>
                 ) : (
                   <span>Salvar e Lançar</span>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cadastrar Novo Cliente Modal Overlay */}
+      {showCreateClientModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/55 backdrop-blur-xs select-none animate-fadeIn">
+          <div className="bg-white rounded-3xl w-full max-w-md overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+            <div className="bg-indigo-700 px-6 py-5 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <Plus className="w-5 h-5 text-indigo-300" />
+                <div>
+                  <h3 className="font-extrabold text-base tracking-tight text-white">Cadastrar Novo Participante</h3>
+                  <span className="text-[10px] text-indigo-200 block -mt-0.5 font-bold uppercase tracking-wide">Novo cadastro administrativo</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCreateClientModal(false)}
+                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 transition flex items-center justify-center text-white text-sm font-extrabold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto flex-1 space-y-4 text-xs md:text-sm">
+              {createClientError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl font-medium text-[11px] flex items-center gap-2 animate-shake">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-rose-500" />
+                  <span>{createClientError}</span>
+                </div>
+              )}
+
+              {createClientSuccess && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl font-medium text-[11px] flex items-center gap-2">
+                  <Check className="w-4 h-4 shrink-0 text-emerald-600" />
+                  <span>{createClientSuccess}</span>
+                </div>
+              )}
+
+              <div className="space-y-4">
+                {/* Name */}
+                <div>
+                  <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Nome Completo</label>
+                  <input
+                    type="text"
+                    value={createClientName}
+                    onChange={(e) => {
+                      setCreateClientName(e.target.value);
+                      setCreateClientError("");
+                      setCreateClientSuccess("");
+                    }}
+                    placeholder="Ex: João Silva Santos"
+                    className="w-full px-3.5 py-3 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-sans text-xs bg-slate-50 font-medium text-slate-800"
+                  />
+                </div>
+
+                {/* CPF */}
+                <div>
+                  <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">CPF (Apenas números ou formatado)</label>
+                  <input
+                    type="text"
+                    value={createClientCpf}
+                    onChange={(e) => {
+                      setCreateClientCpf(e.target.value);
+                      setCreateClientError("");
+                      setCreateClientSuccess("");
+                    }}
+                    placeholder="Ex: 123.456.789-00"
+                    className="w-full px-3.5 py-3 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-sans text-xs bg-slate-50 font-medium text-slate-800"
+                  />
+                </div>
+
+                {/* WhatsApp */}
+                <div>
+                  <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">WhatsApp / Celular (Com DDD)</label>
+                  <input
+                    type="text"
+                    value={createClientPhone}
+                    onChange={(e) => {
+                      setCreateClientPhone(e.target.value);
+                      setCreateClientError("");
+                      setCreateClientSuccess("");
+                    }}
+                    placeholder="Ex: (51) 99999-9999"
+                    className="w-full px-3.5 py-3 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-sans text-xs bg-slate-50 font-medium text-slate-800"
+                  />
+                </div>
+
+                {/* City */}
+                <div>
+                  <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Cidade / Estado</label>
+                  <input
+                    type="text"
+                    value={createClientCity}
+                    onChange={(e) => {
+                      setCreateClientCity(e.target.value);
+                      setCreateClientError("");
+                      setCreateClientSuccess("");
+                    }}
+                    placeholder="Ex: Porto Alegre / RS"
+                    className="w-full px-3.5 py-3 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-sans text-xs bg-slate-50 font-medium text-slate-800"
+                  />
+                </div>
+
+                {/* Email */}
+                <div>
+                  <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">E-mail</label>
+                  <input
+                    type="email"
+                    value={createClientEmail}
+                    onChange={(e) => {
+                      setCreateClientEmail(e.target.value);
+                      setCreateClientError("");
+                      setCreateClientSuccess("");
+                    }}
+                    placeholder="Ex: joao@email.com"
+                    className="w-full px-3.5 py-3 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-sans text-xs bg-slate-50 font-medium text-slate-800"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 border-t border-slate-150 p-4 flex gap-3 justify-end text-xs">
+              <button
+                type="button"
+                onClick={() => setShowCreateClientModal(false)}
+                className="px-4.5 py-2.5 border border-slate-250 hover:bg-slate-100 rounded-xl font-bold text-slate-600 transition cursor-pointer"
+              >
+                Voltar
+              </button>
+              <button
+                type="button"
+                onClick={handleCreateClient}
+                disabled={createClientLoading}
+                className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-350 text-white font-extrabold px-6 py-2.5 rounded-xl transition shadow-xs cursor-pointer flex items-center gap-1.5"
+              >
+                {createClientLoading ? (
+                  <>
+                    <svg className="animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    <span>Salvando...</span>
+                  </>
+                ) : (
+                  <span>Salvar Cadastro</span>
                 )}
               </button>
             </div>
@@ -5337,6 +5656,18 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                     <div className="font-bold text-slate-800">{receiptClientName}</div>
                     {receiptClientPhone && <div className="text-slate-500 font-mono text-[10px]">{receiptClientPhone}</div>}
                     {receiptClientCpf && <div className="text-slate-400 font-mono text-[9px]">CPF: {receiptClientCpf}</div>}
+                    {(() => {
+                      const firstReservedAt = receiptTickets.find(t => t.reservedAt)?.reservedAt;
+                      if (firstReservedAt) {
+                        try {
+                          const rStr = new Date(firstReservedAt).toLocaleString("pt-BR");
+                          return <div className="text-slate-500 font-mono text-[9px] mt-1 pt-1 border-t border-slate-100">Reserva: {rStr}</div>;
+                        } catch (e) {
+                          return <div className="text-slate-500 font-mono text-[9px] mt-1 pt-1 border-t border-slate-100">Reserva: {firstReservedAt}</div>;
+                        }
+                      }
+                      return null;
+                    })()}
                   </div>
 
                   {/* Campaign summary */}

@@ -52,7 +52,7 @@ service cloud.firestore {
     match /users/{userId} {
       allow get: if isSignedIn() && (userId == request.auth.uid || isAdmin());
       allow list: if (isSignedIn() && isAdmin()) || (request.query.limit != null && request.query.limit <= 5);
-      allow create: if isSignedIn() && userId == request.auth.uid && isValidUser(request.resource.data) && request.resource.data.role == 'client';
+      allow create: if (isSignedIn() && userId == request.auth.uid && isValidUser(request.resource.data) && request.resource.data.role == 'client') || (isSignedIn() && isAdmin() && isValidUser(request.resource.data));
       allow update: if (
         (isSignedIn() && userId == request.auth.uid && !isBlocked() && isValidUser(request.resource.data) && request.resource.data.role == 'client' && resource.data.role == 'client') ||
         (isSignedIn() && isAdmin() && isValidUser(request.resource.data))
@@ -121,23 +121,31 @@ service cloud.firestore {
       return t.id is string && t.id.size() <= 10 &&
              t.number is string && t.number.size() <= 10 &&
              t.status in ['available', 'reserved', 'confirmed'] &&
-             (t.buyerUid == "" || t.buyerUid is string) &&
-             (t.buyerName == "" || t.buyerName is string) &&
-             (t.buyerPhone == "" || t.buyerPhone is string) &&
-             (t.buyerCpf == "" || t.buyerCpf is string) &&
-             (t.buyerEmail == "" || t.buyerEmail is string);
+             (!('buyerUid' in t) || t.buyerUid == "" || t.buyerUid is string) &&
+             (!('buyerName' in t) || t.buyerName == "" || t.buyerName is string) &&
+             (!('buyerPhone' in t) || t.buyerPhone == "" || t.buyerPhone is string) &&
+             (!('buyerCpf' in t) || t.buyerCpf == "" || t.buyerCpf is string) &&
+             (!('buyerEmail' in t) || t.buyerEmail == "" || t.buyerEmail is string) &&
+             (!('reservedAt' in t) || t.reservedAt is string) &&
+             (!('confirmedAt' in t) || t.confirmedAt is string);
     }
 
     match /campaigns/{campaignId}/tickets/{ticketId} {
       allow read: if true; // Public check of status
       
-      // Client reserving a ticket
-      allow create: if isSignedIn() && 
-                    !isBlocked() &&
-                    isValidTicket(request.resource.data) && 
-                    request.resource.data.buyerUid == request.auth.uid && 
-                    request.resource.data.status == 'reserved' &&
-                    get(/databases/$(database)/documents/campaigns/$(campaignId)).data.status == 'active';
+      // Client reserving a ticket or Admin issuing tickets
+      allow create: if (
+        isSignedIn() && 
+        !isBlocked() &&
+        isValidTicket(request.resource.data) && 
+        request.resource.data.buyerUid == request.auth.uid && 
+        request.resource.data.status == 'reserved' &&
+        get(/databases/$(database)/documents/campaigns/$(campaignId)).data.status == 'active'
+      ) || (
+        isSignedIn() && 
+        isAdmin() && 
+        isValidTicket(request.resource.data)
+      );
 
       // Updates are split between admin work and user modification (releasing or updating details)
       allow update: if (

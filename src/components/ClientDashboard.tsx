@@ -1681,7 +1681,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                         {selectedCampaign.drawDate && (
                           <span className="bg-slate-200 text-slate-700 text-[10px] font-semibold px-2.5 py-1 rounded-full flex items-center gap-1">
                             <Calendar className="w-3 h-3" />
-                            Loteria Federal de: {selectedCampaign.drawDate}
+                            Loteria Federal de: {selectedCampaign.drawDate.includes("-") ? selectedCampaign.drawDate.split("-").reverse().join("/") : selectedCampaign.drawDate}{selectedCampaign.drawHour ? ` às ${selectedCampaign.drawHour}` : ""}
                           </span>
                         )}
                       </div>
@@ -1707,7 +1707,10 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                       <p className="text-slate-300 text-xs mt-1 max-w-md leading-relaxed">
                         Extração concurso nº <strong>{selectedCampaign.federalLotteryDrawId || "Oficial"}</strong> da Loteria Federal
                         {selectedCampaign.drawDate && (
-                          <> realizada em <strong>{selectedCampaign.drawDate.split("-").reverse().join("/")}</strong></>
+                          <> realizada em <strong>{selectedCampaign.drawDate.includes("-") ? selectedCampaign.drawDate.split("-").reverse().join("/") : selectedCampaign.drawDate}</strong></>
+                        )}
+                        {selectedCampaign.drawHour && (
+                          <> às <strong>{selectedCampaign.drawHour}</strong></>
                         )}.
                       </p>
 

@@ -23,6 +23,7 @@ export interface Campaign {
   imageUrl?: string;
   status: CampaignStatus;
   drawDate?: string;
+  drawHour?: string;
   federalLotteryDrawId?: string;
   winningNumber?: string;
   federalLotteryNumber?: string;
