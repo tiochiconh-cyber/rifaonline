@@ -42,6 +42,36 @@ export function formatCPF(value: string): string {
   return `${clean.slice(0, 3)}.${clean.slice(3, 6)}.${clean.slice(6, 9)}-${clean.slice(9, 11)}`;
 }
 
+export function maskWinnerName(value: string): string {
+  if (!value) return "";
+  const parts = value.trim().split(/\s+/);
+  if (parts.length <= 1) {
+    const first = parts[0];
+    if (first.length <= 3) return first + "*";
+    return first.slice(0, 3) + "*".repeat(first.length - 3);
+  }
+  const firstName = parts[0];
+  const maskedRest = parts.slice(1).map((part) => "*".repeat(part.length)).join(" ");
+  return `${firstName} ${maskedRest}`;
+}
+
+export function maskPhoneNumber(value: string): string {
+  if (!value) return "";
+  const clean = value.replace(/\D/g, "");
+  let ddd = "";
+  if (clean.length >= 10) {
+    if (clean.startsWith("55") && clean.length >= 12) {
+      ddd = clean.slice(2, 4);
+    } else {
+      ddd = clean.slice(0, 2);
+    }
+  } else {
+    ddd = clean.slice(0, 2);
+  }
+  if (!ddd || ddd.length < 2) ddd = "XX";
+  return `(${ddd}) *****-****`;
+}
+
 export function formatPhone(value: string): string {
   const clean = value.replace(/\D/g, "");
   if (clean.length <= 2) return clean;

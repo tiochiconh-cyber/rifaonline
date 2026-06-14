@@ -2,11 +2,13 @@ import React, { useState, useMemo } from "react";
 import { motion } from "motion/react";
 import { Campaign, Ticket } from "../types";
 import { Trophy, Medal, Crown, Star, ShieldCheck, Ticket as TicketIcon, Search, Sparkles, Filter, ChevronRight, Award, ShoppingBag, Loader2 } from "lucide-react";
+import { maskPhoneNumber } from "../utils/validation";
 
 interface RankingViewProps {
   campaigns: Campaign[];
   allReservations: { [campaignId: string]: Ticket[] };
   loading: boolean;
+  isAdmin?: boolean;
 }
 
 interface BuyerStats {
@@ -19,7 +21,7 @@ interface BuyerStats {
   campaignsCount: number;
 }
 
-export default function RankingView({ campaigns, allReservations, loading }: RankingViewProps) {
+export default function RankingView({ campaigns, allReservations, loading, isAdmin = false }: RankingViewProps) {
   const [rankingType, setRankingType] = useState<"global" | "campaign">("global");
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -406,7 +408,7 @@ export default function RankingView({ campaigns, allReservations, loading }: Ran
                               {formatMaskedName(buyer.name)}
                             </span>
                             <div className="flex items-center gap-2 mt-0.5 text-[10px] text-slate-450">
-                              <span>{buyer.phone ? `Whats: ${buyer.phone.slice(0, 5)}****` : "Contato seguro"}</span>
+                              <span>{buyer.phone ? `Whats: ${isAdmin ? buyer.phone : maskPhoneNumber(buyer.phone)}` : "Contato seguro"}</span>
                               {rankingType === "global" && (
                                 <>
                                   <span className="text-[6px] text-slate-300">•</span>

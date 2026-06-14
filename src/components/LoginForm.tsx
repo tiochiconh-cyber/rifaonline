@@ -9,7 +9,7 @@ import {
 } from "firebase/auth";
 import { doc, getDoc, setDoc, collection, getDocs, query, where, limit, onSnapshot } from "firebase/firestore";
 import { auth, db, handleFirestoreError, OperationType } from "../firebase";
-import { validateCPF, formatCPF, formatPhone, validatePhone } from "../utils/validation";
+import { validateCPF, formatCPF, formatPhone, validatePhone, maskWinnerName } from "../utils/validation";
 import { 
   GraduationCap, 
   ShieldCheck, 
@@ -134,7 +134,7 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
               if (ticketSnap.exists()) {
                 const tData = ticketSnap.data();
                 if (tData.buyerName) {
-                  winnerName = tData.buyerName;
+                  winnerName = maskWinnerName(tData.buyerName);
                 }
               }
             } catch (tErr) {

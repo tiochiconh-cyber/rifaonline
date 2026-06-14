@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { collection, doc, setDoc, deleteDoc, onSnapshot, query, where, getDoc, runTransaction } from "firebase/firestore";
 import { db, auth, handleFirestoreError, OperationType } from "../firebase";
 import { Campaign, Ticket, UserProfile } from "../types";
-import { isLotterySalesSuspended, getCampaignDrawProjection } from "../utils/validation";
+import { isLotterySalesSuspended, getCampaignDrawProjection, maskWinnerName } from "../utils/validation";
 import RankingView from "./RankingView";
 import CelebrationConfetti from "./CelebrationConfetti";
 import { Ticket as TicketIcon, Search, Landmark, Copy, Check, Calendar, Trophy, AlertCircle, ShoppingBag, User as UserIcon, LogOut, ArrowRight, HelpCircle, Sparkles, ShieldCheck, Download, Printer, ArrowLeft, Clock, Smartphone, X } from "lucide-react";
@@ -1729,8 +1729,17 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                       {tickets[selectedCampaign.winningNumber || ""]?.status === "confirmed" ? (
                         <div className="text-xs text-indigo-300 bg-indigo-900/40 p-3.5 border border-indigo-800/30 rounded-xl leading-relaxed max-w-sm">
                           ✨ Parabéns ao vencedor! <br />
-                          <strong>{tickets[selectedCampaign.winningNumber || ""].buyerName}</strong> de{" "}
-                          <strong>{tickets[selectedCampaign.winningNumber || ""].buyerCpf || "CPF verificado"}</strong> comprou este bilhete!
+                          <strong>
+                            {userProfile.role === "admin"
+                              ? tickets[selectedCampaign.winningNumber || ""].buyerName
+                              : maskWinnerName(tickets[selectedCampaign.winningNumber || ""].buyerName)}
+                          </strong>
+                          {userProfile.role === "admin" ? (
+                            <> de <strong>{tickets[selectedCampaign.winningNumber || ""].buyerCpf || "CPF verificado"}</strong></>
+                          ) : (
+                            <> (CPF verificado)</>
+                          )}{" "}
+                          comprou este bilhete!
                         </div>
                       ) : (
                         <p className="text-xs text-slate-400">
@@ -2885,6 +2894,7 @@ Acompanhe os resultados no link de nossa plataforma.
           campaigns={campaigns}
           allReservations={allReservations}
           loading={loadingAllReservations}
+          isAdmin={userProfile.role === "admin"}
         />
       )}
 

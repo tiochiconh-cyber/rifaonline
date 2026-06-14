@@ -360,6 +360,7 @@ export default function DashboardOverview({ campaigns, allReservations, clientsC
           campaigns={campaigns}
           allReservations={allReservations}
           loading={false}
+          isAdmin={true}
         />
       </div>
     </div>
