@@ -5,7 +5,7 @@ import { Campaign, Ticket, UserProfile } from "../types";
 import { isLotterySalesSuspended, getCampaignDrawProjection, maskWinnerName } from "../utils/validation";
 import RankingView from "./RankingView";
 import CelebrationConfetti from "./CelebrationConfetti";
-import { Ticket as TicketIcon, Search, Landmark, Copy, Check, Calendar, Trophy, AlertCircle, ShoppingBag, User as UserIcon, LogOut, ArrowRight, HelpCircle, Sparkles, ShieldCheck, Download, Printer, ArrowLeft, Clock, Smartphone, X } from "lucide-react";
+import { Ticket as TicketIcon, Search, Landmark, Copy, Check, Calendar, Trophy, AlertCircle, ShoppingBag, User as UserIcon, LogOut, ArrowRight, HelpCircle, Sparkles, ShieldCheck, Download, Printer, ArrowLeft, Clock, Smartphone, X, Crown, Medal, Gift } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import AppLogo from "./AppLogo";
 
@@ -515,6 +515,43 @@ export default function ClientDashboard({ userProfile, onLogout }: ClientDashboa
     return () => unsubscribe();
   }, [selectedCampaignId]);
 
+  // Real-time automatic deselect to prevent duplicate in-flight selection between concurrent users
+  useEffect(() => {
+    if (selectedNumbers.length === 0 || !tickets) return;
+
+    const occupiedSelected = selectedNumbers.filter((numStr) => {
+      const ticketInfo = tickets[numStr];
+      return ticketInfo && ticketInfo.status !== "available" && ticketInfo.buyerUid !== userProfile.uid;
+    });
+
+    if (occupiedSelected.length > 0) {
+      setSelectedNumbers((prev) => prev.filter((n) => !occupiedSelected.includes(n)));
+      const count = occupiedSelected.length;
+      if (count === 1) {
+        addToast(`A cota #${occupiedSelected[0]} foi reservada por outro usuário e removida da sua seleção.`, "warning");
+      } else {
+        addToast(`${count} cotas foram reservadas por outro usuário e removidas da sua seleção.`, "warning");
+      }
+    }
+  }, [tickets, userProfile.uid, selectedNumbers]);
+
+  const [winningConfettiKey, setWinningConfettiKey] = useState(0);
+
+  // Identify if any user-owned ticket matches the drawn results of any campaign
+  const winningSessions = React.useMemo(() => {
+    const list: { campaign: Campaign; ticket: Ticket }[] = [];
+    campaigns.forEach((camp) => {
+      const winNo = camp.winningNumber;
+      if (!winNo) return;
+      const userTickets = myTickets[camp.id] || [];
+      const winningTicket = userTickets.find((t) => t.number === winNo && t.status === "confirmed");
+      if (winningTicket) {
+        list.push({ campaign: camp, ticket: winningTicket });
+      }
+    });
+    return list;
+  }, [campaigns, myTickets]);
+
   // Serialized campaign IDs string to stabilize query re-registrations
   const campaignIds = campaigns.map((c) => c.id).join(",");
 
@@ -820,6 +857,13 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
       return;
     }
 
+    // Prevention of duplicate selection: check if this cota was recently booked in memory state
+    const tInfo = tickets[numberStr];
+    if (tInfo && tInfo.status !== "available" && tInfo.buyerUid !== userProfile.uid) {
+      addToast(`A cota #${numberStr} acabou de ser reservada por outro participante!`, "error");
+      return;
+    }
+
     setSelectedNumbers((prev) =>
       prev.includes(numberStr)
         ? prev.filter((n) => n !== numberStr)
@@ -863,7 +907,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
     const availableNumbers: string[] = [];
     for (let idx = 0; idx < total; idx++) {
       const numStr = padNumber(idx, total);
-      if (!tickets[numStr]) {
+      if (!tickets[numStr] || tickets[numStr].status === "available") {
         availableNumbers.push(numStr);
       }
     }
@@ -1301,6 +1345,155 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
               </div>
             );
           })()}
+
+          {/* SEÇÃO DE BILHETES PREMIADOS (LOTERIA FEDERAL) */}
+          <div id="prize-checker-section" className="relative overflow-hidden rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50/40 via-white to-slate-50/40 p-5 shadow-sm animate-fadeIn">
+            {/* Background design elements */}
+            <div className="absolute right-0 top-0 -mr-6 -mt-6 w-32 h-32 bg-indigo-500/5 rounded-full blur-2xl pointer-events-none" />
+            <div className="absolute left-1/3 bottom-0 w-24 h-24 bg-amber-500/5 rounded-full blur-xl pointer-events-none" />
+
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-indigo-50 text-indigo-700 rounded-xl shadow-4xs shrink-0 flex items-center justify-center">
+                  <Trophy className="w-5.5 h-5.5 text-indigo-600 animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-sm md:text-base text-slate-800 tracking-tight flex items-center gap-2">
+                    <span>Auditório de Prêmios & Resultados</span>
+                    <span className="text-[10px] bg-indigo-100 text-indigo-850 font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wider">Loteria Federal</span>
+                  </h3>
+                  <p className="text-slate-500 text-xs mt-0.5">
+                    Todos os seus bilhetes homologados são conferidos automaticamente contra os resultados oficiais do sistema.
+                  </p>
+                </div>
+              </div>
+
+              {/* Secure checked label */}
+              <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500 bg-indigo-50/50 px-3 py-1.5 rounded-xl border border-indigo-100/30 shrink-0 select-none">
+                <ShieldCheck className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                <span>Integração de Sorteios Ativa</span>
+              </div>
+            </div>
+
+            {winningSessions.length > 0 ? (
+              <div className="mt-4 space-y-4">
+                {/* Winner Celebration Banner */}
+                <div className="bg-gradient-to-r from-amber-500 to-amber-600 p-4.5 rounded-xl text-white shadow-md relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-4">
+                  {/* Glowing highlights */}
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-xl pointer-events-none -mr-8 -mt-8" />
+                  
+                  {/* Celebration confetti trigger */}
+                  <CelebrationConfetti key={winningConfettiKey} />
+
+                  <div className="flex items-center gap-3.5 relative z-10">
+                    <div className="p-3 bg-white/20 text-white rounded-full flex items-center justify-center shadow-inner animate-bounce text-xl shrink-0">
+                      👑
+                    </div>
+                    <div className="space-y-1 text-center md:text-left">
+                      <h4 className="text-sm md:text-base font-black tracking-tight uppercase">
+                        PARABÉNS! VOCÊ POSSUI UM BILHETE PREMIADO! 🎉🎉
+                      </h4>
+                      <p className="text-amber-50 text-xs font-semibold max-w-xl">
+                        Nossos auditores confirmaram que você é o legítimo ganhador de um prêmio oficial! Siga o contato de resgate para receber suas premiações.
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setWinningConfettiKey((prev) => prev + 1);
+                      addToast("✨ Nova explosão de confetes iniciada!", "success");
+                    }}
+                    className="px-4 py-2 bg-slate-900 hover:bg-black text-[11px] text-white font-extrabold uppercase tracking-wider rounded-xl transition-all cursor-pointer shadow-sm relative z-10 flex items-center gap-1.5 shrink-0 self-center"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <span>Estourar Confetes!</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                  {winningSessions.map(({ campaign, ticket }) => {
+                    const cleanPhone = settings.supportContact ? settings.supportContact.replace(/\D/g, "") : "";
+                    const whatsappMsg = `Olá! Fui premiado na campanha "${campaign.title}" com o bilhete contemplado nº ${ticket.number}! Meus dados de cadastro: CPF: ${userProfile.cpf}, Nome: ${userProfile.name}.`;
+                    const whatsappUrl = `https://wa.me/${cleanPhone.startsWith("55") ? cleanPhone : "55" + cleanPhone}?text=${encodeURIComponent(whatsappMsg)}`;
+
+                    return (
+                      <div
+                        key={`${campaign.id}_${ticket.id}`}
+                        className="bg-white border-2 border-amber-300 rounded-xl p-4 shadow-sm hover:shadow-md transition-all flex flex-col justify-between gap-4 animate-fadeIn relative overflow-hidden"
+                      >
+                        {/* Golden corner badge */}
+                        <div className="absolute top-0 right-0 bg-amber-400 text-slate-900 font-extrabold text-[9px] uppercase tracking-wider px-2.5 py-1 rounded-bl-lg shadow-4xs flex items-center gap-1">
+                          <Crown className="w-3 h-3 text-amber-900" />
+                          <span>Premiado</span>
+                        </div>
+
+                        <div className="space-y-2">
+                          <div className="text-[10px] text-indigo-650 font-black uppercase tracking-wider">
+                            Rifa: {campaign.title}
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <div className="min-w-[64px] h-[64px] rounded-2xl bg-indigo-600 text-white flex flex-col items-center justify-center shadow-sm shrink-0">
+                              <span className="text-[9px] font-black uppercase tracking-wider opacity-85">Cota nº</span>
+                              <span className="text-xl font-mono font-black tracking-tight">{ticket.number}</span>
+                            </div>
+                            <div className="space-y-0.5">
+                              <div className="text-xs font-bold text-slate-800">
+                                Adquirido em: {ticket.confirmedAt ? new Date(ticket.confirmedAt).toLocaleDateString("pt-BR") : "Confirmado"}
+                              </div>
+                              <div className="text-[11px] text-slate-500">
+                                Sorteio pelo Concurso Loteria Federal Nº <strong>{campaign.federalLotteryDrawId || "Oficial"}</strong>
+                              </div>
+                              <div className="text-[11px] font-semibold text-emerald-600 flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                <span>Status Cota: {ticket.status === "confirmed" ? "Homologado & Pago" : "Pendente de Liberação"}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-2.5 border-t border-slate-100">
+                          {cleanPhone ? (
+                            <a
+                              href={whatsappUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex-1 text-center py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition-all shadow-4xs cursor-pointer flex items-center justify-center gap-1.5"
+                            >
+                              <Smartphone className="w-3.5 h-3.5 shrink-0" />
+                              <span>Resgatar Prêmio via WhatsApp</span>
+                            </a>
+                          ) : (
+                            <div className="flex-1 text-center py-2 bg-slate-100 text-slate-600 rounded-lg text-[10px] font-black uppercase tracking-wider">
+                              Entre em contato com suporte para resgatar
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="mt-4 flex flex-col md:flex-row items-center gap-4 bg-white border border-slate-150 p-4 rounded-xl shadow-3xs hover:bg-slate-50/50 transition-colors duration-200">
+                <div className="p-3 bg-slate-100 rounded-xl text-slate-500 shrink-0 flex items-center justify-center">
+                  <ShieldCheck className="w-5 h-5 text-indigo-500 animate-pulse" />
+                </div>
+                <div className="flex-1 text-center md:text-left space-y-0.5">
+                  <div className="text-xs font-extrabold text-slate-750">
+                    Nenhum prêmio pendente de resgate
+                  </div>
+                  <div className="text-[11px] text-slate-500 max-w-2xl leading-relaxed">
+                    Pesquisa realizada em tempo real contra os resultados cadastrados no sistema. No momento, nenhum dos seus <span className="font-bold text-indigo-600 font-mono text-xs">{myTotalTicketsCount} bilhetes adquiridos</span> foi contemplado como ganhador. Continue participando e boa sorte nos próximos sorteios!
+                  </div>
+                </div>
+                <div className="shrink-0 font-extrabold text-[10px] text-indigo-600 uppercase tracking-widest bg-indigo-50/50 px-2.5 py-1.5 rounded-lg border border-indigo-100/30">
+                  Auditado ✓
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Seção das Miniaturas / Thumbnail grid of all campaigns */}
           <div className="space-y-4">
@@ -1915,6 +2108,66 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                           </div>
                         </div>
 
+                        {/* HIGH-PERFORMANCE SEARCH & FILTER BAR FOR LARGE-SCALE CAMPAIGNS */}
+                        <div className="bg-slate-50/50 border border-slate-100/80 p-3.5 rounded-2xl flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between shadow-subtle animate-fadeIn">
+                          {/* Left: Interactive Filter Tabs */}
+                          <div id="grid-status-filter" className="flex flex-wrap gap-1.5 scrollbar-none overflow-x-auto pb-1 md:pb-0">
+                            {[
+                              { key: "all", label: "Todos" },
+                              { key: "available", label: "Disponíveis" },
+                              { key: "mine", label: "Minhas Cotas" },
+                              { key: "selected", label: "Selecionadas" }
+                            ].map((tab) => {
+                              const isActive = gridFilter === tab.key;
+                              return (
+                                <button
+                                  key={tab.key}
+                                  type="button"
+                                  onClick={() => {
+                                    setGridFilter(tab.key as any);
+                                    setTicketPage(0);
+                                  }}
+                                  className={`px-3.5 py-1.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all duration-150 border cursor-pointer select-none ${
+                                    isActive
+                                      ? "bg-indigo-650 border-indigo-650 text-white shadow-sm scale-102"
+                                      : "bg-white border-slate-200 text-slate-550 hover:text-slate-850 hover:bg-slate-100"
+                                  }`}
+                                >
+                                  {tab.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+
+                          {/* Right: Real-time Live Search Input */}
+                          <div className="relative flex-1 max-w-full md:max-w-[280px]">
+                            <Search className="absolute left-3.5 top-2.5 w-4 h-4 text-slate-450 pointer-events-none" />
+                            <input
+                              type="text"
+                              value={ticketSearch}
+                              onChange={(e) => {
+                                setTicketSearch(e.target.value);
+                                setTicketPage(0);
+                              }}
+                              placeholder="Buscar cota por número..."
+                              className="w-full text-xs font-mono font-bold pl-9.5 pr-14 py-2 bg-white border-2 border-slate-200 focus:border-indigo-500 rounded-xl outline-none transition-all placeholder:text-slate-400 text-slate-850 shadow-3xs"
+                            />
+                            {ticketSearch && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setTicketSearch("");
+                                  setTicketPage(0);
+                                }}
+                                className="absolute right-2 px-2 py-0.5 rounded-lg text-[9px] bg-slate-100 font-extrabold text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
+                                style={{ top: "7px" }}
+                              >
+                                Limpar
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
                         {/* COMPRA RÁPIDA (LOTES ALEATÓRIOS) */}
                         {selectedCampaign.status === "active" && (
                           <div className="bg-gradient-to-r from-emerald-500/10 via-[#82C943]/5 to-transparent border border-emerald-500/15 p-4 rounded-2xl space-y-3.5 animate-fadeIn">
@@ -2021,8 +2274,9 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                             <p className="text-[11px] text-slate-400 max-w-sm mt-0.5">Tente buscar por um termo numérico diferente existente nesta campanha.</p>
                           </div>
                         ) : (
-                          /* Grid drawing loop based on total size limit */
-                          <div className={`grid ${mobileColumns === 4 ? "grid-cols-4 animate-fadeIn" : mobileColumns === 6 ? "grid-cols-6 animate-fadeIn" : "grid-cols-5"} sm:grid-cols-10 gap-1.5 sm:gap-2 max-h-[450px] overflow-y-auto p-1.5 bg-slate-50 border border-slate-100 rounded-2xl w-full`}>
+                          <>
+                            {/* Grid drawing loop based on total size limit */}
+                            <div className={`grid ${mobileColumns === 4 ? "grid-cols-4 animate-fadeIn" : mobileColumns === 6 ? "grid-cols-6 animate-fadeIn" : "grid-cols-5"} sm:grid-cols-10 gap-1.5 sm:gap-2 max-h-[450px] overflow-y-auto p-1.5 bg-slate-50 border border-slate-100 rounded-2xl w-full`}>
                             {paginatedIndices.map((idx) => {
                               const numStr = padNumber(idx, selectedCampaign.totalTickets);
                               const tInfo = tickets[numStr];
@@ -2064,6 +2318,100 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                               );
                             })}
                           </div>
+
+                          {/* HIGHER PERFORMANCE RESPONSIVE PAGINATION CONTROLS */}
+                          {totalPages > 1 && (
+                            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-slate-100/80 mt-4 select-none animate-fadeIn bg-slate-50/20 p-3.5 rounded-2xl border border-slate-100/60 shadow-3xs">
+                              <div className="text-[11px] text-slate-500 font-bold">
+                                Mostrando <strong className="text-slate-800 font-extrabold">{paginatedIndices.length}</strong> de <strong className="text-slate-800 font-extrabold">{filteredIndices.length}</strong> cotas (Pág. <strong className="text-indigo-650 font-black">{ticketPage + 1}</strong> de <strong className="text-slate-800 font-extrabold">{totalPages}</strong>)
+                              </div>
+                              <div className="flex items-center gap-1.5 flex-wrap justify-center">
+                                <button
+                                  type="button"
+                                  onClick={() => setTicketPage(0)}
+                                  disabled={ticketPage === 0}
+                                  className="p-2 border border-slate-200 text-slate-600 rounded-xl bg-white hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none transition-all cursor-pointer font-black text-xs min-h-[36px] min-w-[36px] flex items-center justify-center shadow-4xs"
+                                  title="Primeira Página"
+                                >
+                                  «
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setTicketPage(p => Math.max(0, p - 1))}
+                                  disabled={ticketPage === 0}
+                                  className="px-3 py-1.5 border border-slate-200 text-slate-600 rounded-xl bg-white hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none transition-all cursor-pointer font-black text-xs flex items-center gap-1 min-h-[36px] shadow-4xs"
+                                >
+                                  ‹ Anterior
+                                </button>
+
+                                {/* Mobile compact dropdown selector or nearby pages on Desktop */}
+                                <div className="hidden sm:flex items-center gap-1">
+                                  {Array.from({ length: totalPages }).map((_, pIdx) => {
+                                    // Render only first page, last page, and 1 surrounding requested page
+                                    if (pIdx === 0 || pIdx === totalPages - 1 || Math.abs(pIdx - ticketPage) <= 1) {
+                                      const isPageActive = ticketPage === pIdx;
+                                      return (
+                                        <button
+                                          key={pIdx}
+                                          type="button"
+                                          onClick={() => setTicketPage(pIdx)}
+                                          className={`w-9 h-9 text-xs font-extrabold rounded-xl border flex items-center justify-center transition-all cursor-pointer ${
+                                            isPageActive
+                                              ? "bg-indigo-650 border-indigo-650 text-white shadow-sm font-black scale-102"
+                                              : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                                          }`}
+                                        >
+                                          {pIdx + 1}
+                                        </button>
+                                      );
+                                    }
+                                    // Ellipses rendering
+                                    if (pIdx === 1 || pIdx === totalPages - 2) {
+                                      return (
+                                        <span key={pIdx} className="text-slate-400 px-0.5 text-[10px] font-black">
+                                          ...
+                                        </span>
+                                      );
+                                    }
+                                    return null;
+                                  })}
+                                </div>
+
+                                <div className="flex sm:hidden">
+                                  <select
+                                    value={ticketPage}
+                                    onChange={(e) => setTicketPage(Number(e.target.value))}
+                                    className="text-xs bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 font-bold text-slate-705 outline-none focus:ring-0 focus:border-indigo-500 h-[36px] shadow-4xs"
+                                  >
+                                    {Array.from({ length: totalPages }).map((_, pIdx) => (
+                                      <option key={pIdx} value={pIdx}>
+                                        Pág. {pIdx + 1}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={() => setTicketPage(p => Math.min(totalPages - 1, p + 1))}
+                                  disabled={ticketPage === totalPages - 1}
+                                  className="px-3 py-1.5 border border-slate-200 text-slate-600 rounded-xl bg-white hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none transition-all cursor-pointer font-black text-xs flex items-center gap-1 min-h-[36px] shadow-4xs"
+                                >
+                                  Próxima ›
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setTicketPage(totalPages - 1)}
+                                  disabled={ticketPage === totalPages - 1}
+                                  className="p-2 border border-slate-200 text-slate-600 rounded-xl bg-white hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none transition-all cursor-pointer font-black text-xs min-h-[36px] min-w-[36px] flex items-center justify-center shadow-4xs"
+                                  title="Última Página"
+                                >
+                                  »
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                          </>
                         )}
                       </div>
                     </div>
