@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db, handleFirestoreError, OperationType } from "../firebase";
 import { generateRandomSecret, verifyTOTP } from "../utils/totp";
-import { ShieldAlert, KeyRound, QrCode, Clipboard, Check, ArrowRight, Loader2, RefreshCw } from "lucide-react";
+import { ShieldAlert, KeyRound, QrCode, Clipboard, Check, ArrowRight, Loader2, RefreshCw, Smartphone } from "lucide-react";
 
 interface Admin2FAProps {
   userId: string;
@@ -54,9 +54,36 @@ export default function Admin2FA({ userId, userEmail, onVerified, onLogout }: Ad
   }, [userId]);
 
   const copyToClipboard = () => {
-    navigator.clipboard.writeText(totpSecret);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(totpSecret)
+        .then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        })
+        .catch(() => fallbackCopy());
+    } else {
+      fallbackCopy();
+    }
+  };
+
+  const fallbackCopy = () => {
+    try {
+      const textArea = document.createElement("textarea");
+      textArea.value = totpSecret;
+      // Prevent scrolling on iOS
+      textArea.style.top = "0";
+      textArea.style.left = "0";
+      textArea.style.position = "fixed";
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textArea);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error("Fallback copy failed", err);
+    }
   };
 
   const regenerateSecret = () => {
@@ -91,7 +118,7 @@ export default function Admin2FA({ userId, userEmail, onVerified, onLogout }: Ad
         }
         onVerified(true);
       } else {
-        setErrorMsg("Código inválido ou expirado. Verifique o relógio do seu celular e tente novamente.");
+        setErrorMsg("Código inválido ou fora de sincronia. Dica: verifique se a hora do seu celular está configurada no modo 'Automático' nas configurações do sistema do aparelho.");
       }
     } catch (err) {
       console.error("Error verifying 2FA OTP:", err);
@@ -168,13 +195,27 @@ export default function Admin2FA({ userId, userEmail, onVerified, onLogout }: Ad
                 Abra seu aplicativo de autenticação (como Google Authenticator, Microsoft Authenticator ou Authy) em seu celular e escaneie o código abaixo:
               </p>
 
-              <div className="flex justify-center p-4 bg-slate-50 rounded-xl border border-slate-100">
+              <div className="flex flex-col items-center justify-center p-4 bg-slate-50 rounded-xl border border-slate-100 gap-3.5">
                 <img
                   src={qrData && qrCodeUrl}
                   alt="QR Code da Segurança 2FA"
                   className="w-48 h-48 border border-white shadow-sm rounded-lg"
                   referrerPolicy="no-referrer"
                 />
+                
+                {/* Mobile setup quick link */}
+                <div className="w-full pt-3.5 border-t border-slate-200/60 flex flex-col items-center gap-2">
+                  <p className="text-[10px] text-slate-500 font-semibold text-center leading-normal">
+                    Está acessando pelo próprio celular? Toque abaixo para abrir e configurar de forma automática no seu app autenticador sem precisar escanear:
+                  </p>
+                  <a
+                    href={qrData}
+                    className="inline-flex items-center justify-center gap-2 w-full py-2.5 px-4 bg-indigo-650 hover:bg-slate-900 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all hover:shadow cursor-pointer select-none text-center"
+                  >
+                    <Smartphone className="w-4 h-4 shrink-0 animate-bounce" />
+                    <span>Conectar no App deste Celular</span>
+                  </a>
+                </div>
               </div>
 
               <h3 className="font-bold text-slate-800 text-sm uppercase tracking-wider flex items-center gap-2 mt-6">
@@ -226,7 +267,9 @@ export default function Admin2FA({ userId, userEmail, onVerified, onLogout }: Ad
             </label>
             <input
               id="totpCode"
-              type="text"
+              type="tel"
+              inputMode="numeric"
+              autoComplete="one-time-code"
               pattern="\d{6}"
               maxLength={6}
               placeholder="000000"

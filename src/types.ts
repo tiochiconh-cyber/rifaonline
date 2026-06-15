@@ -45,6 +45,7 @@ export interface Ticket {
   buyerEmail?: string;
   reservedAt?: string;
   confirmedAt?: string;
+  batchId?: string;
 }
 
 export interface AdminConfig {

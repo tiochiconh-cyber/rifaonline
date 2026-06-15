@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, query, where, getDocs } from "firebase/firestore";
 import { db, handleFirestoreError, OperationType } from "../firebase";
 import { Campaign, Ticket, UserProfile, TicketStatus } from "../types";
-import { validateCPF, formatCPF, formatPhone, validatePhone, getCampaignDrawProjection } from "../utils/validation";
+import { validateCPF, formatCPF, formatPhone, validatePhone, getCampaignDrawProjection, splitTicketsIntoBatches } from "../utils/validation";
 import RichTextEditor from "./RichTextEditor";
 import { getDiscountedPrice } from "./ClientDashboard";
 import AppLogo from "./AppLogo";
@@ -1727,7 +1727,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
         return true;
       });
 
-      // Group filteredTickets by a key that represents the buyer
+      // Group filteredTickets by a key that represents the buyer first
       const groups: { [key: string]: Ticket[] } = {};
       filteredTickets.forEach((t) => {
         const key = t.buyerPhone || t.buyerCpf || t.buyerEmail || t.buyerName || "Mapeado manualmente";
@@ -1738,22 +1738,26 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
       });
 
       Object.entries(groups).forEach(([buyerKey, tList]) => {
-        const firstTicket = tList[0];
-        const reservedCount = tList.filter((t) => t.status === "reserved").length;
-        const confirmedCount = tList.filter((t) => t.status === "confirmed").length;
+        // Split this buyer's tickets into separate batches
+        const batches = splitTicketsIntoBatches(tList);
+        batches.forEach((batch) => {
+          const firstTicket = batch[0];
+          const reservedCount = batch.filter((t) => t.status === "reserved").length;
+          const confirmedCount = batch.filter((t) => t.status === "confirmed").length;
 
-        list.push({
-          campaign: ca,
-          buyerName: firstTicket.buyerName || "Mapeado manualmente",
-          buyerPhone: firstTicket.buyerPhone,
-          buyerCpf: firstTicket.buyerCpf,
-          buyerEmail: firstTicket.buyerEmail,
-          buyerUid: firstTicket.buyerUid,
-          tickets: tList,
-          statusSummary: {
-            reservedCount,
-            confirmedCount,
-          },
+          list.push({
+            campaign: ca,
+            buyerName: firstTicket.buyerName || "Mapeado manualmente",
+            buyerPhone: firstTicket.buyerPhone,
+            buyerCpf: firstTicket.buyerCpf,
+            buyerEmail: firstTicket.buyerEmail,
+            buyerUid: firstTicket.buyerUid,
+            tickets: batch,
+            statusSummary: {
+              reservedCount,
+              confirmedCount,
+            },
+          });
         });
       });
     });
@@ -2093,7 +2097,9 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                   </thead>
                   <tbody>
                     {ticketBatches.map((batch) => {
-                      const batchId = `${batch.campaign.id}_${batch.buyerPhone || batch.buyerEmail || batch.buyerName}`;
+                      const firstTicket = batch.tickets[0];
+                      const subBatchId = firstTicket?.batchId || (firstTicket?.reservedAt ? `time_${new Date(firstTicket.reservedAt).getTime()}` : "legacy");
+                      const batchId = `${batch.campaign.id}_${batch.buyerPhone || batch.buyerEmail || batch.buyerName}_${subBatchId}`;
                       const reservedTickets = batch.tickets.filter((t) => t.status === "reserved");
                       const reservedIds = reservedTickets.map((t) => t.id);
                       const allIds = batch.tickets.map((t) => t.id);
@@ -2360,7 +2366,9 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                 })
               ) : (
                   ticketBatches.map((batch) => {
-                    const batchId = `${batch.campaign.id}_${batch.buyerPhone || batch.buyerEmail || batch.buyerName}`;
+                    const firstTicket = batch.tickets[0];
+                    const subBatchId = firstTicket?.batchId || (firstTicket?.reservedAt ? `time_${new Date(firstTicket.reservedAt).getTime()}` : "legacy");
+                    const batchId = `${batch.campaign.id}_${batch.buyerPhone || batch.buyerEmail || batch.buyerName}_${subBatchId}`;
                     const reservedTickets = batch.tickets.filter((t) => t.status === "reserved");
                     const reservedIds = reservedTickets.map((t) => t.id);
                     const allIds = batch.tickets.map((t) => t.id);

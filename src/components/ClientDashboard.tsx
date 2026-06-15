@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { collection, doc, setDoc, deleteDoc, onSnapshot, query, where, getDoc, runTransaction } from "firebase/firestore";
 import { db, auth, handleFirestoreError, OperationType } from "../firebase";
 import { Campaign, Ticket, UserProfile } from "../types";
-import { isLotterySalesSuspended, getCampaignDrawProjection, maskWinnerName } from "../utils/validation";
+import { isLotterySalesSuspended, getCampaignDrawProjection, maskWinnerName, splitTicketsIntoBatches } from "../utils/validation";
 import RankingView from "./RankingView";
 import CelebrationConfetti from "./CelebrationConfetti";
 import { Ticket as TicketIcon, Search, Landmark, Copy, Check, Calendar, Trophy, AlertCircle, ShoppingBag, User as UserIcon, LogOut, ArrowRight, HelpCircle, Sparkles, ShieldCheck, Download, Printer, ArrowLeft, Clock, Smartphone, X, Crown, Medal, Gift } from "lucide-react";
@@ -149,7 +149,7 @@ export default function ClientDashboard({ userProfile, onLogout }: ClientDashboa
   const TICKETS_PER_PAGE = 300;
 
   // Reservation Flow
-  const [activeTab, setActiveTab] = useState<"rifas" | "compras" | "ranking">("rifas");
+  const [activeTab, setActiveTab] = useState<"rifas" | "compras" | "ranking" | "ganhadores">("rifas");
 
   // Rankings state and listener
   const [allReservations, setAllReservations] = useState<{ [campaignId: string]: Ticket[] }>({});
@@ -793,6 +793,9 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
           throw new Error(`Algumas das cotas escolhidas acabam de ser reservadas ou confirmadas por outro usuário: ${occupiedNumStr}`);
         }
 
+        const nowBatchId = `batch_${Date.now()}`;
+        const nowIso = new Date().toISOString();
+
         // Apply reservations inside the transaction
         ticketReads.forEach((t) => {
           const ticketData: Ticket = {
@@ -804,7 +807,8 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
             buyerPhone: userProfile.phone,
             buyerCpf: userProfile.cpf,
             buyerEmail: userProfile.email,
-            reservedAt: new Date().toISOString(),
+            reservedAt: nowIso,
+            batchId: nowBatchId,
           };
           transaction.set(t.ticketRef, ticketData);
         });
@@ -812,6 +816,9 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
 
       const reservedCopy = [...selectedNumbers];
       setSuccessReserved(reservedCopy);
+
+      const nowBatchId = `batch_${Date.now()}`;
+      const nowIso = new Date().toISOString();
 
       const newlyReservedTickets: Ticket[] = reservedCopy.map(num => ({
         id: num,
@@ -822,7 +829,8 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
         buyerPhone: userProfile.phone || "",
         buyerCpf: userProfile.cpf,
         buyerEmail: userProfile.email,
-        reservedAt: new Date().toISOString()
+        reservedAt: nowIso,
+        batchId: nowBatchId
       }));
       setExclusiveMobilePayment({ campaign: selectedCampaign, tickets: newlyReservedTickets });
 
@@ -1323,6 +1331,21 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
         >
           <Trophy className="w-4 h-4 text-amber-500 animate-pulse" />
           <span>Ranking</span>
+        </button>
+
+        <button
+          onClick={() => {
+            setActiveTab("ganhadores");
+            setSuccessReserved(null);
+          }}
+          className={`flex-1 text-center py-3 rounded-xl font-bold transition-all duration-150 cursor-pointer flex items-center justify-center gap-2 ${
+            activeTab === "ganhadores" 
+              ? "bg-white text-slate-900 shadow-sm" 
+              : "text-slate-500 hover:text-slate-850"
+          }`}
+        >
+          <Crown className="w-4 h-4 text-amber-500" />
+          <span>Ganhadores</span>
         </button>
       </div>
 
@@ -2445,99 +2468,118 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                   <p className="text-slate-505 text-xs font-normal">
                     Acompanhe o status do pagamento manual das suas reservas enviadas ao administrador.
                   </p>
+                  <div className="space-y-4 max-h-[300px] overflow-y-auto pr-1">
+                      {(() => {
+                        const entries = Object.entries(myTickets) as [string, Ticket[]][];
+                        const allBatches: { campaign: Campaign; tickets: Ticket[]; key: string }[] = [];
 
-                  {myTotalTicketsCount === 0 ? (
-              <div className="text-center p-6 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-slate-450 text-xs text-center normal-case">
-                Você não possui compras ou reservas registradas no momento.
-              </div>
-            ) : (
-                    <div className="space-y-4 max-h-[300px] overflow-y-auto pr-1">
-                      {(Object.entries(myTickets) as [string, Ticket[]][]).map(([campaignId, tList]) => {
-                        if (tList.length === 0) return null;
-                        const camp = campaigns.find(c => c.id === campaignId);
-                        if (!camp) return null;
+                        entries.forEach(([campaignId, tList]) => {
+                          if (tList.length === 0) return;
+                          const camp = campaigns.find(c => c.id === campaignId);
+                          if (!camp) return;
 
-                        const confirmedTickets = tList.filter(item => item.status === "confirmed");
+                          const batches = splitTicketsIntoBatches(tList);
+                          batches.forEach((batch, bIdx) => {
+                            const batchId = batch[0].batchId || `time_${batch[0].reservedAt || 'legacy'}_${bIdx}`;
+                            allBatches.push({
+                              campaign: camp,
+                              tickets: batch,
+                              key: `${campaignId}_${batchId}`
+                            });
+                          });
+                        });
 
-                        return (
-                          <div key={campaignId} className="space-y-2 pb-3 border-b border-slate-100 last:border-0 last:pb-0">
-                            <div className="flex items-center justify-between gap-1.5">
-                              <strong className="text-slate-800 text-xs block truncate max-w-[55%]" title={camp.title}>{camp.title}</strong>
-                              <div className="flex items-center gap-1.5 shrink-0">
-                                <span className="text-[10px] text-slate-400">{tList.length} cota(s)</span>
-                                {tList.filter(t => t.status === "reserved").length > 0 && (
-                                  <div className="flex gap-1 items-center">
+                        if (allBatches.length === 0) {
+                          return (
+                            <div className="text-center p-6 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-slate-450 text-xs text-center normal-case">
+                              Você não possui compras ou reservas registradas no momento.
+                            </div>
+                          );
+                        }
+
+                        return allBatches.map(({ campaign, tickets, key }) => {
+                          const confirmedTickets = tickets.filter(item => item.status === "confirmed");
+                          const reservedTickets = tickets.filter(item => item.status === "reserved");
+
+                          return (
+                            <div key={key} className="space-y-2 pb-3 border-b border-slate-100 last:border-0 last:pb-0">
+                              <div className="flex items-center justify-between gap-1.5">
+                                <strong className="text-slate-800 text-xs block truncate max-w-[55%]" title={campaign.title}>{campaign.title}</strong>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <span className="text-[10px] text-slate-400">{tickets.length} cota(s)</span>
+                                  {reservedTickets.length > 0 && (
+                                    <div className="flex gap-1 items-center">
+                                      <button
+                                        onClick={() => setExclusiveMobilePayment({ campaign: campaign, tickets: reservedTickets })}
+                                        className="bg-amber-500 hover:bg-amber-600 text-slate-950 text-[9px] font-extrabold px-1.5 py-0.5 rounded-md cursor-pointer transition flex items-center gap-0.5 animate-pulse"
+                                        title="Abrir página exclusiva de pagamento e PIX da reserva"
+                                      >
+                                        <span>Pagar PIX 💵</span>
+                                      </button>
+                                      <button
+                                        onClick={() => handleWhatsAppRedirect(reservedTickets, campaign)}
+                                        className="bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md cursor-pointer transition flex items-center gap-0.5"
+                                        title="Enviar comprovante de reserva desta campanha por WhatsApp"
+                                      >
+                                        <span>WhatsApp 💬</span>
+                                      </button>
+                                    </div>
+                                  )}
+                                  {confirmedTickets.length > 0 && (
                                     <button
-                                      onClick={() => setExclusiveMobilePayment({ campaign: camp, tickets: tList.filter(t => t.status === "reserved") })}
-                                      className="bg-amber-500 hover:bg-amber-600 text-slate-950 text-[9px] font-extrabold px-1.5 py-0.5 rounded-md cursor-pointer transition flex items-center gap-0.5 animate-pulse"
-                                      title="Abrir página exclusiva de pagamento e PIX da reserva"
+                                      onClick={() => setTicketModalConfig({ campaign: campaign, tickets: confirmedTickets })}
+                                      className="bg-indigo-600 hover:bg-indigo-700 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md cursor-pointer transition flex items-center gap-0.5"
+                                      title="Emitir todos os bilhetes confirmados desta campanha"
                                     >
-                                      <span>Pagar PIX 💵</span>
+                                      <span>Emitir 🎟️</span>
                                     </button>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex flex-wrap gap-1.5">
+                                {tickets.map((t) => {
+                                  const isConfirmed = t.status === "confirmed";
+                                  return (
                                     <button
-                                      onClick={() => handleWhatsAppRedirect(tList.filter(t => t.status === "reserved"), camp)}
-                                      className="bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md cursor-pointer transition flex items-center gap-0.5"
-                                      title="Enviar comprovante de reserva desta campanha por WhatsApp"
+                                      key={t.id}
+                                      type="button"
+                                      onClick={() => {
+                                        if (isConfirmed) {
+                                          setTicketModalConfig({ campaign: campaign, tickets: [t] });
+                                        }
+                                      }}
+                                      className={`px-2 py-1 rounded-lg border text-[11px] font-semibold font-mono flex items-center gap-1 transition-all ${
+                                        isConfirmed
+                                          ? "bg-indigo-50 border-indigo-200 text-indigo-800 hover:scale-[1.03] hover:bg-indigo-100 cursor-pointer"
+                                          : "bg-amber-55 border-amber-200 text-amber-800 cursor-default"
+                                      }`}
+                                      title={isConfirmed ? "Clique para emitir seu Bilhete Oficial 🎟️" : "Aguardando confirmação de pagamento"}
                                     >
-                                      <span>WhatsApp 💬</span>
+                                      <span>#{t.number}</span>
+                                      <span className="text-[9px] uppercase px-1 rounded bg-white font-sans font-bold shrink-0">
+                                        {isConfirmed ? "Pago 🌟" : "Pend."}
+                                      </span>
+                                      {t.status === "reserved" && (
+                                        <span
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleCancelReservation(campaign.id, t.id);
+                                          }}
+                                          className="text-red-500 hover:text-red-700 ml-0.5 font-sans font-extrabold cursor-pointer text-xs leading-none"
+                                          title="Desistir da reserva"
+                                        >
+                                          ×
+                                        </span>
+                                      )}
                                     </button>
-                                  </div>
-                                )}
-                                {confirmedTickets.length > 0 && (
-                                  <button
-                                    onClick={() => setTicketModalConfig({ campaign: camp, tickets: confirmedTickets })}
-                                    className="bg-indigo-600 hover:bg-indigo-700 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md cursor-pointer transition flex items-center gap-0.5"
-                                    title="Emitir todos os bilhetes confirmados desta campanha"
-                                  >
-                                    <span>Emitir 🎟️</span>
-                                  </button>
-                                )}
+                                  );
+                                })}
                               </div>
                             </div>
-                            <div className="flex flex-wrap gap-1.5">
-                              {tList.map((t) => {
-                                const isConfirmed = t.status === "confirmed";
-                                return (
-                                  <button
-                                    key={t.id}
-                                    type="button"
-                                    onClick={() => {
-                                      if (isConfirmed) {
-                                        setTicketModalConfig({ campaign: camp, tickets: [t] });
-                                      }
-                                    }}
-                                    className={`px-2 py-1 rounded-lg border text-[11px] font-semibold font-mono flex items-center gap-1 transition-all ${
-                                      isConfirmed
-                                        ? "bg-indigo-50 border-indigo-200 text-indigo-800 hover:scale-[1.03] hover:bg-indigo-100 cursor-pointer"
-                                        : "bg-amber-55 border-amber-200 text-amber-800 cursor-default"
-                                    }`}
-                                    title={isConfirmed ? "Clique para emitir seu Bilhete Oficial 🎟️" : "Aguardando confirmação de pagamento"}
-                                  >
-                                    <span>#{t.number}</span>
-                                    <span className="text-[9px] uppercase px-1 rounded bg-white font-sans font-bold shrink-0">
-                                      {isConfirmed ? "Pago 🌟" : "Pend."}
-                                    </span>
-                                    {t.status === "reserved" && (
-                                      <span
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleCancelReservation(campaignId, t.id);
-                                        }}
-                                        className="text-red-500 hover:text-red-700 ml-0.5 font-sans font-extrabold cursor-pointer text-xs leading-none"
-                                        title="Desistir da reserva"
-                                      >
-                                        ×
-                                      </span>
-                                    )}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        });
+                      })()}
                     </div>
-                  )}
 
                   {/* Quick Copy PIX helper inside reservations list */}
                   {myTotalTicketsCount > 0 && (Object.values(myTickets).flat() as Ticket[]).some(t => t.status === "reserved") && (
@@ -2578,90 +2620,116 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
               </div>
             ) : (
               <div className="space-y-4">
-                {(Object.entries(myTickets) as [string, Ticket[]][]).map(([campaignId, tList]) => {
-                  if (tList.length === 0) return null;
-                  const camp = campaigns.find(c => c.id === campaignId);
-                  if (!camp) return null;
+                {(() => {
+                  const entries = Object.entries(myTickets) as [string, Ticket[]][];
+                  const allBatches: { campaign: Campaign; tickets: Ticket[]; key: string }[] = [];
 
-                  const confirmedTickets = tList.filter(item => item.status === "confirmed");
+                  entries.forEach(([campaignId, tList]) => {
+                    if (tList.length === 0) return;
+                    const camp = campaigns.find(c => c.id === campaignId);
+                    if (!camp) return;
 
-                  return (
-                    <div key={campaignId} className="space-y-2 pb-3 border-b border-slate-100 last:border-0 last:pb-0">
-                      <div className="flex items-center justify-between gap-1.5">
-                        <strong className="text-slate-800 text-xs block truncate max-w-[55%]" title={camp.title}>{camp.title}</strong>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <span className="text-[10px] text-slate-400">{tList.length} cota(s)</span>
-                          {tList.filter(t => t.status === "reserved").length > 0 && (
-                            <div className="flex gap-1 items-center">
+                    const batches = splitTicketsIntoBatches(tList);
+                    batches.forEach((batch, bIdx) => {
+                      const batchId = batch[0].batchId || `time_${batch[0].reservedAt || 'legacy'}_${bIdx}`;
+                      allBatches.push({
+                        campaign: camp,
+                        tickets: batch,
+                        key: `${campaignId}_${batchId}`
+                      });
+                    });
+                  });
+
+                  if (allBatches.length === 0) {
+                    return (
+                      <div className="text-center p-6 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-slate-450 text-xs text-center normal-case">
+                        Você não possui compras ou reservas registradas no momento.
+                      </div>
+                    );
+                  }
+
+                  return allBatches.map(({ campaign, tickets, key }) => {
+                    const confirmedTickets = tickets.filter(item => item.status === "confirmed");
+                    const reservedTickets = tickets.filter(item => item.status === "reserved");
+
+                    return (
+                      <div key={key} className="space-y-2 pb-3 border-b border-slate-100 last:border-0 last:pb-0">
+                        <div className="flex items-center justify-between gap-1.5">
+                          <strong className="text-slate-800 text-xs block truncate max-w-[55%]" title={campaign.title}>{campaign.title}</strong>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span className="text-[10px] text-slate-400">{tickets.length} cota(s)</span>
+                            {reservedTickets.length > 0 && (
+                              <div className="flex gap-1 items-center">
+                                <button
+                                  onClick={() => setExclusiveMobilePayment({ campaign: campaign, tickets: reservedTickets })}
+                                  className="bg-amber-500 hover:bg-amber-655 text-slate-950 text-[9px] font-extrabold px-1.5 py-0.5 rounded-md cursor-pointer transition flex items-center gap-0.5 animate-pulse"
+                                  title="Abrir página exclusiva de pagamento e PIX da reserva"
+                                >
+                                  <span>Pagar PIX 💵</span>
+                                </button>
+                                <button
+                                  onClick={() => handleWhatsAppRedirect(reservedTickets, campaign)}
+                                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md cursor-pointer transition flex items-center gap-0.5"
+                                  title="Enviar comprovante de reserva desta campanha por WhatsApp"
+                                >
+                                  <span>WhatsApp 💬</span>
+                                </button>
+                              </div>
+                            )}
+                            {confirmedTickets.length > 0 && (
                               <button
-                                onClick={() => setExclusiveMobilePayment({ campaign: camp, tickets: tList.filter(t => t.status === "reserved") })}
-                                className="bg-amber-500 hover:bg-amber-650 text-slate-950 text-[9px] font-extrabold px-1.5 py-0.5 rounded-md cursor-pointer transition flex items-center gap-0.5 animate-pulse"
-                                title="Abrir página exclusiva de pagamento e PIX da reserva"
+                                onClick={() => setTicketModalConfig({ campaign: campaign, tickets: confirmedTickets })}
+                                className="bg-indigo-600 hover:bg-indigo-700 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md cursor-pointer transition flex items-center gap-0.5"
+                                title="Emitir todos os bilhetes confirmados desta campanha"
                               >
-                                <span>Pagar PIX 💵</span>
+                                <span>Emitir 🎟️</span>
                               </button>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {tickets.map((t) => {
+                            const isConfirmed = t.status === "confirmed";
+                            return (
                               <button
-                                onClick={() => handleWhatsAppRedirect(tList.filter(t => t.status === "reserved"), camp)}
-                                className="bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md cursor-pointer transition flex items-center gap-0.5"
-                                title="Enviar comprovante de reserva desta campanha por WhatsApp"
+                                key={t.id}
+                                type="button"
+                                onClick={() => {
+                                  if (isConfirmed) {
+                                    setTicketModalConfig({ campaign: campaign, tickets: [t] });
+                                  }
+                                }}
+                                className={`px-2 py-1 rounded-lg border text-[11px] font-semibold font-mono flex items-center gap-1 transition-all ${
+                                  isConfirmed
+                                    ? "bg-indigo-50 border-indigo-200 text-indigo-800 hover:scale-[1.03] hover:bg-indigo-100 cursor-pointer"
+                                    : "bg-amber-55 border-amber-200 text-amber-800 cursor-default"
+                                }`}
+                                title={isConfirmed ? "Clique para emitir seu Bilhete Oficial 🎟️" : "Aguardando confirmação de pagamento"}
                               >
-                                <span>WhatsApp 💬</span>
+                                <span>#{t.number}</span>
+                                <span className="text-[9px] uppercase px-1 rounded bg-white font-sans font-bold shrink-0">
+                                  {isConfirmed ? "Pago 🌟" : "Pend."}
+                                </span>
+                                {t.status === "reserved" && (
+                                  <span
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleCancelReservation(campaign.id, t.id);
+                                    }}
+                                    className="text-red-500 hover:text-red-700 ml-0.5 font-sans font-extrabold cursor-pointer text-xs leading-none"
+                                    title="Desistir da reserva"
+                                  >
+                                    ×
+                                  </span>
+                                )}
                               </button>
-                            </div>
-                          )}
-                          {confirmedTickets.length > 0 && (
-                            <button
-                              onClick={() => setTicketModalConfig({ campaign: camp, tickets: confirmedTickets })}
-                              className="bg-indigo-600 hover:bg-indigo-700 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md cursor-pointer transition flex items-center gap-0.5"
-                              title="Emitir todos os bilhetes confirmados desta campanha"
-                            >
-                              <span>Emitir 🎟️</span>
-                            </button>
-                          )}
+                            );
+                          })}
                         </div>
                       </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {tList.map((t) => {
-                          const isConfirmed = t.status === "confirmed";
-                          return (
-                            <button
-                              key={t.id}
-                              type="button"
-                              onClick={() => {
-                                if (isConfirmed) {
-                                  setTicketModalConfig({ campaign: camp, tickets: [t] });
-                                }
-                              }}
-                              className={`px-2 py-1 rounded-lg border text-[11px] font-semibold font-mono flex items-center gap-1 transition-all ${
-                                isConfirmed
-                                  ? "bg-indigo-50 border-indigo-200 text-indigo-800 hover:scale-[1.03] hover:bg-indigo-100 cursor-pointer"
-                                  : "bg-amber-55 border-amber-200 text-amber-800 cursor-default"
-                              }`}
-                              title={isConfirmed ? "Clique para emitir seu Bilhete Oficial 🎟️" : "Aguardando confirmação de pagamento"}
-                            >
-                              <span>#{t.number}</span>
-                              <span className="text-[9px] uppercase px-1 rounded bg-white font-sans font-bold shrink-0">
-                                {isConfirmed ? "Pago 🌟" : "Pend."}
-                              </span>
-                              {t.status === "reserved" && (
-                                <span
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleCancelReservation(campaignId, t.id);
-                                  }}
-                                  className="text-red-500 hover:text-red-700 ml-0.5 font-sans font-extrabold cursor-pointer text-xs leading-none"
-                                  title="Desistir da reserva"
-                                >
-                                  ×
-                                </span>
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })}
+                    );
+                  });
+                })()}
               </div>
             )}
 
@@ -2824,12 +2892,25 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                   setActiveTab("ranking");
                   setSuccessReserved(null);
                 }}
-                className={`flex flex-col items-center justify-center py-1 px-4 rounded-xl transition-all cursor-pointer ${
+                className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all cursor-pointer ${
                   activeTab === "ranking" ? "text-indigo-650 font-black scale-105" : "text-slate-450 hover:text-slate-755"
                 }`}
               >
                 <Trophy className={`w-4.5 h-4.5 mb-1 ${activeTab === "ranking" ? "text-amber-500" : "text-slate-400"}`} />
                 <span className="text-[9.5px]">Ranking</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setActiveTab("ganhadores");
+                  setSuccessReserved(null);
+                }}
+                className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all cursor-pointer ${
+                  activeTab === "ganhadores" ? "text-indigo-650 font-black scale-105" : "text-slate-450 hover:text-slate-755"
+                }`}
+              >
+                <Crown className={`w-4.5 h-4.5 mb-1 ${activeTab === "ganhadores" ? "text-amber-500" : "text-slate-400"}`} />
+                <span className="text-[9.5px]">Ganhadores</span>
               </button>
             </div>
           </div>
@@ -3244,6 +3325,202 @@ Acompanhe os resultados no link de nossa plataforma.
           loading={loadingAllReservations}
           isAdmin={userProfile.role === "admin"}
         />
+      )}
+
+      {activeTab === "ganhadores" && (
+        <div className="max-w-6xl mx-auto space-y-6 md:space-y-8 animate-fadeIn select-none pb-24 md:pb-12 px-4 sm:px-0 mt-6">
+          
+          {/* Header Hero Banner */}
+          <div className="bg-gradient-to-br from-indigo-950 via-slate-900 to-indigo-900 rounded-3xl p-6 md:p-10 text-white relative overflow-hidden shadow-xl border border-white/5">
+            <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute bottom-0 right-1/4 w-36 h-36 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
+            
+            <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
+              <div className="space-y-2 text-center md:text-left">
+                <span className="text-[10px] bg-amber-500 text-slate-950 font-extrabold px-3 py-1 rounded-full uppercase tracking-wider inline-block">
+                  Galeria de Honra • Transparência 🏆
+                </span>
+                <h2 className="text-2xl md:text-4xl font-extrabold tracking-tight">Galeria de Ganhadores</h2>
+                <p className="text-slate-300 text-xs md:text-sm max-w-xl leading-relaxed">
+                  Confira os grandes ganhadores de cada edição das rifas da Comissão de Formatura homologados com transparência através dos resultados oficiais da Loteria Federal.
+                </p>
+              </div>
+
+              {/* Statistics counter box */}
+              {(() => {
+                const totalFinished = campaigns.filter(c => c.status === "drawn" || c.winningNumber).length;
+                return (
+                  <div className="flex bg-white/10 backdrop-blur-sm border border-white/10 p-4 rounded-2xl items-center gap-3 shrink-0">
+                    <div className="w-12 h-12 rounded-xl bg-amber-500 flex items-center justify-center text-2xl font-bold text-slate-900 shadow-md">
+                      👑
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-300 font-bold uppercase tracking-wider block">Campanhas Concluídas</span>
+                      <strong className="text-2xl font-black text-white">{totalFinished}</strong>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+
+          {/* List of Closed Campaigns & Winners */}
+          <div className="space-y-6">
+            {(() => {
+              const closed = campaigns.filter(c => c.status === "drawn" || c.winningNumber);
+
+              if (closed.length === 0) {
+                return (
+                  <div className="bg-white border border-slate-150 rounded-2xl p-8 text-center max-w-lg mx-auto space-y-4 shadow-sm animate-fadeIn">
+                    <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center text-3xl mx-auto shadow-inner text-slate-400">
+                      🏅
+                    </div>
+                    <div className="space-y-1.5">
+                      <h4 className="font-extrabold text-slate-750 text-sm md:text-base">Nenhum sorteio encerrado no momento</h4>
+                      <p className="text-slate-500 text-xs leading-relaxed">
+                        Que ótimo sinal! Todas as nossas rifas de formatura estão ativas com cotas disponíveis para você concorrer aos prêmios. Adquira seus números e faça parte desta história de vitória!
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setActiveTab("rifas")}
+                      className="px-5 py-2.5 bg-indigo-650 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer shadow-sm active:scale-95 flex items-center gap-1.5 mx-auto"
+                    >
+                      <TicketIcon className="w-4 h-4 text-white" />
+                      <span>Ver Campanhas Ativas</span>
+                    </button>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {closed.map((camp) => {
+                    // Try to resolve the winning ticket data
+                    const campTickets = allReservations[camp.id] || [];
+                    const winnerTicket = camp.winningNumber 
+                      ? campTickets.find((t) => t.number === camp.winningNumber)
+                      : null;
+
+                    // Calculate total stats
+                    const totalCotas = camp.totalTickets;
+                    const vendidosCount = campTickets.filter(t => t.status === "confirmed").length;
+
+                    return (
+                      <div
+                        key={camp.id}
+                        className="bg-white rounded-3xl border border-slate-200/80 shadow-md hover:shadow-lg transition-all animate-fadeIn relative overflow-hidden flex flex-col justify-between"
+                      >
+                        {/* Upper image header and details */}
+                        <div>
+                          <div className="relative aspect-[16/9] w-full bg-slate-100 border-b border-slate-150 overflow-hidden">
+                            <img
+                              src={camp.imageUrl || getCampaignPlaceholderImage(camp.title, camp.id)}
+                              alt={camp.title}
+                              className="w-full h-full object-cover select-none"
+                              referrerPolicy="no-referrer"
+                            />
+                            {/* Floating category badge and concluded tag */}
+                            <div className="absolute top-3 left-3 bg-slate-900/90 backdrop-blur-sm text-amber-400 text-[10px] font-black tracking-wider uppercase px-2.5 py-1 rounded-lg border border-white/10 flex items-center gap-1 shadow-md">
+                              <Trophy className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                              <span>Sorteio Realizado</span>
+                            </div>
+
+                            <div className="absolute top-3 right-3 bg-indigo-600/90 backdrop-blur-sm text-white text-[10px] font-bold px-2.5 py-1 rounded-lg border border-white/5">
+                              {camp.drawDate ? camp.drawDate.split("-").reverse().join("/") : "Finalizado"}
+                            </div>
+
+                            {/* Prominent Golden Cota overlay */}
+                            <div className="absolute bottom-3 right-3 bg-slate-950/90 backdrop-blur-md px-3.5 py-2 rounded-xl flex items-center gap-2 border border-white/10">
+                              <span className="text-[10px] text-slate-300 font-extrabold uppercase">Cota Sorteada:</span>
+                              <strong className="text-lg font-mono text-amber-400 font-black">
+                                #{camp.winningNumber || "N/A"}
+                              </strong>
+                            </div>
+                          </div>
+
+                          {/* Content body */}
+                          <div className="p-5 md:p-6 space-y-4">
+                            <div className="space-y-1">
+                              <h3 className="font-extrabold text-slate-800 text-sm md:text-base tracking-tight leading-snug line-clamp-2">
+                                {camp.title}
+                              </h3>
+                              <p className="text-[11px] text-slate-400 line-clamp-2">
+                                {camp.description ? stripHtml(camp.description) : "Conclusão e auditoria de premiação beneficente."}
+                              </p>
+                            </div>
+
+                            {/* Winner Certificate design card */}
+                            <div className="bg-gradient-to-br from-amber-500/5 to-yellow-500/10 border border-amber-350/40 rounded-2xl p-4 relative overflow-hidden flex items-center gap-4">
+                              {/* Shiny sparkles badge in background */}
+                              <div className="absolute right-3 top-3 opacity-15 rotate-12 text-amber-500">
+                                <Trophy className="w-14 h-14" />
+                              </div>
+
+                              {winnerTicket ? (
+                                <div className="flex gap-3.5 items-center w-full relative z-10">
+                                  <div className="w-12 h-12 rounded-full bg-amber-400/20 text-xl flex items-center justify-center text-amber-650 shrink-0 select-none animate-pulse">
+                                    🎓
+                                  </div>
+                                  <div className="flex-1 space-y-0.5">
+                                    <span className="text-[9.5px] text-amber-800 font-extrabold uppercase tracking-wide flex items-center gap-1">
+                                      <Crown className="w-3 h-3 text-amber-650" />
+                                      Ganhador(a) Oficial
+                                    </span>
+                                    <h4 className="text-xs md:text-sm font-black text-slate-850 truncate">
+                                      {userProfile.role === "admin"
+                                        ? winnerTicket.buyerName
+                                        : maskWinnerName(winnerTicket.buyerName || "")}
+                                    </h4>
+                                    <p className="text-[10.5px] text-slate-500 flex flex-wrap items-center gap-1.5 font-mono">
+                                      <span>Cota #{winnerTicket.number}</span>
+                                      <span className="w-1 h-1 rounded-full bg-slate-300" />
+                                      <span>Compra: {winnerTicket.confirmedAt ? new Date(winnerTicket.confirmedAt).toLocaleDateString("pt-BR") : "Confirmado"}</span>
+                                    </p>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="flex gap-3.5 items-center w-full relative z-10">
+                                  <div className="w-12 h-12 rounded-full bg-slate-100 text-xl flex items-center justify-center text-slate-450 shrink-0">
+                                    🔒
+                                  </div>
+                                  <div className="flex-1 space-y-0.5 mt-0.5">
+                                    <span className="text-[9px] text-slate-450 font-black uppercase tracking-wider block">Acumulado</span>
+                                    <h4 className="text-xs font-extrabold text-slate-650">Cota Não Adquirida</h4>
+                                    <p className="text-[10px] text-slate-500 leading-snug">
+                                      Nenhum participante comprou o número <strong>#{camp.winningNumber}</strong> nesta edição.
+                                    </p>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Card bottom details & statistics footer */}
+                        <div className="bg-slate-50 px-5 md:px-6 py-4 flex items-center justify-between border-t border-slate-150 rounded-b-3xl select-none">
+                          <div className="flex gap-4 text-[9.5px] text-slate-500 font-bold select-none font-mono">
+                            <div>
+                              <span>Cotas: <strong className="text-slate-800 font-black">{totalCotas}</strong></span>
+                            </div>
+                            <span className="text-slate-200">|</span>
+                            <div>
+                              <span>Vendidas: <strong className="text-indigo-650 font-black">{vendidosCount}</strong></span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1 text-[10px] font-black text-indigo-700">
+                            <span>Concurso Loteria Federal:</span>
+                            <strong className="text-slate-800 font-mono">#{camp.federalLotteryDrawId || "Oficial"}</strong>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </div>
+        </div>
       )}
 
       {/* Floating Toast Notification system */}

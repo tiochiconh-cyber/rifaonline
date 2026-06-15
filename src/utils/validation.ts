@@ -248,3 +248,66 @@ export function getCampaignDrawProjection(campaign: Campaign, campaignTickets: T
   };
 }
 
+/**
+ * Splits a list of tickets into separate batches depending on their batchId or reservation timestamp window.
+ */
+export function splitTicketsIntoBatches(tickets: Ticket[]): Ticket[][] {
+  const batchesMap: { [batchId: string]: Ticket[] } = {};
+  const noBatchTickets: Ticket[] = [];
+
+  tickets.forEach((t) => {
+    if (t.batchId) {
+      if (!batchesMap[t.batchId]) {
+        batchesMap[t.batchId] = [];
+      }
+      batchesMap[t.batchId].push(t);
+    } else {
+      noBatchTickets.push(t);
+    }
+  });
+
+  const finalBatches: Ticket[][] = Object.values(batchesMap);
+
+  if (noBatchTickets.length > 0) {
+    // Sort by reservedAt
+    noBatchTickets.sort((a, b) => {
+      const aTime = a.reservedAt ? new Date(a.reservedAt).getTime() : 0;
+      const bTime = b.reservedAt ? new Date(b.reservedAt).getTime() : 0;
+      return aTime - bTime;
+    });
+
+    let currentBatch: Ticket[] = [];
+    let lastTime = 0;
+
+    noBatchTickets.forEach((t) => {
+      const tTime = t.reservedAt ? new Date(t.reservedAt).getTime() : 0;
+      // If within 5 seconds of the previous one, group into same batch
+      if (currentBatch.length === 0 || Math.abs(tTime - lastTime) < 5000) {
+        currentBatch.push(t);
+      } else {
+        finalBatches.push(currentBatch);
+        currentBatch = [t];
+      }
+      lastTime = tTime;
+    });
+
+    if (currentBatch.length > 0) {
+      finalBatches.push(currentBatch);
+    }
+  }
+
+  // Sort batches so newer ones appear first (highest timestamp)
+  return finalBatches.sort((a, b) => {
+    const aMax = a.reduce((max, t) => {
+      const time = t.reservedAt ? new Date(t.reservedAt).getTime() : 0;
+      return time > max ? time : max;
+    }, 0);
+    const bMax = b.reduce((max, t) => {
+      const time = t.reservedAt ? new Date(t.reservedAt).getTime() : 0;
+      return time > max ? time : max;
+    }, 0);
+    return bMax - aMax;
+  });
+}
+
+
