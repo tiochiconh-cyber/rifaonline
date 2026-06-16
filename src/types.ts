@@ -28,9 +28,12 @@ export interface Campaign {
   winningNumber?: string;
   federalLotteryNumber?: string;
   prizeExpenses?: number; // Cost/expenses spent on the prizes of this campaign
+  prizesList?: { name: string; cost: number }[];
   createdAt: string;
   progressiveDiscounts?: { minQuantity: number; discountPrice: number; discountPercentage?: number }[];
   drawMode?: "traditional" | "express";
+  startDate?: string;
+  startTime?: string;
 }
 
 export type TicketStatus = "available" | "reserved" | "confirmed";

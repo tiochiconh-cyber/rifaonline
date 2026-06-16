@@ -118,6 +118,8 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
   const [newCampaignDrawDate, setNewCampaignDrawDate] = useState("");
   const [newCampaignDrawId, setNewCampaignDrawId] = useState("");
   const [newCampaignDrawMode, setNewCampaignDrawMode] = useState<"traditional" | "express">("traditional");
+  const [newCampaignStartDate, setNewCampaignStartDate] = useState("");
+  const [newCampaignStartTime, setNewCampaignStartTime] = useState("");
   const [newCampaignImage, setNewCampaignImage] = useState("");
   const [imageUploadLoading, setImageUploadLoading] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
@@ -126,6 +128,11 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
   const [newCampaignDiscounts, setNewCampaignDiscounts] = useState<{ minQuantity: number; discountPrice: number; discountPercentage?: number }[]>([]);
   const [newCampaignDiscountEnabled, setNewCampaignDiscountEnabled] = useState(false);
 
+  // Prizes (Brindes) list options for Create Form
+  const [newCampaignPrizesList, setNewCampaignPrizesList] = useState<{ name: string; cost: number }[]>([]);
+  const [newPrizeName, setNewPrizeName] = useState("");
+  const [newPrizeCost, setNewPrizeCost] = useState("");
+
   // Edit Campaign State Controllers
   const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null);
   const [editCampaignTitle, setEditCampaignTitle] = useState("");
@@ -133,9 +140,14 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
   const [editCampaignPrice, setEditCampaignPrice] = useState(10.0);
   const [editCampaignTotal, setEditCampaignTotal] = useState(100);
   const [editCampaignExpenses, setEditCampaignExpenses] = useState<number>(0);
+  const [editCampaignPrizesList, setEditCampaignPrizesList] = useState<{ name: string; cost: number }[]>([]);
+  const [editPrizeName, setEditPrizeName] = useState("");
+  const [editPrizeCost, setEditPrizeCost] = useState("");
   const [editCampaignDrawDate, setEditCampaignDrawDate] = useState("");
   const [editCampaignDrawId, setEditCampaignDrawId] = useState("");
   const [editCampaignDrawMode, setEditCampaignDrawMode] = useState<"traditional" | "express">("traditional");
+  const [editCampaignStartDate, setEditCampaignStartDate] = useState("");
+  const [editCampaignStartTime, setEditCampaignStartTime] = useState("");
   const [editCampaignImage, setEditCampaignImage] = useState("");
   const [editCampaignDiscounts, setEditCampaignDiscounts] = useState<{ minQuantity: number; discountPrice: number; discountPercentage?: number }[]>([]);
   const [editCampaignDiscountEnabled, setEditCampaignDiscountEnabled] = useState(false);
@@ -145,6 +157,16 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
   // States for Data Export and Backup
   const [selectedExportCampaign, setSelectedExportCampaign] = useState<string>("all");
   const [selectedExportStatus, setSelectedExportStatus] = useState<"all" | "confirmed" | "reserved">("all");
+
+  // Cash Adjustment (Ajuste de Caixa) states
+  const [showAdjustmentPanel, setShowAdjustmentPanel] = useState(false);
+  const [selectedAdjCampaignId, setSelectedAdjCampaignId] = useState("");
+  const [adjPrizesList, setAdjPrizesList] = useState<{ name: string; cost: number }[]>([]);
+  const [adjExpenses, setAdjExpenses] = useState<number>(0);
+  const [adjPrizeName, setAdjPrizeName] = useState("");
+  const [adjPrizeCost, setAdjPrizeCost] = useState("");
+  const [adjSaving, setAdjSaving] = useState(false);
+  const [adjSuccessMsg, setAdjSuccessMsg] = useState("");
   const [backupFile, setBackupFile] = useState<File | null>(null);
   const [parsedBackupData, setParsedBackupData] = useState<any | null>(null);
   const [isRestoring, setIsRestoring] = useState(false);
@@ -1103,8 +1125,11 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
 
         for (const p of parts) {
           const numVal = parseInt(p, 10);
-          if (isNaN(numVal) || numVal < 0 || numVal >= totalTickets) {
-            setIssueError(`O número "${p}" é inválido. Para esta rifa, os números devem ir de 0 a ${totalTickets - 1}.`);
+          const isExpress = selectedCampaign.drawMode === "express";
+          const minVal = isExpress ? 1 : 0;
+          const maxVal = isExpress ? totalTickets : totalTickets - 1;
+          if (isNaN(numVal) || numVal < minVal || numVal > maxVal) {
+            setIssueError(`O número "${p}" é inválido. Para esta rifa, os números devem ir de ${minVal} a ${maxVal}.`);
             setIssueLoading(false);
             return;
           }
@@ -1135,7 +1160,10 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
 
         // Determine available pool
         const availablePool: string[] = [];
-        for (let i = 0; i < totalTickets; i++) {
+        const isExpress = selectedCampaign.drawMode === "express";
+        const startIdx = isExpress ? 1 : 0;
+        const endIdx = isExpress ? totalTickets : totalTickets - 1;
+        for (let i = startIdx; i <= endIdx; i++) {
           const padded = i.toString().padStart(padLength, "0");
           if (!takenNumbersSet.has(padded)) {
             availablePool.push(padded);
@@ -1403,9 +1431,14 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
     setEditCampaignPrice(camp.ticketPrice);
     setEditCampaignTotal(camp.totalTickets);
     setEditCampaignExpenses(camp.prizeExpenses || 0);
+    setEditCampaignPrizesList(camp.prizesList || []);
+    setEditPrizeName("");
+    setEditPrizeCost("");
     setEditCampaignDrawDate(camp.drawDate || "");
     setEditCampaignDrawId(camp.federalLotteryDrawId || "");
     setEditCampaignDrawMode(camp.drawMode || "traditional");
+    setEditCampaignStartDate(camp.startDate || "");
+    setEditCampaignStartTime(camp.startTime || "");
     setEditCampaignImage(camp.imageUrl || "");
     if (camp.progressiveDiscounts && camp.progressiveDiscounts.length > 0) {
       setEditCampaignDiscounts(camp.progressiveDiscounts);
@@ -1427,6 +1460,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
       ticketPrice: Number(editCampaignPrice),
       totalTickets: Number(editCampaignTotal),
       prizeExpenses: Number(editCampaignExpenses),
+      prizesList: editCampaignPrizesList,
       drawMode: editCampaignDrawMode,
     };
 
@@ -1444,6 +1478,16 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
       updatedData.federalLotteryDrawId = editCampaignDrawId.trim();
     } else {
       updatedData.federalLotteryDrawId = "";
+    }
+    if (editCampaignStartDate.trim()) {
+      updatedData.startDate = editCampaignStartDate.trim();
+    } else {
+      updatedData.startDate = "";
+    }
+    if (editCampaignStartTime.trim()) {
+      updatedData.startTime = editCampaignStartTime.trim();
+    } else {
+      updatedData.startTime = "";
     }
 
     if (editCampaignDiscountEnabled && editCampaignDiscounts.length > 0) {
@@ -1475,6 +1519,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
       totalTickets: Number(newCampaignTotal),
       status: "active",
       prizeExpenses: Number(newCampaignExpenses || 0),
+      prizesList: newCampaignPrizesList,
       createdAt: new Date().toISOString(),
       drawMode: newCampaignDrawMode,
     };
@@ -1487,6 +1532,12 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
     }
     if (newCampaignDrawId.trim()) {
       newCamp.federalLotteryDrawId = newCampaignDrawId.trim();
+    }
+    if (newCampaignStartDate.trim()) {
+      newCamp.startDate = newCampaignStartDate.trim();
+    }
+    if (newCampaignStartTime.trim()) {
+      newCamp.startTime = newCampaignStartTime.trim();
     }
 
     if (newCampaignDiscountEnabled && newCampaignDiscounts.length > 0) {
@@ -1501,9 +1552,14 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
       setNewCampaignPrice(10);
       setNewCampaignTotal(100);
       setNewCampaignExpenses(0);
+      setNewCampaignPrizesList([]);
+      setNewPrizeName("");
+      setNewPrizeCost("");
       setNewCampaignDrawDate("");
       setNewCampaignDrawId("");
       setNewCampaignDrawMode("traditional");
+      setNewCampaignStartDate("");
+      setNewCampaignStartTime("");
       setNewCampaignImage("");
       setNewCampaignDiscounts([]);
       setNewCampaignDiscountEnabled(false);
@@ -1511,6 +1567,105 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
     } catch (err) {
       console.error("Error creating campaign:", err);
       handleFirestoreError(err, OperationType.WRITE, `campaigns/${campaignId}`);
+    }
+  };
+
+  const handleAddNewCampaignPrize = () => {
+    if (!newPrizeName.trim()) return;
+    const costVal = parseFloat(newPrizeCost) || 0;
+    const updatedPrizes = [...newCampaignPrizesList, { name: newPrizeName.trim(), cost: costVal }];
+    setNewCampaignPrizesList(updatedPrizes);
+    
+    // Update campaign total expenses
+    const sum = updatedPrizes.reduce((acc, p) => acc + p.cost, 0);
+    setNewCampaignExpenses(sum);
+    
+    setNewPrizeName("");
+    setNewPrizeCost("");
+  };
+
+  const handleRemoveNewCampaignPrize = (index: number) => {
+    const updatedPrizes = newCampaignPrizesList.filter((_, idx) => idx !== index);
+    setNewCampaignPrizesList(updatedPrizes);
+    
+    const sum = updatedPrizes.reduce((acc, p) => acc + p.cost, 0);
+    setNewCampaignExpenses(sum);
+  };
+
+  const handleAddEditCampaignPrize = () => {
+    if (!editPrizeName.trim()) return;
+    const costVal = parseFloat(editPrizeCost) || 0;
+    const updatedPrizes = [...editCampaignPrizesList, { name: editPrizeName.trim(), cost: costVal }];
+    setEditCampaignPrizesList(updatedPrizes);
+    
+    const sum = updatedPrizes.reduce((acc, p) => acc + p.cost, 0);
+    setEditCampaignExpenses(sum);
+    
+    setEditPrizeName("");
+    setEditPrizeCost("");
+  };
+
+  const handleRemoveEditCampaignPrize = (index: number) => {
+    const updatedPrizes = editCampaignPrizesList.filter((_, idx) => idx !== index);
+    setEditCampaignPrizesList(updatedPrizes);
+    
+    const sum = updatedPrizes.reduce((acc, p) => acc + p.cost, 0);
+    setEditCampaignExpenses(sum);
+  };
+
+
+  const handleSelectAdjCampaign = (campaignId: string) => {
+    setSelectedAdjCampaignId(campaignId);
+    setAdjSuccessMsg("");
+    if (!campaignId) {
+      setAdjPrizesList([]);
+      setAdjExpenses(0);
+      return;
+    }
+    const camp = campaigns.find(c => c.id === campaignId);
+    if (camp) {
+      setAdjPrizesList(camp.prizesList || []);
+      setAdjExpenses(camp.prizeExpenses || 0);
+    }
+  };
+
+  const handleAddAdjPrize = () => {
+    if (!adjPrizeName.trim()) return;
+    const costVal = parseFloat(adjPrizeCost) || 0;
+    const updatedPrizes = [...adjPrizesList, { name: adjPrizeName.trim(), cost: costVal }];
+    setAdjPrizesList(updatedPrizes);
+    
+    const sum = updatedPrizes.reduce((acc, p) => acc + p.cost, 0);
+    setAdjExpenses(sum);
+    
+    setAdjPrizeName("");
+    setAdjPrizeCost("");
+  };
+
+  const handleRemoveAdjPrize = (index: number) => {
+    const updatedPrizes = adjPrizesList.filter((_, idx) => idx !== index);
+    setAdjPrizesList(updatedPrizes);
+    
+    const sum = updatedPrizes.reduce((acc, p) => acc + p.cost, 0);
+    setAdjExpenses(sum);
+  };
+
+  const handleSaveCashAdjustment = async () => {
+    if (!selectedAdjCampaignId) return;
+    setAdjSaving(true);
+    setAdjSuccessMsg("");
+    try {
+      await updateDoc(doc(db, "campaigns", selectedAdjCampaignId), {
+        prizeExpenses: Number(adjExpenses),
+        prizesList: adjPrizesList
+      });
+      setAdjSuccessMsg("Ajuste de caixa salvo com sucesso!");
+      setTimeout(() => setAdjSuccessMsg(""), 4000);
+    } catch (err) {
+      console.error("Error saving cash adjustment:", err);
+      alert("Erro ao realizar ajuste de caixa.");
+    } finally {
+      setAdjSaving(false);
     }
   };
 
@@ -2721,16 +2876,239 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div>
                 <h2 className="font-extrabold text-slate-800 text-lg">Gestão de Campanhas</h2>
-                <p className="text-xs text-slate-400">Aqui você cria e pausa as campanhas ativas de arrecadação da formatura.</p>
+                <p className="text-xs text-slate-400">Aqui você cria, gerencia e ajusta o caixa das campanhas de arrecadação.</p>
               </div>
-              <button
-                onClick={() => setShowCampaignForm(!showCampaignForm)}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl flex items-center gap-1.5 shadow-md shadow-indigo-500/20 transition cursor-pointer self-start sm:self-center shrink-0"
-              >
-                <Plus className="w-4 h-4" />
-                Nova Campanha
-              </button>
+              <div className="flex flex-wrap gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAdjustmentPanel(!showAdjustmentPanel);
+                    setSelectedAdjCampaignId("");
+                    setAdjPrizesList([]);
+                    setAdjExpenses(0);
+                    setAdjSuccessMsg("");
+                  }}
+                  className={`text-xs font-bold px-4 py-2.5 rounded-xl flex items-center gap-1.5 transition cursor-pointer self-start sm:self-center shrink-0 border ${
+                    showAdjustmentPanel 
+                      ? "bg-amber-500 text-white border-amber-600 shadow-md shadow-amber-500/10 hover:bg-amber-600" 
+                      : "bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100/80"
+                  }`}
+                >
+                  <Coins className="w-4 h-4" />
+                  {showAdjustmentPanel ? "Ocultar Ajuste" : "💰 Ajuste de Caixa (Retroativo)"}
+                </button>
+                <button
+                  onClick={() => setShowCampaignForm(!showCampaignForm)}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl flex items-center gap-1.5 shadow-md shadow-indigo-500/20 transition cursor-pointer self-start sm:self-center shrink-0"
+                >
+                  <Plus className="w-4 h-4" />
+                  Nova Campanha
+                </button>
+              </div>
             </div>
+
+            {/* CASH ADJUSTMENT ROUTINE PANEL */}
+            {showAdjustmentPanel && (
+              <div className="bg-gradient-to-br from-indigo-950 to-slate-900 text-white border border-indigo-900/60 p-6 rounded-2xl space-y-4 text-xs animate-fadeIn shadow-lg">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-indigo-900 pb-3">
+                  <div className="space-y-1">
+                    <h3 className="font-extrabold text-indigo-100 text-sm flex items-center gap-2">
+                      <Coins className="w-4 h-4 text-amber-400 animate-bounce" />
+                      Rotina de Ajuste de Caixa & Registro Retroativo de Custos
+                    </h3>
+                    <p className="text-[10px] text-indigo-250 font-medium">
+                      Lance retroativamente os brindes comprados e os custos reais de prêmios de campanhas em andamento ou finalizadas para equilibrar seu fluxo de caixa e obter o lucro REAL correto.
+                    </p>
+                  </div>
+                  <span className="bg-indigo-900 border border-indigo-700/30 px-2.5 py-1 rounded-xl text-[9px] font-bold text-amber-400 uppercase tracking-widest shrink-0 self-start sm:self-center">
+                    Ajuste Rápido
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-start">
+                  {/* Select Campaign Dropdown */}
+                  <div className="md:col-span-5 space-y-3">
+                    <div>
+                      <label className="block text-indigo-200 font-bold mb-1.5 uppercase tracking-wide text-[9.5px]">Selecione uma Campanha para Ajustar:</label>
+                      <select
+                        value={selectedAdjCampaignId}
+                        onChange={(e) => handleSelectAdjCampaign(e.target.value)}
+                        className="w-full bg-slate-950 border border-indigo-800 p-3 rounded-xl text-xs text-indigo-100 font-bold cursor-pointer focus:outline-none focus:border-indigo-500"
+                      >
+                        <option value="">-- Selecione a Rifa --</option>
+                        {campaigns.map((camp) => {
+                          let labelStatus = "Ativa";
+                          if (camp.status === "paused") labelStatus = "Pausada";
+                          if (camp.status === "drawn") labelStatus = "Sorteada/Finalizada 🔮";
+                          return (
+                            <option key={camp.id} value={camp.id}>
+                              {camp.title} ({camp.totalTickets} cotas | {labelStatus})
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
+
+                    {selectedAdjCampaignId && (() => {
+                      const camp = campaigns.find(c => c.id === selectedAdjCampaignId);
+                      if (!camp) return null;
+                      const resOfCamp = allReservations[camp.id] || [];
+                      const confOfCamp = resOfCamp.filter(r => r.status === "confirmed").length;
+                      const totalReceipts = confOfCamp * camp.ticketPrice;
+                      const currentExp = camp.prizeExpenses || 0;
+                      const calculatedRealProfit = totalReceipts - adjExpenses;
+
+                      return (
+                        <div className="bg-slate-950/60 border border-indigo-900/40 p-4 rounded-xl space-y-2.5 text-[10.5px]">
+                          <span className="block text-[9px] uppercase tracking-wider font-extrabold text-indigo-400">Resumo Financeiro da Rifa:</span>
+                          <div className="grid grid-cols-2 gap-2 text-slate-300 font-medium">
+                            <div className="bg-slate-900 border border-slate-850 p-2 rounded-lg">
+                              <span className="block text-[8px] text-slate-400 uppercase">Total Arrecadado:</span>
+                              <span className="font-mono font-bold text-white text-xs">R$ {totalReceipts.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                            </div>
+                            <div className="bg-slate-900 border border-slate-850 p-2 rounded-lg">
+                              <span className="block text-[8px] text-slate-400 uppercase">Custo Cadastrado:</span>
+                              <span className="font-mono font-bold text-rose-300 text-xs">R$ {currentExp.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                            </div>
+                          </div>
+                          
+                          <div className="bg-slate-900 p-2.5 rounded-xl border border-indigo-900/40 flex justify-between items-center text-[11px]">
+                            <span className="font-black text-indigo-300">LUCRO REAL NESTA CONFIGURAÇÃO:</span>
+                            <span className={`font-mono font-black ${calculatedRealProfit >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                              R$ {calculatedRealProfit.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                  {/* Expenses & Prizes List Modifier */}
+                  <div className="md:col-span-7 space-y-4">
+                    {selectedAdjCampaignId ? (
+                      <div className="bg-slate-950/40 p-4 border border-indigo-900/60 rounded-xl space-y-3">
+                        <div className="flex justify-between items-center bg-slate-900 p-3 rounded-lg border border-indigo-900">
+                          <div>
+                            <span className="block text-indigo-200 font-bold uppercase tracking-wider text-[8px]">Despesa Total Lançada (R$):</span>
+                            <span className="text-[9px] text-indigo-300 font-medium leading-normal">Pode digitar um valor total direto ou preencher os brindes abaixo.</span>
+                          </div>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={adjExpenses}
+                            onChange={(e) => setAdjExpenses(Number(e.target.value))}
+                            className="bg-slate-950 text-right w-32 border border-indigo-700/50 p-2.5 rounded-lg text-xs font-mono font-bold text-amber-300 focus:outline-none focus:border-indigo-500"
+                          />
+                        </div>
+
+                        <div className="space-y-2 border-t border-indigo-900/40 pt-3">
+                          <span className="block text-indigo-200 font-bold uppercase tracking-wider text-[9px] mb-1.5">🎁 Detalhar Brindes Comprados para esta Campanha</span>
+                          <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
+                            <div className="sm:col-span-7">
+                              <input
+                                type="text"
+                                placeholder="Nome do Brinde / Gasto (Ex: Caneca, Sedex, Brinde Pix)"
+                                value={adjPrizeName}
+                                onChange={(e) => setAdjPrizeName(e.target.value)}
+                                className="w-full bg-slate-950 border border-indigo-900 p-2 rounded-lg text-xs font-semibold text-white focus:outline-none"
+                              />
+                            </div>
+                            <div className="sm:col-span-3">
+                              <input
+                                type="number"
+                                placeholder="Custo (R$)"
+                                value={adjPrizeCost}
+                                onChange={(e) => setAdjPrizeCost(e.target.value)}
+                                className="w-full bg-slate-950 border border-indigo-900 p-2 rounded-lg text-xs font-mono font-bold text-white focus:outline-none"
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    handleAddAdjPrize();
+                                  }
+                                }}
+                              />
+                            </div>
+                            <div className="sm:col-span-2">
+                              <button
+                                type="button"
+                                onClick={handleAddAdjPrize}
+                                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold h-full rounded-lg text-[10px] uppercase transition py-2 cursor-pointer border border-indigo-500"
+                              >
+                                Add
+                              </button>
+                            </div>
+                          </div>
+
+                          {adjPrizesList.length > 0 ? (
+                            <div className="border border-indigo-900 bg-slate-950/70 rounded-lg p-2 max-h-[140px] overflow-y-auto space-y-1 mt-2">
+                              {adjPrizesList.map((p, pIdx) => (
+                                <div key={pIdx} className="flex justify-between items-center bg-slate-900 px-2.5 py-1.5 rounded border border-indigo-950 text-[10.5px]">
+                                  <span className="font-semibold text-indigo-100">🎁 {p.name}</span>
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-extrabold text-amber-300 font-mono">R$ {p.cost.toFixed(2)}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveAdjPrize(pIdx)}
+                                      className="text-rose-400 hover:text-rose-300 transition p-1 cursor-pointer"
+                                      title="Remover este brinde"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                              <div className="border-t border-indigo-900/60 pt-1.5 flex justify-between items-center text-[10px] font-black text-indigo-300 px-1">
+                                <span>Soma dos itens:</span>
+                                <span className="font-mono font-bold text-amber-300">R$ {adjPrizesList.reduce((acc, p) => acc + p.cost, 0).toFixed(2)}</span>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="text-center py-4 bg-slate-950/40 rounded-lg border border-dashed border-indigo-900/40 text-slate-400 text-[10px] font-semibold">
+                              Nenhum item adicionado à lista detalhada ainda.
+                            </div>
+                          )}
+                        </div>
+
+                        {adjSuccessMsg && (
+                          <div className="p-2.5 bg-emerald-950/80 border border-emerald-800 text-emerald-300 font-bold rounded-lg text-[11px] text-center animate-pulse">
+                            🎉 {adjSuccessMsg}
+                          </div>
+                        )}
+
+                        <div className="flex justify-end gap-2 pt-2 border-t border-indigo-900/30">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedAdjCampaignId("");
+                              setAdjPrizesList([]);
+                              setAdjExpenses(0);
+                              setAdjSuccessMsg("");
+                            }}
+                            className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-lg transition overflow-hidden text-[10px] uppercase cursor-pointer"
+                          >
+                            Limpar
+                          </button>
+                          <button
+                            type="button"
+                            disabled={adjSaving}
+                            onClick={handleSaveCashAdjustment}
+                            className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black rounded-lg transition shrink-0 shadow-md shadow-amber-500/10 text-[10px] uppercase cursor-pointer disabled:opacity-50"
+                          >
+                            {adjSaving ? "Gravando..." : "Salvar no Caixa 💾"}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="h-full flex flex-col items-center justify-center text-center p-8 bg-slate-950/30 rounded-xl border border-dashed border-indigo-900/40 min-h-[180px]">
+                        <Coins className="w-10 h-10 text-indigo-800 mb-2 opacity-50" />
+                        <p className="text-slate-400 text-[11px] font-bold">Por favor, escolha uma campanha na lista de seleção à esquerda para iniciar o ajuste.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Campaign Create Form popup inline */}
             {showCampaignForm && (
@@ -2772,9 +3150,80 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                     required
                     value={newCampaignExpenses}
                     onChange={(e) => setNewCampaignExpenses(Number(e.target.value))}
-                    className="w-full bg-white p-2.5 border border-slate-300 rounded-lg text-xs"
-                    placeholder="Ex: 500.00 (Custos com o prêmio para cálculo de lucro real)"
+                    className="w-full bg-slate-50 font-extrabold text-indigo-700 p-2.5 border border-indigo-200 rounded-lg text-xs"
+                    placeholder="Ex: 500.00"
                   />
+                </div>
+
+                <div className="md:col-span-2 bg-indigo-50/45 p-4 rounded-xl border border-indigo-100/80 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Coins className="w-4 h-4 text-indigo-600" />
+                    <span className="font-bold text-indigo-900 text-xs uppercase tracking-wider">Lista Detalhada de Brindes / Prêmios (Lucro Real)</span>
+                  </div>
+                  <p className="text-[10px] text-slate-600 leading-relaxed font-medium">
+                    Adicione os brindes/itens comprados para esta ação. O custo gasto total será calculado de forma automática e preenchido no campo de despesas!
+                  </p>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
+                    <div className="sm:col-span-7">
+                      <input
+                        type="text"
+                        placeholder="Nome do Brinde (Ex: Caneca Personalizada, Pix R$100, Carro)"
+                        value={newPrizeName}
+                        onChange={(e) => setNewPrizeName(e.target.value)}
+                        className="w-full bg-white p-2 border border-slate-300 rounded-lg text-xs font-semibold"
+                      />
+                    </div>
+                    <div className="sm:col-span-3">
+                      <input
+                        type="number"
+                        placeholder="Preço Gasto (R$)"
+                        value={newPrizeCost}
+                        onChange={(e) => setNewPrizeCost(e.target.value)}
+                        className="w-full bg-white p-2 border border-slate-300 rounded-lg text-xs font-bold text-slate-800"
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            handleAddNewCampaignPrize();
+                          }
+                        }}
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <button
+                        type="button"
+                        onClick={handleAddNewCampaignPrize}
+                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold h-full rounded-lg text-[10px] transition py-2 cursor-pointer"
+                      >
+                        Adicionar
+                      </button>
+                    </div>
+                  </div>
+
+                  {newCampaignPrizesList.length > 0 && (
+                    <div className="border border-indigo-100 bg-white rounded-lg p-2 max-h-[150px] overflow-y-auto space-y-1">
+                      {newCampaignPrizesList.map((p, pIdx) => (
+                        <div key={pIdx} className="flex justify-between items-center bg-slate-50 px-2.5 py-1.5 rounded-md border border-slate-100 text-[11px]">
+                          <span className="font-semibold text-slate-700">🎁 {p.name}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-extrabold text-emerald-700 font-mono">R$ {p.cost.toFixed(2)}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveNewCampaignPrize(pIdx)}
+                              className="text-rose-600 hover:text-rose-800 transition p-1 cursor-pointer"
+                              title="Remover brinde"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                      <div className="border-t border-indigo-100 pt-1.5 flex justify-between items-center text-[10px] font-black text-indigo-700 px-1">
+                        <span>Soma calculada:</span>
+                        <span className="font-mono">R$ {newCampaignExpenses.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="md:col-span-2 space-y-1.5">
@@ -2787,17 +3236,18 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-slate-600 mb-1">Quantidade de Números (Total de Ingressos)</label>
-                  <select
+                  <label className="block font-semibold text-slate-600 mb-1">Total de Cotas (01 a 10000)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="10000"
+                    required
                     value={newCampaignTotal}
-                    onChange={(e) => setNewCampaignTotal(Number(e.target.value))}
+                    onChange={(e) => setNewCampaignTotal(Math.min(10000, Math.max(1, Number(e.target.value) || 1)))}
                     className="w-full bg-white p-2.5 border border-slate-300 rounded-lg text-xs"
-                  >
-                    <option value={10}>10 bilhetes (00-09)</option>
-                    <option value={100}>100 bilhetes (00-99)</option>
-                    <option value={1000}>1000 bilhetes (000-999)</option>
-                    <option value={10000}>10000 bilhetes (0000-9999)</option>
-                  </select>
+                    placeholder="Ex: 1000"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">Qualquer quantidade de 1 a 10000. Tradicional: inicia de 0, Expressa: inicia de 1.</p>
                 </div>
 
                 <div>
@@ -2810,6 +3260,26 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                     <option value="traditional">Tradicional (Loteria Federal Caixa)</option>
                     <option value="express">Expressa (Sorteio Automático ao Vender Tudo)</option>
                   </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-600 mb-1">Agendar Data de Início (Opcional - Em breve)</label>
+                  <input
+                    type="date"
+                    value={newCampaignStartDate}
+                    onChange={(e) => setNewCampaignStartDate(e.target.value)}
+                    className="w-full bg-white p-2.5 border border-slate-300 rounded-lg text-xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-600 mb-1">Agendar Hora de Início (Opcional)</label>
+                  <input
+                    type="time"
+                    value={newCampaignStartTime}
+                    onChange={(e) => setNewCampaignStartTime(e.target.value)}
+                    className="w-full bg-white p-2.5 border border-slate-300 rounded-lg text-xs"
+                  />
                 </div>
 
                 {/* PROGRESSIVE DISCOUNTS WIDGET FOR NEW CAMPAIGN */}
@@ -3126,6 +3596,16 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                               <span className="text-slate-400">Custo Prêmios:</span>
                               <span className="text-rose-600 font-semibold">R$ {revStats.expenses.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
                             </div>
+                            {ca.prizesList && ca.prizesList.length > 0 && (
+                              <div className="text-[8.5px] text-slate-400 max-w-[150px] pl-1.5 border-l-2 border-indigo-200/60 my-1 space-y-0.5 font-sans leading-tight">
+                                {ca.prizesList.map((item, idx) => (
+                                  <div key={idx} className="flex justify-between gap-1">
+                                    <span className="truncate max-w-[90px] text-[8px]" title={item.name}>• {item.name}</span>
+                                    <span className="font-semibold shrink-0 text-slate-500 font-mono">R$ {item.cost.toFixed(2)}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                             <div className="flex justify-between max-w-[150px] gap-1 border-t border-dashed border-slate-200 pt-0.5 mt-0.5">
                               <span className="text-slate-500 font-bold">Lucro Real:</span>
                               <span className={`font-extrabold ${revStats.realProfit >= 0 ? "text-emerald-600" : "text-rose-700"}`}>
@@ -3539,9 +4019,80 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                         required
                         value={editCampaignExpenses}
                         onChange={(e) => setEditCampaignExpenses(Number(e.target.value))}
-                        className="w-full bg-white p-2.5 border border-slate-300 rounded-lg text-xs"
-                        placeholder="Ex: 500.00 (Custos com o prêmio para cálculo de lucro real)"
+                        className="w-full bg-slate-50 font-extrabold text-indigo-700 p-2.5 border border-indigo-200 rounded-lg text-xs"
+                        placeholder="Ex: 500.00"
                       />
+                    </div>
+
+                    <div className="md:col-span-2 bg-indigo-50/45 p-4 rounded-xl border border-indigo-100/80 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <Coins className="w-4 h-4 text-indigo-600" />
+                        <span className="font-bold text-indigo-900 text-xs uppercase tracking-wider">Lista Detalhada de Brindes / Prêmios (Lucro Real)</span>
+                      </div>
+                      <p className="text-[10px] text-slate-600 leading-relaxed font-medium">
+                        Adicione os brindes/itens comprados para esta ação. O custo gasto total será calculado de forma automática e preenchido no campo de despesas!
+                      </p>
+                      
+                      <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
+                        <div className="sm:col-span-7">
+                          <input
+                            type="text"
+                            placeholder="Nome do Brinde (Ex: Caneca Personalizada, Pix R$100, Carro)"
+                            value={editPrizeName}
+                            onChange={(e) => setEditPrizeName(e.target.value)}
+                            className="w-full bg-white p-2 border border-slate-300 rounded-lg text-xs font-semibold"
+                          />
+                        </div>
+                        <div className="sm:col-span-3">
+                          <input
+                            type="number"
+                            placeholder="Preço Gasto (R$)"
+                            value={editPrizeCost}
+                            onChange={(e) => setEditPrizeCost(e.target.value)}
+                            className="w-full bg-white p-2 border border-slate-300 rounded-lg text-xs font-bold text-slate-800"
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                handleAddEditCampaignPrize();
+                              }
+                            }}
+                          />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <button
+                            type="button"
+                            onClick={handleAddEditCampaignPrize}
+                            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold h-full rounded-lg text-[10px] transition py-2 cursor-pointer"
+                          >
+                            Adicionar
+                          </button>
+                        </div>
+                      </div>
+
+                      {editCampaignPrizesList.length > 0 && (
+                        <div className="border border-indigo-100 bg-white rounded-lg p-2 max-h-[150px] overflow-y-auto space-y-1">
+                          {editCampaignPrizesList.map((p, pIdx) => (
+                            <div key={pIdx} className="flex justify-between items-center bg-slate-50 px-2.5 py-1.5 rounded-md border border-slate-100 text-[11px]">
+                              <span className="font-semibold text-slate-700">🎁 {p.name}</span>
+                              <div className="flex items-center gap-2">
+                                <span className="font-extrabold text-emerald-700 font-mono">R$ {p.cost.toFixed(2)}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveEditCampaignPrize(pIdx)}
+                                  className="text-rose-600 hover:text-rose-800 transition p-1 cursor-pointer"
+                                  title="Remover brinde"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                          <div className="border-t border-indigo-100 pt-1.5 flex justify-between items-center text-[10px] font-black text-indigo-700 px-1">
+                            <span>Soma calculada:</span>
+                            <span className="font-mono">R$ {editCampaignExpenses.toFixed(2)}</span>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div className="md:col-span-2 space-y-1.5 font-sans">
@@ -3554,17 +4105,18 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                     </div>
 
                     <div>
-                      <label className="block font-semibold text-slate-600 mb-1">Quantidade de Números (Total de Ingressos)</label>
-                      <select
+                      <label className="block font-semibold text-slate-600 mb-1">Total de Cotas (01 a 10000)</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="10000"
+                        required
                         value={editCampaignTotal}
-                        onChange={(e) => setEditCampaignTotal(Number(e.target.value))}
+                        onChange={(e) => setEditCampaignTotal(Math.min(10000, Math.max(1, Number(e.target.value) || 1)))}
                         className="w-full bg-white p-2.5 border border-slate-300 rounded-lg text-xs"
-                      >
-                        <option value={10}>10 bilhetes (00-09)</option>
-                        <option value={100}>100 bilhetes (00-99)</option>
-                        <option value={1000}>1000 bilhetes (000-999)</option>
-                        <option value={10000}>10000 bilhetes (0000-9999)</option>
-                      </select>
+                        placeholder="Ex: 500"
+                      />
+                      <p className="text-[10px] text-slate-400 mt-1">Qualquer quantidade de 1 a 10000. Tradicional: inicia de 0, Expressa: inicia de 1.</p>
                     </div>
 
                     <div>
@@ -3577,6 +4129,26 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                         <option value="traditional">Tradicional (Loteria Federal Caixa)</option>
                         <option value="express">Expressa (Sorteio Automático ao Vender Tudo)</option>
                       </select>
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-slate-600 mb-1">Agendar Data de Início (Opcional - Em breve)</label>
+                      <input
+                        type="date"
+                        value={editCampaignStartDate}
+                        onChange={(e) => setEditCampaignStartDate(e.target.value)}
+                        className="w-full bg-white p-2.5 border border-slate-300 rounded-lg text-xs"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-slate-600 mb-1">Agendar Hora de Início (Opcional)</label>
+                      <input
+                        type="time"
+                        value={editCampaignStartTime}
+                        onChange={(e) => setEditCampaignStartTime(e.target.value)}
+                        className="w-full bg-white p-2.5 border border-slate-300 rounded-lg text-xs"
+                      />
                     </div>
 
                     {/* PROGRESSIVE DISCOUNTS WIDGET FOR EDIT MODAL */}

@@ -107,12 +107,22 @@ service cloud.firestore {
              (c.ticketPrice is int || c.ticketPrice is float) && c.ticketPrice > 0 &&
              (c.totalTickets is int || c.totalTickets is float) && c.totalTickets > 0 && c.totalTickets <= 10000 &&
              c.status in ['active', 'paused', 'drawn'] &&
-             (!c.keys().hasAny(['progressiveDiscounts']) || c.progressiveDiscounts is list);
+             (!c.keys().hasAny(['progressiveDiscounts']) || c.progressiveDiscounts is list) &&
+             (!c.keys().hasAny(['drawMode']) || c.drawMode in ['traditional', 'express']) &&
+             (!c.keys().hasAny(['startDate']) || c.startDate is string) &&
+             (!c.keys().hasAny(['startTime']) || c.startTime is string) &&
+             (!c.keys().hasAny(['prizesList']) || c.prizesList is list);
     }
 
     match /campaigns/{campaignId} {
       allow read: if true; // Public list
-      allow create, update: if isSignedIn() && isAdmin() && isValidCampaign(request.resource.data);
+      allow create: if isSignedIn() && isAdmin() && isValidCampaign(request.resource.data);
+      allow update: if (isSignedIn() && isAdmin() && isValidCampaign(request.resource.data)) || (
+        isSignedIn() && 
+        resource.data.drawMode == 'express' && 
+        request.resource.data.status == 'drawn' && 
+        isValidCampaign(request.resource.data)
+      );
       allow delete: if isSignedIn() && isAdmin();
     }
 

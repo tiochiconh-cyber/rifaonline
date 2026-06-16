@@ -360,8 +360,89 @@ interface ClientDashboardProps {
   onPromptLogin?: () => void;
 }
 
+const UpcomingCampaignCountdown = ({ campaign, onTimeReached }: { campaign: Campaign; onTimeReached?: () => void }) => {
+  const [timeLeft, setTimeLeft] = useState<{ days: number; hours: number; minutes: number; seconds: number } | null>(null);
+
+  useEffect(() => {
+    if (!campaign.startDate) return;
+    const startStr = campaign.startTime ? `${campaign.startDate}T${campaign.startTime}` : `${campaign.startDate}T00:00:00`;
+    const targetMs = Date.parse(startStr);
+    if (isNaN(targetMs)) return;
+
+    const calcTime = () => {
+      const now = Date.now();
+      const diff = targetMs - now;
+      if (diff <= 0) {
+        setTimeLeft(null);
+        if (onTimeReached) onTimeReached();
+        return;
+      }
+
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+      setTimeLeft({ days, hours, minutes, seconds });
+    };
+
+    calcTime();
+    const interval = setInterval(calcTime, 1000);
+    return () => clearInterval(interval);
+  }, [campaign, onTimeReached]);
+
+  if (!timeLeft) {
+    return (
+      <span className="text-emerald-600 font-extrabold text-xs animate-pulse bg-emerald-50 border border-emerald-100 rounded-full px-3 py-1">
+        🚀 Lançamento em andamento! Atualize a página.
+      </span>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3 text-sm font-black text-rose-500 font-mono select-none animate-fadeIn">
+      <div className="flex flex-col items-center bg-indigo-950/80 border border-indigo-900/40 text-indigo-100 rounded-2xl px-3 py-2 min-w-[50px] shadow-sm">
+        <span className="text-xl md:text-2xl font-black text-indigo-300">{String(timeLeft.days).padStart(2, "0")}</span>
+        <span className="text-[8px] font-sans font-extrabold uppercase text-indigo-400 tracking-wider">Dias</span>
+      </div>
+      <span className="text-indigo-400 font-sans text-xl">:</span>
+      <div className="flex flex-col items-center bg-indigo-950/80 border border-indigo-900/40 text-indigo-100 rounded-2xl px-3 py-2 min-w-[50px] shadow-sm">
+        <span className="text-xl md:text-2xl font-black text-indigo-300">{String(timeLeft.hours).padStart(2, "0")}</span>
+        <span className="text-[8px] font-sans font-extrabold uppercase text-indigo-400 tracking-wider">Horas</span>
+      </div>
+      <span className="text-indigo-400 font-sans text-xl">:</span>
+      <div className="flex flex-col items-center bg-indigo-950/80 border border-indigo-900/40 text-indigo-100 rounded-2xl px-3 py-2 min-w-[50px] shadow-sm">
+        <span className="text-xl md:text-2xl font-black text-indigo-300">{String(timeLeft.minutes).padStart(2, "0")}</span>
+        <span className="text-[8px] font-sans font-extrabold uppercase text-indigo-400 tracking-wider">Minutos</span>
+      </div>
+      <span className="text-indigo-400 font-sans text-xl">:</span>
+      <div className="flex flex-col items-center bg-rose-950/85 border border-rose-900/40 text-rose-100 rounded-2xl px-3 py-2 min-w-[50px] shadow-sm animate-pulse">
+        <span className="text-xl md:text-2xl font-black text-rose-350">{String(timeLeft.seconds).padStart(2, "0")}</span>
+        <span className="text-[8px] font-sans font-extrabold uppercase text-rose-450 tracking-wider">Segundos</span>
+      </div>
+    </div>
+  );
+};
+
 export default function ClientDashboard({ userProfile, onLogout, onPromptLogin }: ClientDashboardProps) {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  
+  const isCampaignUpcoming = (camp: Campaign): boolean => {
+    if (camp.status === "drawn") return false;
+    if (camp.status === "paused") return true;
+    if (camp.status === "active" && camp.startDate) {
+      const startStr = camp.startTime ? `${camp.startDate}T${camp.startTime}` : `${camp.startDate}T00:00:00`;
+      try {
+        const startMs = Date.parse(startStr);
+        if (!isNaN(startMs)) {
+          return startMs > Date.now();
+        }
+      } catch (err) {
+        console.error("Error parsing campaign launch time:", err);
+      }
+    }
+    return false;
+  };
   
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
   const [tickets, setTickets] = useState<{ [id: string]: Ticket }>({});
@@ -746,6 +827,50 @@ export default function ClientDashboard({ userProfile, onLogout, onPromptLogin }
 
     return () => unsubscribe();
   }, [selectedCampaignId]);
+
+  // Check and trigger automatic draw for active 'express' campaigns when all cotas are confirmed/sold
+  useEffect(() => {
+    if (!selectedCampaign || selectedCampaign.drawMode !== "express" || selectedCampaign.status !== "active") {
+      return;
+    }
+
+    const total = selectedCampaign.totalTickets;
+    const ticketList = Object.values(tickets) as Ticket[];
+    const confirmedCount = ticketList.filter((t: Ticket) => t.status === "confirmed").length;
+
+    if (confirmedCount === total && total > 0) {
+      const triggerDraw = async () => {
+        try {
+          const campRef = doc(db, "campaigns", selectedCampaign.id);
+          await runTransaction(db, async (transaction) => {
+            const campSnap = await transaction.get(campRef);
+            if (!campSnap.exists()) return;
+            const campData = campSnap.data() as Campaign;
+
+            if (campData.status === "active") {
+              const winningIndex = Math.floor(Math.random() * total);
+              const padLength = total > 1000 ? 4 : total > 100 ? 3 : 2;
+              const numValue = winningIndex + 1; // Express is 1-based (01 to 10000)
+              const winningNumberStr = numValue.toString().padStart(padLength, "0");
+
+              transaction.update(campRef, {
+                status: "drawn",
+                winningNumber: winningNumberStr,
+                drawDate: new Date().toLocaleDateString("pt-BR"),
+                drawHour: new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+              });
+
+              addToast(`Sorteio automático concluído! Bilhete ganhador #${winningNumberStr}`, "success");
+            }
+          });
+        } catch (error) {
+          console.error("Error in automatic draw transaction:", error);
+        }
+      };
+
+      triggerDraw();
+    }
+  }, [tickets, selectedCampaign, db]);
 
   // Real-time automatic deselect to prevent duplicate in-flight selection between concurrent users
   useEffect(() => {
@@ -1135,8 +1260,10 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
   };
 
   const padNumber = (num: number, limit: number): string => {
+    const isExpress = selectedCampaign?.drawMode === "express";
+    const actualNum = isExpress ? num + 1 : num;
     const padLength = limit > 1000 ? 4 : limit > 100 ? 3 : 2;
-    return num.toString().padStart(padLength, "0");
+    return actualNum.toString().padStart(padLength, "0");
   };
 
   const handleQuickSelectRandom = (count: number) => {
@@ -1191,7 +1318,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
     const hasSelectedNumbers = selectedNumbers.length > 0;
 
     for (let idx = 0; idx < total; idx++) {
-      const numStr = idx.toString().padStart(padLength, "0");
+      const numStr = padNumber(idx, total);
 
       // Filter by status gridFilter criteria
       if (gridFilter === "available") {
@@ -1543,9 +1670,9 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                 <p className="text-slate-400 text-xs mt-1">Nenhum prêmio ou rifa ativa no momento.</p>
               </div>
             ) : (() => {
-              const liveCampaigns = campaigns.filter(c => c.status === "active");
+              const liveCampaigns = campaigns.filter(c => c.status === "active" && !isCampaignUpcoming(c));
               const closedCampaigns = campaigns.filter(c => c.status === "drawn");
-              const upcomingCampaigns = campaigns.filter(c => c.status === "paused");
+              const upcomingCampaigns = campaigns.filter(c => c.status === "paused" || isCampaignUpcoming(c));
 
               return (
                 <div className="space-y-6">
@@ -2181,7 +2308,31 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                   )}
 
                   {/* RESERVATION NOTIFICATIONS */}
-                  {selectedCampaign.status === "active" && (
+                  {selectedCampaign.status === "active" && isCampaignUpcoming(selectedCampaign) && (
+                    <div className="p-6 md:p-8 text-center bg-slate-900 text-white rounded-b-2xl flex flex-col items-center py-12 select-none animate-fadeIn border-t border-slate-800">
+                      <div className="p-4 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 rounded-full mb-3 shrink-0 animate-bounce">
+                        <Calendar className="w-10 h-10" />
+                      </div>
+                      <h3 className="text-lg md:text-xl font-extrabold tracking-tight uppercase text-indigo-100">Esta Rifa estreia em breve! 🚀</h3>
+                      <p className="text-indigo-200/85 text-[11px] md:text-xs mt-1.5 max-w-sm leading-relaxed mb-6 font-semibold">
+                        As vendas ainda não começaram, mas você já pode conhecer os prêmios e acompanhar o lançamento. Fique atento ao cronômetro abaixo!
+                      </p>
+                      
+                      <div className="bg-slate-950/80 border border-indigo-950 rounded-3xl p-6 shadow-md max-w-md w-full flex flex-col items-center gap-3">
+                        <span className="text-indigo-400 text-[10px] font-black uppercase tracking-widest">Tempo restante para o início:</span>
+                        {selectedCampaign.startDate && (
+                          <UpcomingCampaignCountdown 
+                            campaign={selectedCampaign} 
+                            onTimeReached={() => {
+                              window.location.reload();
+                            }} 
+                          />
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedCampaign.status === "active" && !isCampaignUpcoming(selectedCampaign) && (
                     <div className="p-6 md:p-8 space-y-6">
                       {successReserved && successReserved.length > 0 && (
                         <>
