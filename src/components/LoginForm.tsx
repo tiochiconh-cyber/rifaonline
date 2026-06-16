@@ -484,7 +484,7 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
     <div className="w-full max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-12 min-h-[580px] bg-white rounded-3xl overflow-hidden shadow-2xl border border-slate-100 font-sans">
       
       {/* Branding left panel: Graduation message */}
-      <div className="md:col-span-5 bg-gradient-to-br from-indigo-900 via-indigo-950 to-slate-950 text-white p-8 md:p-11 flex flex-col justify-between relative overflow-hidden">
+      <div className="md:col-span-5 bg-gradient-to-br from-indigo-900 via-indigo-950 to-slate-950 text-white p-8 md:p-11 flex flex-col justify-between relative overflow-hidden order-2 md:order-1">
         {/* Subtle decorative background circles */}
         <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/20 rounded-full blur-3xl translate-x-12 -translate-y-12"></div>
         <div className="absolute bottom-0 left-0 w-80 h-80 bg-indigo-500/10 rounded-full blur-3xl -translate-x-1/4 translate-y-1/4"></div>
@@ -687,7 +687,7 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
       </div>
 
       {/* Action right panel: Auth choices or Profile Form */}
-      <div className="md:col-span-7 p-6 md:p-10 flex flex-col justify-center bg-slate-50 overflow-hidden">
+      <div className="md:col-span-7 p-6 md:p-10 flex flex-col justify-center bg-slate-50 overflow-hidden order-1 md:order-2">
         <AnimatePresence mode="wait">
           {!showRegisterForm ? (
             /* Sign-in + Registration prompt block */

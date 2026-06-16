@@ -5,7 +5,7 @@ import { Campaign, Ticket, UserProfile } from "../types";
 import { isLotterySalesSuspended, getCampaignDrawProjection, maskWinnerName, splitTicketsIntoBatches } from "../utils/validation";
 import RankingView from "./RankingView";
 import CelebrationConfetti from "./CelebrationConfetti";
-import { Ticket as TicketIcon, Search, Landmark, Copy, Check, Calendar, Trophy, AlertCircle, ShoppingBag, User as UserIcon, LogOut, ArrowRight, HelpCircle, Sparkles, ShieldCheck, Download, Printer, ArrowLeft, Clock, Smartphone, X, Crown, Medal, Gift } from "lucide-react";
+import { Ticket as TicketIcon, Search, Landmark, Copy, Check, Calendar, Trophy, AlertCircle, ShoppingBag, User as UserIcon, LogOut, LogIn, ArrowRight, HelpCircle, Sparkles, ShieldCheck, Download, Printer, ArrowLeft, Clock, Smartphone, X, Crown, Medal, Gift } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import AppLogo from "./AppLogo";
 
@@ -129,12 +129,238 @@ export function getCampaignPlaceholderImage(title: string, id: string): string {
   return fallbacks[itemIndex];
 }
 
-interface ClientDashboardProps {
-  userProfile: UserProfile;
-  onLogout: () => void;
+export function CampaignCountdown({ campaign, tickets }: { campaign: Campaign; tickets: Ticket[] }) {
+  const [timeLeft, setTimeLeft] = useState<{
+    days: number;
+    hours: number;
+    minutes: number;
+    seconds: number;
+    isFinished: boolean;
+  }>({ days: 0, hours: 0, minutes: 0, seconds: 0, isFinished: false });
+
+  useEffect(() => {
+    let targetDate: Date;
+
+    if (campaign.drawDate) {
+      const dateParts = campaign.drawDate.split("-");
+      const year = parseInt(dateParts[0]);
+      const month = parseInt(dateParts[1]) - 1;
+      const day = parseInt(dateParts[2]);
+
+      let hour = 19;
+      let minute = 0;
+      if (campaign.drawHour) {
+        const hourParts = campaign.drawHour.split(":");
+        hour = parseInt(hourParts[0]) || 19;
+        minute = parseInt(hourParts[1]) || 0;
+      }
+      
+      // Target in Brasilia Time (UTC-3)
+      targetDate = new Date(Date.UTC(year, month, day, hour + 3, minute));
+    } else {
+      const projection = getCampaignDrawProjection(campaign, tickets);
+      targetDate = projection.probableDrawDateBr; 
+    }
+
+    const calculateTimeLeft = () => {
+      const now = new Date();
+      const diffMs = targetDate.getTime() - now.getTime();
+
+      if (diffMs <= 0) {
+        setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0, isFinished: true });
+        return;
+      }
+
+      const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((diffMs / (1000 * 60 * 60)) % 24);
+      const minutes = Math.floor((diffMs / 1000 / 60) % 60);
+      const seconds = Math.floor((diffMs / 1000) % 60);
+
+      setTimeLeft({ days, hours, minutes, seconds, isFinished: false });
+    };
+
+    calculateTimeLeft();
+    const interval = setInterval(calculateTimeLeft, 1000);
+    return () => clearInterval(interval);
+  }, [campaign, tickets]);
+
+  if (timeLeft.isFinished) {
+    return (
+      <div className="flex items-center justify-center gap-1 px-2.5 py-1 bg-amber-500 text-white rounded-lg md:rounded-xl text-[9px] md:text-xs font-black uppercase tracking-wider shadow-sm animate-pulse">
+        <Clock className="w-3 h-3 text-white shrink-0" />
+        <span>Sorteio Hoje!</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-2 px-2 md:px-2.5 py-1 md:py-1.5 bg-slate-900/80 backdrop-blur-md rounded-xl md:rounded-2xl border border-white/10 shadow-lg text-white font-mono select-none w-full max-w-[240px]">
+      <div className="flex items-center gap-1 shrink-0">
+        <Clock className="w-2.5 h-2.5 md:w-3 md:h-3 text-rose-400 animate-pulse shrink-0" />
+        <span className="text-[7.5px] md:text-[9.5px] uppercase font-bold text-slate-300 tracking-wider">Restam:</span>
+      </div>
+      <div className="flex items-center gap-0.5 text-[9px] md:text-[11px] font-black">
+        {timeLeft.days > 0 && (
+          <>
+            <span className="text-amber-400">{timeLeft.days}</span>
+            <span className="text-[7.5px] md:text-[9px] font-bold text-slate-400 mr-0.5">d</span>
+          </>
+        )}
+        <span>{String(timeLeft.hours).padStart(2, "0")}</span>
+        <span className="text-[7.5px] md:text-[9px] font-bold text-slate-400 mr-0.5">h</span>
+        <span>{String(timeLeft.minutes).padStart(2, "0")}</span>
+        <span className="text-[7.5px] md:text-[9px] font-bold text-slate-400 mr-0.5">m</span>
+        <span className="text-rose-400">{String(timeLeft.seconds).padStart(2, "0")}</span>
+        <span className="text-[7.5px] md:text-[9px] font-bold text-rose-450">s</span>
+      </div>
+    </div>
+  );
 }
 
-export default function ClientDashboard({ userProfile, onLogout }: ClientDashboardProps) {
+interface WinnerHighlightProps {
+  campaigns: Campaign[];
+  allReservations: { [campaignId: string]: Ticket[] };
+  userProfile: any;
+  onSelectCampaign: (camp: Campaign) => void;
+  selectedCampaignId?: string;
+  maskWinnerName: (name: string) => string;
+}
+
+export function WinnerHighlight({
+  campaigns,
+  allReservations,
+  userProfile,
+  onSelectCampaign,
+  selectedCampaignId,
+  maskWinnerName,
+}: WinnerHighlightProps) {
+  // Find all drawn campaigns with a validated, confirmed winning ticket
+  const validatedWinners = campaigns
+    .filter((camp) => camp.status === "drawn" && camp.winningNumber)
+    .map((camp) => {
+      const campTickets = allReservations[camp.id] || [];
+      const winnerTicket = campTickets.find(
+        (t) => t.number === camp.winningNumber && t.status === "confirmed"
+      );
+      return {
+        campaign: camp,
+        winnerTicket,
+      };
+    })
+    .filter((item) => item.winnerTicket !== undefined) as {
+      campaign: Campaign;
+      winnerTicket: Ticket;
+    }[];
+
+  if (validatedWinners.length === 0) return null;
+
+  // Showcase the latest finalized campaign with validated winner
+  const latestWinner = validatedWinners[0];
+  const { campaign, winnerTicket } = latestWinner;
+
+  const displayName = userProfile?.role === "admin"
+    ? winnerTicket.buyerName
+    : maskWinnerName(winnerTicket.buyerName || "");
+
+  const displayCpf = winnerTicket.buyerCpf
+    ? (userProfile?.role === "admin"
+        ? winnerTicket.buyerCpf
+        : `${winnerTicket.buyerCpf.slice(0, 3)}.***.***-**`)
+    : "CPF Validado";
+
+  return (
+    <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 border border-amber-500/30 rounded-3xl p-5 md:p-6 shadow-xl mb-6">
+      {/* Glow decorations */}
+      <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute bottom-0 left-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+
+      {/* Header featuring ribbon */}
+      <div className="flex flex-wrap items-center justify-between gap-2.5 mb-4 border-b border-white/10 pb-3.5">
+        <div className="flex items-center gap-2">
+          <div className="bg-amber-500 text-slate-950 p-1.5 rounded-lg animate-pulse">
+            <Crown className="w-5 h-5 font-black" />
+          </div>
+          <div>
+            <h4 className="text-[11px] font-black uppercase tracking-widest text-amber-400 font-sans">Ganhador em Destaque</h4>
+            <p className="text-[10px] text-slate-400 leading-none">Resultado 100% validado no sistema 🛡️</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Main card grid */}
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-center">
+        {/* Campaign thumbnail */}
+        <div className="md:col-span-3 flex justify-center md:justify-start">
+          <div className="relative aspect-square w-24 md:w-full max-w-[120px] rounded-2xl overflow-hidden border border-white/10 bg-slate-800 shrink-0">
+            <img
+              src={campaign.imageUrl || getCampaignPlaceholderImage(campaign.title, campaign.id)}
+              alt={campaign.title}
+              className="w-full h-full object-cover grayscale brightness-90 animate-fadeIn"
+              referrerPolicy="no-referrer"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 to-transparent flex items-end justify-center p-1.5">
+              <span className="text-[9px] font-extrabold text-amber-400 uppercase tracking-wider font-mono">Encerrada</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Award details */}
+        <div className="md:col-span-6 space-y-2 text-center md:text-left">
+          <div className="space-y-0.5">
+            <span className="text-[10px] font-extrabold text-slate-450 uppercase tracking-widest">Ação Premiada</span>
+            <h3 className="text-sm md:text-base font-black text-white/95 leading-snug line-clamp-1">{campaign.title}</h3>
+          </div>
+
+          <div className="flex flex-wrap justify-center md:justify-start items-center gap-2 text-xs">
+            <div className="bg-amber-500/15 border border-amber-500/30 text-amber-300 font-black px-3 py-1.5 rounded-xl flex items-center gap-1">
+              <Trophy className="w-3.5 h-3.5 text-amber-500" />
+              <span>Nº Contemplado: <strong className="font-mono text-sm tracking-widest">{campaign.winningNumber}</strong></span>
+            </div>
+            
+            <div className="text-[11px] text-slate-400 font-medium">
+              Sorteio: {campaign.drawDate ? (campaign.drawDate.includes("-") ? campaign.drawDate.split("-").reverse().join("/") : campaign.drawDate) : "Oficial"}
+            </div>
+          </div>
+        </div>
+
+        {/* Winner display panel */}
+        <div className="md:col-span-3 flex flex-col justify-center items-center md:items-end w-full">
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-4 text-center md:text-right w-full max-w-[260px] relative overflow-hidden shadow-inner">
+            <span className="text-[9px] font-extrabold text-slate-450 uppercase tracking-wider">Nome do Ganhador</span>
+            <div className="text-base font-black text-amber-300 tracking-tight mt-0.5 truncate uppercase">
+              {displayName}
+            </div>
+            <div className="text-[10px] text-slate-400 font-mono mt-0.5 font-bold">
+              CPF: {displayCpf}
+            </div>
+            
+            {/* Background trophy seal */}
+            <div className="absolute right-0 bottom-0 translate-x-2 translate-y-2 opacity-5 pointer-events-none select-none">
+              <Trophy className="w-16 h-16 text-white" />
+            </div>
+          </div>
+          
+          <button
+            type="button"
+            onClick={() => onSelectCampaign(campaign)}
+            className="mt-3 text-amber-400 hover:text-amber-300 text-[11px] font-black uppercase tracking-wider flex items-center gap-1 transition-all hover:gap-1.5 group cursor-pointer"
+          >
+            <span>Ver Detalhes da Ação</span>
+            <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface ClientDashboardProps {
+  userProfile: UserProfile | null;
+  onLogout: () => void;
+  onPromptLogin?: () => void;
+}
+
+export default function ClientDashboard({ userProfile, onLogout, onPromptLogin }: ClientDashboardProps) {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
@@ -150,6 +376,7 @@ export default function ClientDashboard({ userProfile, onLogout }: ClientDashboa
 
   // Reservation Flow
   const [activeTab, setActiveTab] = useState<"rifas" | "compras" | "ranking" | "ganhadores">("rifas");
+  const [campaignShowingTab, setCampaignShowingTab] = useState<"active" | "drawn" | "paused">("active");
 
   // Rankings state and listener
   const [allReservations, setAllReservations] = useState<{ [campaignId: string]: Ticket[] }>({});
@@ -170,6 +397,11 @@ export default function ClientDashboard({ userProfile, onLogout }: ClientDashboa
   // LGPD Privacy hooks
   const [showLgpdModal, setShowLgpdModal] = useState(false);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+
+  // Derived state for the selected campaign sold out status
+  const selectedCampaignTickets = selectedCampaign ? (allReservations[selectedCampaign.id] || []) : [];
+  const selectedCampaignRestantes = selectedCampaign ? Math.max(0, selectedCampaign.totalTickets - selectedCampaignTickets.length) : 0;
+  const selectedCampaignIsSoldOut = selectedCampaign ? (selectedCampaignRestantes === 0) : false;
 
   // Toast notifications state
   const [toasts, setToasts] = useState<{ id: string; message: string; type: "success" | "info" | "warning" | "error" }[]>([]);
@@ -276,7 +508,7 @@ export default function ClientDashboard({ userProfile, onLogout }: ClientDashboa
         <div className="space-y-2.5 pt-1">
           {list.map((buyer, index) => {
             const position = index + 1;
-            const isMe = buyer.uid === userProfile.uid;
+            const isMe = buyer.uid === userProfile?.uid;
             const confirmedPct = buyer.totalCount > 0 ? (buyer.confirmedCount / buyer.totalCount) * 100 : 0;
 
             return (
@@ -521,7 +753,7 @@ export default function ClientDashboard({ userProfile, onLogout }: ClientDashboa
 
     const occupiedSelected = selectedNumbers.filter((numStr) => {
       const ticketInfo = tickets[numStr];
-      return ticketInfo && ticketInfo.status !== "available" && ticketInfo.buyerUid !== userProfile.uid;
+      return ticketInfo && ticketInfo.status !== "available" && ticketInfo.buyerUid !== userProfile?.uid;
     });
 
     if (occupiedSelected.length > 0) {
@@ -533,7 +765,7 @@ export default function ClientDashboard({ userProfile, onLogout }: ClientDashboa
         addToast(`${count} cotas foram reservadas por outro usuário e removidas da sua seleção.`, "warning");
       }
     }
-  }, [tickets, userProfile.uid, selectedNumbers]);
+  }, [tickets, userProfile?.uid, selectedNumbers]);
 
   const [winningConfettiKey, setWinningConfettiKey] = useState(0);
 
@@ -557,7 +789,7 @@ export default function ClientDashboard({ userProfile, onLogout }: ClientDashboa
 
   // Listen to active user's tickets across all registered campaigns (optimized via campaignIds dependency)
   useEffect(() => {
-    if (!userProfile.uid || !campaignIds) return;
+    if (!userProfile?.uid || !campaignIds) return;
 
     const idsList = campaignIds.split(",").filter(Boolean);
     const unsubscribes = idsList.map((id) => {
@@ -579,7 +811,7 @@ export default function ClientDashboard({ userProfile, onLogout }: ClientDashboa
     return () => {
       unsubscribes.forEach((unsub) => unsub());
     };
-  }, [userProfile.uid, campaignIds]);
+  }, [userProfile?.uid, campaignIds]);
 
   // Listen to tickets across all campaigns for real-time buyer rankings (optimized via campaignIds dependency)
   useEffect(() => {
@@ -753,6 +985,12 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
   const handleReserveTickets = async () => {
     if (!selectedCampaign || selectedNumbers.length === 0) return;
     
+    if (!userProfile) {
+      addToast("Falta pouco! Por favor, entre ou cadastre-se para confirmar a sua reserva e garantir seus números! 😉", "info");
+      onPromptLogin?.();
+      return;
+    }
+    
     if (userProfile.isBlocked) {
       addToast("Sua conta está suspensa ou bloqueada. Por favor, entre em contato com o suporte.", "error");
       return;
@@ -867,7 +1105,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
 
     // Prevention of duplicate selection: check if this cota was recently booked in memory state
     const tInfo = tickets[numberStr];
-    if (tInfo && tInfo.status !== "available" && tInfo.buyerUid !== userProfile.uid) {
+    if (tInfo && tInfo.status !== "available" && tInfo.buyerUid !== userProfile?.uid) {
       addToast(`A cota #${numberStr} acabou de ser reservada por outro participante!`, "error");
       return;
     }
@@ -959,7 +1197,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
       if (gridFilter === "available") {
         if (tickets[numStr]) continue;
       } else if (gridFilter === "mine") {
-        if (tickets[numStr]?.buyerUid !== userProfile.uid) continue;
+        if (tickets[numStr]?.buyerUid !== userProfile?.uid) continue;
       } else if (gridFilter === "selected") {
         if (!hasSelectedNumbers || !selectedNumbers.includes(numStr)) continue;
       }
@@ -973,7 +1211,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
     }
 
     return indices;
-  }, [selectedCampaign, ticketSearch, gridFilter, tickets, selectedNumbers, userProfile.uid]);
+  }, [selectedCampaign, ticketSearch, gridFilter, tickets, selectedNumbers, userProfile?.uid]);
 
   const paginatedIndices = React.useMemo(() => {
     const start = ticketPage * TICKETS_PER_PAGE;
@@ -1181,105 +1419,9 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
         );
       })()}
 
-      {/* Client Header bar - DESKTOP ONLY */}
-      <header className="hidden lg:flex bg-slate-900 rounded-3xl p-8 text-white shadow-lg border border-slate-800 justify-between items-center gap-6">
-        <div className="flex items-center gap-5">
-          <AppLogo settings={settings as any} size="lg" className="ring-2 ring-amber-400" />
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-extrabold tracking-tight text-amber-400 font-sans">Rifa do Chiquinho</h1>
-            </div>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-400">
-            <span>Cliente: <strong className="text-slate-100">{userProfile.name}</strong></span>
-            <span className="text-slate-700">|</span>
-            <span>CPF: <strong className="text-slate-100">{userProfile.cpf}</strong></span>
-            <span className="text-slate-700">|</span>
-            <span>Cidade: <strong className="text-slate-100">{userProfile.city}</strong></span>
-            <span className="text-slate-700">|</span>
-            <span>Contato: <a href={`mailto:${settings.supportEmail || "contato@rifadochiquinho.com.br"}`} className="text-indigo-400 hover:underline hover:text-indigo-300 font-medium transition-colors">{settings.supportEmail || "contato@rifadochiquinho.com.br"}</a></span>
-          </div>
-        </div>
-        </div>
-        <div className="flex items-center gap-3">
-          {myTotalTicketsCount > 0 && (
-            <div className="bg-indigo-500/15 border border-indigo-500/30 text-indigo-400 px-3.5 py-2 rounded-2xl flex items-center gap-2 text-xs font-semibold shrink-0">
-              <ShoppingBag className="w-4 h-4" />
-              <span>{myTotalTicketsCount} Bilhete(s)</span>
-            </div>
-          )}
-          <button
-            onClick={() => setShowRulesModal(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-750 text-white rounded-2xl text-xs font-bold shadow-md shadow-indigo-500/10 cursor-pointer transition-all hover:scale-[1.02]"
-          >
-            <HelpCircle className="w-3.5 h-3.5 text-indigo-200" />
-            <span>Regulamento</span>
-          </button>
-          <button
-            onClick={() => setShowLgpdModal(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-bold shadow-md shadow-emerald-500/10 cursor-pointer transition-all hover:scale-[1.02]"
-          >
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-250" />
-            <span>Meus Dados (LGPD)</span>
-          </button>
-          <button
-            onClick={onLogout}
-            className="flex items-center gap-2 px-4 py-2 bg-slate-850 hover:bg-slate-800 text-slate-300 hover:text-white rounded-2xl text-xs font-medium border border-slate-700/50 transition cursor-pointer"
-          >
-            <LogOut className="w-3.5 h-3.5" />
-            <span>Sair</span>
-          </button>
-        </div>
-      </header>
 
-      {/* Client Header bar - MOBILE ONLY */}
-      <header className="flex lg:hidden flex-col gap-4 bg-gradient-to-br from-slate-900 to-indigo-950 p-4 rounded-3xl border border-slate-800/80 text-white shadow-md">
-        <div className="flex items-center justify-between w-full">
-          <div className="flex items-center gap-3">
-            <AppLogo settings={settings as any} size="sm" className="ring-1 ring-amber-400" />
-            <div className="space-y-0.5">
-              <span className="text-[9px] text-amber-400 uppercase tracking-widest font-black leading-none block">Rifa do Chiquinho</span>
-              <h2 className="text-sm font-black text-white leading-tight truncate max-w-[140px]">{userProfile.name}</h2>
-            </div>
-          </div>
+      {/* Redundant header banners removed by user request to keep UI extremely clean */}
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowRulesModal(true)}
-              className="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-750 flex items-center justify-center text-slate-300 hover:text-white cursor-pointer transition-colors border border-slate-700/40"
-              title="Regulamento"
-            >
-              <HelpCircle className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => setShowLgpdModal(true)}
-              className="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-750 flex items-center justify-center text-emerald-400 hover:text-emerald-300 cursor-pointer transition-colors border border-slate-700/40"
-              title="Meus Dados (LGPD)"
-            >
-              <ShieldCheck className="w-4 h-4" />
-            </button>
-            <button
-              onClick={onLogout}
-              className="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-750 flex items-center justify-center text-rose-400 hover:text-rose-300 cursor-pointer transition-colors border border-slate-700/40"
-              title="Sair"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-
-        {/* Compact statistics metadata row */}
-        <div className="bg-slate-950/40 rounded-2xl p-2.5 px-3 flex justify-between items-center text-[10px] text-slate-300 font-medium font-sans border border-white/5">
-          <span>CPF: <strong className="text-white">{userProfile.cpf}</strong></span>
-          <span className="w-1 h-1 rounded-full bg-slate-700" />
-          <span>Local: <strong className="text-white">{userProfile.city}</strong></span>
-          {myTotalTicketsCount > 0 && (
-            <>
-              <span className="w-1 h-1 rounded-full bg-slate-700" />
-              <span className="text-indigo-400 font-bold">🎟️ {myTotalTicketsCount} Cota(s)</span>
-            </>
-          )}
-        </div>
-      </header>
 
       {/* Navigation tabs selector - DESKTOP ONLY */}
       <div className="hidden lg:flex bg-slate-100 border border-slate-200/40 rounded-2xl p-1 gap-1.5 shadow-sm text-xs w-full max-w-2xl mx-auto">
@@ -1369,154 +1511,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
             );
           })()}
 
-          {/* SEÇÃO DE BILHETES PREMIADOS (LOTERIA FEDERAL) */}
-          <div id="prize-checker-section" className="relative overflow-hidden rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50/40 via-white to-slate-50/40 p-5 shadow-sm animate-fadeIn">
-            {/* Background design elements */}
-            <div className="absolute right-0 top-0 -mr-6 -mt-6 w-32 h-32 bg-indigo-500/5 rounded-full blur-2xl pointer-events-none" />
-            <div className="absolute left-1/3 bottom-0 w-24 h-24 bg-amber-500/5 rounded-full blur-xl pointer-events-none" />
 
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-indigo-50 text-indigo-700 rounded-xl shadow-4xs shrink-0 flex items-center justify-center">
-                  <Trophy className="w-5.5 h-5.5 text-indigo-600 animate-pulse" />
-                </div>
-                <div>
-                  <h3 className="font-extrabold text-sm md:text-base text-slate-800 tracking-tight flex items-center gap-2">
-                    <span>Auditório de Prêmios & Resultados</span>
-                    <span className="text-[10px] bg-indigo-100 text-indigo-850 font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wider">Loteria Federal</span>
-                  </h3>
-                  <p className="text-slate-500 text-xs mt-0.5">
-                    Todos os seus bilhetes homologados são conferidos automaticamente contra os resultados oficiais do sistema.
-                  </p>
-                </div>
-              </div>
-
-              {/* Secure checked label */}
-              <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500 bg-indigo-50/50 px-3 py-1.5 rounded-xl border border-indigo-100/30 shrink-0 select-none">
-                <ShieldCheck className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-                <span>Integração de Sorteios Ativa</span>
-              </div>
-            </div>
-
-            {winningSessions.length > 0 ? (
-              <div className="mt-4 space-y-4">
-                {/* Winner Celebration Banner */}
-                <div className="bg-gradient-to-r from-amber-500 to-amber-600 p-4.5 rounded-xl text-white shadow-md relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-4">
-                  {/* Glowing highlights */}
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-xl pointer-events-none -mr-8 -mt-8" />
-                  
-                  {/* Celebration confetti trigger */}
-                  <CelebrationConfetti key={winningConfettiKey} />
-
-                  <div className="flex items-center gap-3.5 relative z-10">
-                    <div className="p-3 bg-white/20 text-white rounded-full flex items-center justify-center shadow-inner animate-bounce text-xl shrink-0">
-                      👑
-                    </div>
-                    <div className="space-y-1 text-center md:text-left">
-                      <h4 className="text-sm md:text-base font-black tracking-tight uppercase">
-                        PARABÉNS! VOCÊ POSSUI UM BILHETE PREMIADO! 🎉🎉
-                      </h4>
-                      <p className="text-amber-50 text-xs font-semibold max-w-xl">
-                        Nossos auditores confirmaram que você é o legítimo ganhador de um prêmio oficial! Siga o contato de resgate para receber suas premiações.
-                      </p>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setWinningConfettiKey((prev) => prev + 1);
-                      addToast("✨ Nova explosão de confetes iniciada!", "success");
-                    }}
-                    className="px-4 py-2 bg-slate-900 hover:bg-black text-[11px] text-white font-extrabold uppercase tracking-wider rounded-xl transition-all cursor-pointer shadow-sm relative z-10 flex items-center gap-1.5 shrink-0 self-center"
-                  >
-                    <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                    <span>Estourar Confetes!</span>
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                  {winningSessions.map(({ campaign, ticket }) => {
-                    const cleanPhone = settings.supportContact ? settings.supportContact.replace(/\D/g, "") : "";
-                    const whatsappMsg = `Olá! Fui premiado na campanha "${campaign.title}" com o bilhete contemplado nº ${ticket.number}! Meus dados de cadastro: CPF: ${userProfile.cpf}, Nome: ${userProfile.name}.`;
-                    const whatsappUrl = `https://wa.me/${cleanPhone.startsWith("55") ? cleanPhone : "55" + cleanPhone}?text=${encodeURIComponent(whatsappMsg)}`;
-
-                    return (
-                      <div
-                        key={`${campaign.id}_${ticket.id}`}
-                        className="bg-white border-2 border-amber-300 rounded-xl p-4 shadow-sm hover:shadow-md transition-all flex flex-col justify-between gap-4 animate-fadeIn relative overflow-hidden"
-                      >
-                        {/* Golden corner badge */}
-                        <div className="absolute top-0 right-0 bg-amber-400 text-slate-900 font-extrabold text-[9px] uppercase tracking-wider px-2.5 py-1 rounded-bl-lg shadow-4xs flex items-center gap-1">
-                          <Crown className="w-3 h-3 text-amber-900" />
-                          <span>Premiado</span>
-                        </div>
-
-                        <div className="space-y-2">
-                          <div className="text-[10px] text-indigo-650 font-black uppercase tracking-wider">
-                            Rifa: {campaign.title}
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <div className="min-w-[64px] h-[64px] rounded-2xl bg-indigo-600 text-white flex flex-col items-center justify-center shadow-sm shrink-0">
-                              <span className="text-[9px] font-black uppercase tracking-wider opacity-85">Cota nº</span>
-                              <span className="text-xl font-mono font-black tracking-tight">{ticket.number}</span>
-                            </div>
-                            <div className="space-y-0.5">
-                              <div className="text-xs font-bold text-slate-800">
-                                Adquirido em: {ticket.confirmedAt ? new Date(ticket.confirmedAt).toLocaleDateString("pt-BR") : "Confirmado"}
-                              </div>
-                              <div className="text-[11px] text-slate-500">
-                                Sorteio pelo Concurso Loteria Federal Nº <strong>{campaign.federalLotteryDrawId || "Oficial"}</strong>
-                              </div>
-                              <div className="text-[11px] font-semibold text-emerald-600 flex items-center gap-1">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                <span>Status Cota: {ticket.status === "confirmed" ? "Homologado & Pago" : "Pendente de Liberação"}</span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-2.5 border-t border-slate-100">
-                          {cleanPhone ? (
-                            <a
-                              href={whatsappUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex-1 text-center py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition-all shadow-4xs cursor-pointer flex items-center justify-center gap-1.5"
-                            >
-                              <Smartphone className="w-3.5 h-3.5 shrink-0" />
-                              <span>Resgatar Prêmio via WhatsApp</span>
-                            </a>
-                          ) : (
-                            <div className="flex-1 text-center py-2 bg-slate-100 text-slate-600 rounded-lg text-[10px] font-black uppercase tracking-wider">
-                              Entre em contato com suporte para resgatar
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : (
-              <div className="mt-4 flex flex-col md:flex-row items-center gap-4 bg-white border border-slate-150 p-4 rounded-xl shadow-3xs hover:bg-slate-50/50 transition-colors duration-200">
-                <div className="p-3 bg-slate-100 rounded-xl text-slate-500 shrink-0 flex items-center justify-center">
-                  <ShieldCheck className="w-5 h-5 text-indigo-500 animate-pulse" />
-                </div>
-                <div className="flex-1 text-center md:text-left space-y-0.5">
-                  <div className="text-xs font-extrabold text-slate-750">
-                    Nenhum prêmio pendente de resgate
-                  </div>
-                  <div className="text-[11px] text-slate-500 max-w-2xl leading-relaxed">
-                    Pesquisa realizada em tempo real contra os resultados cadastrados no sistema. No momento, nenhum dos seus <span className="font-bold text-indigo-600 font-mono text-xs">{myTotalTicketsCount} bilhetes adquiridos</span> foi contemplado como ganhador. Continue participando e boa sorte nos próximos sorteios!
-                  </div>
-                </div>
-                <div className="shrink-0 font-extrabold text-[10px] text-indigo-600 uppercase tracking-widest bg-indigo-50/50 px-2.5 py-1.5 rounded-lg border border-indigo-100/30">
-                  Auditado ✓
-                </div>
-              </div>
-            )}
-          </div>
 
           {/* Seção das Miniaturas / Thumbnail grid of all campaigns */}
           <div className="space-y-4">
@@ -1524,7 +1519,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
               <div>
                 <h2 className="text-lg md:text-xl font-extrabold text-slate-800 tracking-tight flex items-center gap-2">
                   <Sparkles className="w-5 h-5 text-indigo-550 shrink-0" />
-                  <span>Prêmios & Rifas Ativas</span>
+                  <span>Campanhas</span>
                 </h2>
                 <p className="text-slate-500 text-xs">
                   Selecione uma das rifas de formatura abaixo para verificar o regulamento e escolher seus números premiados!
@@ -1548,301 +1543,502 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                 <p className="text-slate-400 text-xs mt-1">Nenhum prêmio ou rifa ativa no momento.</p>
               </div>
             ) : (() => {
-              const activeCampaigns = campaigns.filter(c => c.status !== "drawn");
+              const liveCampaigns = campaigns.filter(c => c.status === "active");
               const closedCampaigns = campaigns.filter(c => c.status === "drawn");
+              const upcomingCampaigns = campaigns.filter(c => c.status === "paused");
 
               return (
-                <div className="space-y-10">
-                  {/* --- CAMPANHAS ATIVAS --- */}
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                      <h3 className="text-xs md:text-sm font-black uppercase tracking-wider text-slate-500">
-                        Disponíveis para Compra ({activeCampaigns.length})
-                      </h3>
-                    </div>
-                    {activeCampaigns.length === 0 ? (
-                      <div className="text-center p-8 bg-slate-50 rounded-2xl border border-dashed border-slate-200/80">
-                        <TicketIcon className="w-8 h-8 mx-auto text-slate-300 mb-1.5" />
-                        <h4 className="text-slate-650 font-bold text-xs">Nenhuma rifa ativa no momento</h4>
-                        <p className="text-slate-400 text-[10px] mt-0.5">Em breve teremos novas oportunidades! Fique de olho.</p>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6 animate-fadeIn">
-                        {activeCampaigns.map((camp) => {
-                          const isSelected = selectedCampaign?.id === camp.id;
-                          const userTicketsCount = myTickets[camp.id]?.length || 0;
-                          
-                          // Calculate real-time tickets metrics
-                          const campTickets = allReservations[camp.id] || [];
-                          const vendidas = campTickets.filter(t => t.status === "confirmed").length;
-                          const restantes = Math.max(0, camp.totalTickets - campTickets.length);
+                <div className="space-y-6">
+                  {/* Visual Filters / Segment Control for Campaigns with Live Counts */}
+                  <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-4 select-none">
+                    <button
+                      type="button"
+                      onClick={() => setCampaignShowingTab("active")}
+                      className={`flex items-center gap-2 px-4 py-2 text-xs md:text-sm font-black uppercase tracking-wider rounded-xl transition-all duration-200 cursor-pointer ${
+                        campaignShowingTab === "active"
+                          ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/15"
+                          : "bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700"
+                      }`}
+                    >
+                      <Sparkles className={`w-4 h-4 ${campaignShowingTab === 'active' ? 'text-amber-300 animate-pulse' : 'text-slate-400'}`} />
+                      <span>Ativas</span>
+                      <span className={`px-1.5 py-0.2 rounded-md text-[10px] font-extrabold ${
+                        campaignShowingTab === 'active' ? 'bg-emerald-800 text-white' : 'bg-slate-200 text-slate-500'
+                      }`}>
+                        {liveCampaigns.length}
+                      </span>
+                    </button>
 
-                          return (
-                            <button
-                              key={camp.id}
-                              onClick={() => {
-                                setSelectedCampaign(camp);
-                                setSuccessReserved(null);
-                                setSelectedNumbers([]);
-                                setTicketSearch("");
-                                setTicketPage(0);
-                                setGridFilter("all");
-                                setShowFullDescriptionMobile(false);
-                                
-                                const boardEl = document.getElementById("quadro-bilhetes");
-                                if (boardEl) {
-                                  boardEl.scrollIntoView({ behavior: "smooth", block: "start" });
-                                }
-                              }}
-                              className={`group relative flex flex-col text-left bg-white rounded-2xl md:rounded-3xl border overflow-hidden p-3 md:p-5 transition-all duration-300 cursor-pointer w-full ${
-                                isSelected
-                                  ? "border-emerald-500 ring-4 ring-emerald-500/15 shadow-lg transform scale-[1.01]"
-                                  : "border-slate-200 hover:border-slate-350 hover:shadow-lg hover:-translate-y-0.5"
-                              }`}
-                            >
-                              {/* Thumbnail Image Container ("Foto da Campanha") */}
-                              <div className="relative aspect-[4/3] sm:aspect-square w-full overflow-hidden bg-slate-50 rounded-xl md:rounded-2xl border border-slate-100 shrink-0 mb-3">
-                                <img
-                                  src={camp.imageUrl || getCampaignPlaceholderImage(camp.title, camp.id)}
-                                  alt={camp.title}
-                                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                                  referrerPolicy="no-referrer"
-                                />
+                    <button
+                      type="button"
+                      onClick={() => setCampaignShowingTab("drawn")}
+                      className={`flex items-center gap-2 px-4 py-2 text-xs md:text-sm font-black uppercase tracking-wider rounded-xl transition-all duration-200 cursor-pointer ${
+                        campaignShowingTab === "drawn"
+                          ? "bg-amber-500 text-white shadow-md shadow-amber-500/15"
+                          : "bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700"
+                      }`}
+                    >
+                      <Trophy className={`w-4 h-4 ${campaignShowingTab === 'drawn' ? 'text-white animate-bounce' : 'text-slate-400'}`} />
+                      <span>Finalizadas</span>
+                      <span className={`px-1.5 py-0.1 rounded-md text-[10px] font-extrabold ${
+                        campaignShowingTab === 'drawn' ? 'bg-amber-600 text-white' : 'bg-slate-200 text-slate-500'
+                      }`}>
+                        {closedCampaigns.length}
+                      </span>
+                    </button>
 
-                                {/* Diagonal Sold Out Banner */}
-                                {restantes === 0 && (
-                                  <div className="absolute inset-0 bg-black/30 z-10 pointer-events-none flex items-center justify-center overflow-hidden">
-                                    <div className="bg-gradient-to-r from-red-700 via-rose-500 to-red-700 text-white font-extrabold text-[8px] md:text-xs py-1.5 w-[160%] text-center uppercase tracking-widest rotate-[-25deg] shadow-[0_10px_20px_rgba(0,0,0,0.4)] border-y border-yellow-400 animate-pulse select-none">
-                                      ESGOTADO
-                                    </div>
-                                  </div>
-                                )}
-
-                                {/* Floating Price Tag ("Valor Cota") */}
-                                <div className="absolute top-1.5 left-1.5 md:top-2.5 md:left-2.5 bg-[#82C943] text-white font-black text-[9px] sm:text-xs md:text-sm px-2 py-0.5 md:px-3.5 md:py-1.5 rounded-lg md:rounded-xl shadow-lg border border-white/10 flex items-center justify-center font-mono">
-                                  R$ {camp.ticketPrice.toFixed(2)}
-                                </div>
-
-                                {/* Floating status badges */}
-                                <div className="absolute top-1.5 right-1.5 md:top-2.5 md:right-2.5 flex items-center gap-1">
-                                  {userTicketsCount > 0 && (
-                                    <span className="bg-indigo-600 text-white text-[7px] md:text-[9px] font-black px-1.5 py-0.5 rounded-full shadow-md">
-                                      {userTicketsCount} Reservado
-                                    </span>
-                                  )}
-                                  <span className="bg-slate-950/75 backdrop-blur-sm text-white px-1.5 py-0.5 md:px-2.5 md:py-1 text-[7px] md:text-[9.5px] font-bold rounded-full flex items-center gap-1 border border-white/10">
-                                    <span className="w-1 h-1 md:w-1.5 md:h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                                    Ativa
-                                  </span>
-                                </div>
-                              </div>
-
-                              {/* Title and Description */}
-                              <div className="space-y-1 mb-2 flex-1 flex flex-col justify-start">
-                                <h3 className="font-extrabold text-slate-800 text-[11px] xs:text-xs sm:text-sm md:text-base leading-snug group-hover:text-emerald-600 transition-colors line-clamp-2">
-                                  {camp.title}
-                                </h3>
-                                <p className="hidden md:block text-slate-450 text-[10px] md:text-xs line-clamp-2 leading-relaxed">
-                                  {camp.description ? stripHtml(camp.description) : "Participe desta rifa e garanta sua chance de ganhar prêmios incríveis enquanto apoia nossa comissão de formatura."}
-                                </p>
-                              </div>
-
-                              {/* Compact horizontal stats for mobile */}
-                              <div className="flex sm:hidden justify-between items-center bg-slate-50 border border-slate-100 rounded-xl px-2 py-1 select-none text-[9px] font-bold text-slate-600 w-full mb-2 font-mono">
-                                <span>{camp.totalTickets} <span className="font-medium text-slate-400">cotas</span></span>
-                                <span className="text-slate-200">|</span>
-                                <span>{restantes} <span className="font-medium text-slate-400">restam</span></span>
-                              </div>
-
-                              {/* The Trio of Info Boxes (Cotas, Vendidas, Restantes) */}
-                              <div className="hidden sm:grid grid-cols-3 gap-1.5 md:gap-2.5 mb-3 w-full">
-                                <div className="bg-[#f0f8db]/80 border border-lime-200/60 rounded-2xl p-2 md:p-2.5 flex flex-col items-center justify-center text-center">
-                                  <span className="text-emerald-700 font-extrabold text-[9px] md:text-[11px] uppercase tracking-wider">Cotas</span>
-                                  <span className="text-emerald-800 font-black text-xs md:text-sm mt-0.5">{camp.totalTickets}</span>
-                                </div>
-                                <div className="bg-[#f1f9db]/85 border border-lime-200/60 rounded-2xl p-2 md:p-2.5 flex flex-col items-center justify-center text-center">
-                                  <span className="text-amber-700 font-extrabold text-[9px] md:text-[11px] uppercase tracking-wider font-semibold">Vendidas</span>
-                                  <span className="text-amber-800 font-black text-xs md:text-sm mt-0.5">{vendidas}</span>
-                                </div>
-                                <div className="bg-[#f1f9db]/85 border border-lime-200/60 rounded-2xl p-2 md:p-2.5 flex flex-col items-center justify-center text-center">
-                                  <span className="text-red-500 font-extrabold text-[9px] md:text-[11px] uppercase tracking-wider font-semibold">Restantes</span>
-                                  <span className="text-red-700 font-black text-xs md:text-sm mt-0.5">{restantes}</span>
-                                </div>
-                              </div>
-
-                              {/* Dynamic Projection Box based on sales velocity */}
-                              <div className="hidden sm:block w-full">
-                                {(() => {
-                                  const proj = getCampaignDrawProjection(camp, campTickets);
-                                  return (
-                                    <div className="mb-4 bg-indigo-50/50 border border-indigo-100/60 rounded-2xl p-2.5 flex flex-col justify-center space-y-1 w-full text-left">
-                                      <div className="flex justify-between items-center text-[10px]">
-                                        <span className="text-indigo-950 font-extrabold uppercase tracking-wider flex items-center gap-1 font-semibold">
-                                          <span className="w-1.5 h-1.5 rounded-full bg-indigo-650 animate-pulse" />
-                                          Sorteio Provável
-                                        </span>
-                                        <span className={`font-extrabold text-[9px] px-1.5 py-0.2 rounded-md ${
-                                          proj.confidenceRating === "high" 
-                                            ? "bg-emerald-100 text-emerald-800" 
-                                            : proj.confidenceRating === "medium"
-                                              ? "bg-indigo-100 text-indigo-800"
-                                              : "bg-amber-100 text-amber-700"
-                                        }`}>
-                                          Confiança: {proj.confidenceRating === "high" ? "Alta" : proj.confidenceRating === "medium" ? "Média" : "Baixa"}
-                                        </span>
-                                      </div>
-                                      <div className="text-[11.5px] font-black text-slate-800 leading-snug tracking-tight">
-                                        {proj.formattedProbableDrawDate.split(" às ")[0]}
-                                      </div>
-                                      <div className="text-[9.5px] text-slate-500 flex items-center justify-between font-semibold">
-                                        <span>Est: ~{proj.daysRemainingEst} dias</span>
-                                        <span>Velo: {proj.salesVelocity}/dia</span>
-                                      </div>
-                                    </div>
-                                  );
-                                })()}
-                              </div>
-
-                              {/* Comprar Bilhetes Button */}
-                              <div className={`w-full text-center text-[10px] sm:text-xs md:text-sm font-black py-1.5 sm:py-2.5 md:py-3 px-3 rounded-lg sm:rounded-2xl transition-all duration-200 border mt-auto ${
-                                isSelected
-                                  ? "bg-green-600 text-white border-green-600 shadow-md"
-                                  : "bg-[#82C943] text-white border-[#82C943] hover:bg-[#72b834] hover:border-[#72b834]"
-                              }`}>
-                                {isSelected ? "Comprar ✓" : "Ver Cotas 🎫"}
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => setCampaignShowingTab("paused")}
+                      className={`flex items-center gap-2 px-4 py-2 text-xs md:text-sm font-black uppercase tracking-wider rounded-xl transition-all duration-200 cursor-pointer ${
+                        campaignShowingTab === "paused"
+                          ? "bg-slate-800 text-white shadow-md shadow-slate-800/15"
+                          : "bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700"
+                      }`}
+                    >
+                      <Calendar className={`w-4 h-4 ${campaignShowingTab === 'paused' ? 'text-cyan-300 animate-pulse' : 'text-slate-400'}`} />
+                      <span>Em Breve</span>
+                      <span className={`px-1.5 py-0.1 rounded-md text-[10px] font-extrabold ${
+                        campaignShowingTab === 'paused' ? 'bg-slate-700 text-white' : 'bg-slate-200 text-slate-500'
+                      }`}>
+                        {upcomingCampaigns.length}
+                      </span>
+                    </button>
                   </div>
 
-                  {/* --- CAMPANHAS ENCERRADAS --- */}
-                  {closedCampaigns.length > 0 && (
-                    <div className="space-y-4 pt-6 border-t border-slate-100">
-                      <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
-                        <Trophy className="w-4 h-4 text-amber-500 shrink-0" />
-                        <h3 className="text-xs md:text-sm font-black uppercase tracking-wider text-slate-500">
-                          Sorteios Realizados & Encerrados ({closedCampaigns.length})
-                        </h3>
-                      </div>
-                      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6 animate-fadeIn">
-                        {closedCampaigns.map((camp) => {
-                          const isSelected = selectedCampaign?.id === camp.id;
-                          const userTicketsCount = myTickets[camp.id]?.length || 0;
+                  {campaignShowingTab === "active" && (
+                    <div className="space-y-4 animate-fadeIn">
+                      {liveCampaigns.length === 0 ? (
+                        <div className="text-center p-8 bg-slate-50 rounded-2xl border border-dashed border-slate-200/80">
+                          <TicketIcon className="w-8 h-8 mx-auto text-slate-300 mb-1.5" />
+                          <h4 className="text-slate-650 font-bold text-xs">Nenhuma rifa ativa no momento</h4>
+                          <p className="text-slate-400 text-[10px] mt-0.5">Em breve teremos novas oportunidades! Fique de olho.</p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6">
+                          {liveCampaigns.map((camp) => {
+                            const isSelected = selectedCampaign?.id === camp.id;
+                            const userTicketsCount = myTickets[camp.id]?.length || 0;
+                            
+                            // Calculate real-time tickets metrics
+                            const campTickets = allReservations[camp.id] || [];
+                            const vendidas = campTickets.filter(t => t.status === "confirmed").length;
+                            const restantes = Math.max(0, camp.totalTickets - campTickets.length);
 
-                          // Calculate real-time tickets metrics
-                          const campTickets = allReservations[camp.id] || [];
-                          const vendidas = campTickets.filter(t => t.status === "confirmed").length;
-                          const restantes = Math.max(0, camp.totalTickets - campTickets.length);
+                            return (
+                              <button
+                                key={camp.id}
+                                onClick={() => {
+                                  setSelectedCampaign(camp);
+                                  setSuccessReserved(null);
+                                  setSelectedNumbers([]);
+                                  setTicketSearch("");
+                                  setTicketPage(0);
+                                  setGridFilter("all");
+                                  setShowFullDescriptionMobile(false);
+                                  
+                                  const boardEl = document.getElementById("quadro-bilhetes");
+                                  if (boardEl) {
+                                    boardEl.scrollIntoView({ behavior: "smooth", block: "start" });
+                                  }
+                                }}
+                                className={`group relative flex flex-col text-left bg-white rounded-2xl md:rounded-3xl border overflow-hidden p-3 md:p-5 transition-all duration-300 cursor-pointer w-full ${
+                                  isSelected
+                                    ? "border-emerald-500 ring-4 ring-emerald-500/15 shadow-lg transform scale-[1.01]"
+                                    : "border-slate-200 hover:border-slate-350 hover:shadow-lg hover:-translate-y-0.5"
+                                }`}
+                              >
+                                {/* Thumbnail Image Container ("Foto da Campanha") */}
+                                <div className="relative aspect-[4/3] sm:aspect-square w-full overflow-hidden bg-slate-50 rounded-xl md:rounded-2xl border border-slate-100 shrink-0 mb-3">
+                                  <img
+                                    src={camp.imageUrl || getCampaignPlaceholderImage(camp.title, camp.id)}
+                                    alt={camp.title}
+                                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                    referrerPolicy="no-referrer"
+                                  />
 
-                          return (
-                            <button
-                              key={camp.id}
-                              onClick={() => {
-                                setSelectedCampaign(camp);
-                                setSuccessReserved(null);
-                                setSelectedNumbers([]);
-                                setTicketSearch("");
-                                setTicketPage(0);
-                                setGridFilter("all");
-                                setShowFullDescriptionMobile(false);
-                                
-                                const boardEl = document.getElementById("quadro-bilhetes");
-                                if (boardEl) {
-                                  boardEl.scrollIntoView({ behavior: "smooth", block: "start" });
-                                }
-                              }}
-                              className={`group relative flex flex-col text-left bg-white rounded-2xl md:rounded-3xl border overflow-hidden p-3 md:p-5 transition-all duration-300 cursor-pointer w-full opacity-90 hover:opacity-100 ${
-                                isSelected
-                                  ? "border-amber-500 ring-4 ring-amber-500/15 shadow-lg transform scale-[1.01]"
-                                  : "border-slate-200 hover:border-amber-350 hover:shadow-lg hover:-translate-y-0.5"
-                              }`}
-                            >
-                              {/* Thumbnail Image Container ("Foto da Campanha" - Concluido) */}
-                              <div className="relative aspect-[4/3] sm:aspect-square w-full overflow-hidden bg-slate-50 rounded-xl md:rounded-2xl border border-slate-100 shrink-0 mb-3 grayscale group-hover:grayscale-0 transition-all duration-350">
-                                <img
-                                  src={camp.imageUrl || getCampaignPlaceholderImage(camp.title, camp.id)}
-                                  alt={camp.title}
-                                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                                  referrerPolicy="no-referrer"
-                                />
-
-                                {/* Diagonal Sold Out Banner */}
-                                {restantes === 0 && (
-                                  <div className="absolute inset-0 bg-black/30 z-10 pointer-events-none flex items-center justify-center overflow-hidden">
-                                    <div className="bg-gradient-to-r from-red-700 via-rose-500 to-red-700 text-white font-extrabold text-[8px] md:text-xs py-1.5 w-[160%] text-center uppercase tracking-widest rotate-[-25deg] shadow-[0_10px_20px_rgba(0,0,0,0.4)] border-y border-yellow-400 animate-pulse select-none">
-                                      ESGOTADO
+                                  {/* Diagonal Sold Out Banner */}
+                                  {restantes === 0 && (
+                                    <div className="absolute inset-0 bg-black/30 z-10 pointer-events-none flex items-center justify-center overflow-hidden">
+                                      <div className="bg-gradient-to-r from-red-700 via-rose-500 to-red-700 text-white font-extrabold text-[8px] md:text-xs py-1.5 w-[160%] text-center uppercase tracking-widest rotate-[-25deg] shadow-[0_10px_20px_rgba(0,0,0,0.4)] border-y border-yellow-400 animate-pulse select-none">
+                                        ESGOTADO
+                                      </div>
                                     </div>
-                                  </div>
-                                )}
-
-                                {/* Floating Winner Number Tag */}
-                                <div className="absolute top-1.5 left-1.5 md:top-2.5 md:left-2.5 bg-amber-500 text-white font-black text-[9px] sm:text-xs md:text-sm px-2 py-0.5 md:px-3.5 md:py-1.5 rounded-lg md:rounded-xl shadow-lg border border-white/10 flex items-center justify-center gap-1 font-mono">
-                                  🏆 Nº {camp.winningNumber || "Sorteado"}
-                                </div>
-
-                                {/* Floating status badge (right side) */}
-                                <div className="absolute top-1.5 right-1.5 md:top-2.5 md:right-2.5 flex items-center gap-1">
-                                  {userTicketsCount > 0 && (
-                                    <span className="bg-slate-600 text-white text-[7px] md:text-[9.5px] font-black px-1.5 py-0.5 rounded-full shadow-md">
-                                      {userTicketsCount} Adquirido
-                                    </span>
                                   )}
-                                  <span className="bg-slate-900/85 backdrop-blur-sm text-white px-1.5 py-0.5 md:px-2.5 md:py-1 text-[7px] md:text-[9.5px] font-bold rounded-full flex items-center gap-1 border border-white/10">
-                                    <Trophy className="w-2 h-2 text-amber-450 animate-bounce" />
-                                    Encerrada
-                                  </span>
-                                </div>
-                              </div>
 
-                              {/* Title and Description */}
-                              <div className="space-y-1 mb-2 flex-1 flex flex-col justify-start">
-                                <h3 className="font-extrabold text-slate-800 text-[11px] xs:text-xs sm:text-sm md:text-base leading-snug group-hover:text-amber-600 transition-colors line-clamp-2">
-                                  {camp.title}
-                                </h3>
-                                <p className="hidden md:block text-slate-450 text-[10px] md:text-xs line-clamp-2 leading-relaxed">
-                                  {camp.description ? stripHtml(camp.description) : "Confira os detalhes e o bilhete contemplado para este sorteio encerrado de formatura."}
-                                </p>
-                              </div>
+                                  {/* Floating Price Tag ("Valor Cota") */}
+                                  <div className="absolute top-1.5 left-1.5 md:top-2.5 md:left-2.5 bg-[#82C943] text-white font-black text-[9px] sm:text-xs md:text-sm px-2 py-0.5 md:px-3.5 md:py-1.5 rounded-lg md:rounded-xl shadow-lg border border-white/10 flex items-center justify-center font-mono">
+                                    R$ {camp.ticketPrice.toFixed(2)}
+                                  </div>
 
-                              {/* Compact horizontal stats for mobile */}
-                              <div className="flex sm:hidden justify-between items-center bg-slate-50 border border-slate-100 rounded-xl px-2 py-1.5 text-[9px] text-slate-600 font-bold w-full mb-2.5 select-none font-mono">
-                                <span>{camp.totalTickets} <span className="font-medium text-slate-400">cotas</span></span>
-                                <span className="text-slate-200">|</span>
-                                <span>{restantes} <span className="font-medium text-slate-400">sobra</span></span>
-                              </div>
+                                  {/* Floating status badges */}
+                                  <div className="absolute top-1.5 right-1.5 md:top-2.5 md:right-2.5 flex items-center gap-1">
+                                    {userTicketsCount > 0 && (
+                                      <span className="bg-indigo-600 text-white text-[7px] md:text-[9px] font-black px-1.5 py-0.5 rounded-full shadow-md">
+                                        {userTicketsCount} Reservado
+                                      </span>
+                                    )}
+                                    <span className="bg-slate-950/75 backdrop-blur-sm text-white px-1.5 py-0.5 md:px-2.5 md:py-1 text-[7px] md:text-[9.5px] font-bold rounded-full flex items-center gap-1 border border-white/10">
+                                      <span className="w-1 h-1 md:w-1.5 md:h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                      Ativa
+                                    </span>
+                                  </div>
+                                </div>
 
-                              {/* The Trio of Info Boxes (Cotas, Vendidas, Restantes) */}
-                              <div className="hidden sm:grid grid-cols-3 gap-1.5 md:gap-2.5 mb-4 w-full">
-                                <div className="bg-slate-50 border border-slate-100 rounded-2xl p-2 md:p-2.5 flex flex-col items-center justify-center text-center">
-                                  <span className="text-slate-500 font-extrabold text-[9px] md:text-[11px] uppercase tracking-wider">Cotas</span>
-                                  <span className="text-slate-700 font-black text-xs md:text-sm mt-0.5">{camp.totalTickets}</span>
+                                {/* Countdown below the image, above the title */}
+                                <div className="mt-2.5 mb-1 flex justify-center w-full">
+                                  <CampaignCountdown campaign={camp} tickets={campTickets} />
                                 </div>
-                                <div className="bg-slate-50 border border-slate-100 rounded-2xl p-2 md:p-2.5 flex flex-col items-center justify-center text-center">
-                                  <span className="text-slate-500 font-extrabold text-[9px] md:text-[11px] uppercase tracking-wider font-semibold">Vendidas</span>
-                                  <span className="text-slate-700 font-black text-xs md:text-sm mt-0.5">{vendidas}</span>
-                                </div>
-                                <div className="bg-slate-50 border border-slate-100 rounded-2xl p-2 md:p-2.5 flex flex-col items-center justify-center text-center">
-                                  <span className="text-slate-450 font-extrabold text-[9px] md:text-[11px] uppercase tracking-wider font-semibold">Sobra</span>
-                                  <span className="text-slate-600 font-black text-xs md:text-sm mt-0.5">{restantes}</span>
-                                </div>
-                              </div>
 
-                              {/* Resultado / Ver Ganhador Button */}
-                              <div className={`w-full text-center text-[10px] sm:text-xs md:text-sm font-black py-1.5 sm:py-2.5 md:py-3 px-3 rounded-lg sm:rounded-2xl transition-all duration-200 border mt-auto ${
-                                isSelected
-                                  ? "bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/10"
-                                  : "bg-slate-100 text-slate-700 border-slate-200 hover:bg-amber-100 hover:text-amber-800 hover:border-amber-200 shadow-sm"
-                              }`}>
-                                {isSelected ? "Ganhador ✓" : "Ganhador 🏆"}
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
+                                {/* Title and Description */}
+                                <div className="space-y-1 mb-2 flex-1 flex flex-col justify-start">
+                                  <h3 className="font-extrabold text-slate-800 text-[11px] xs:text-xs sm:text-sm md:text-base leading-snug group-hover:text-emerald-600 transition-colors line-clamp-2">
+                                    {camp.title}
+                                  </h3>
+                                  <p className="hidden md:block text-slate-450 text-[10px] md:text-xs line-clamp-2 leading-relaxed">
+                                    {camp.description ? stripHtml(camp.description) : "Participe desta rifa e garanta sua chance de ganhar prêmios incríveis enquanto apoia nossa comissão de formatura."}
+                                  </p>
+                                </div>
+
+                                {/* Compact horizontal stats for mobile */}
+                                <div className="flex sm:hidden justify-between items-center bg-slate-50 border border-slate-100 rounded-xl px-2 py-1 select-none text-[9px] font-bold text-slate-600 w-full mb-2 font-mono">
+                                  <span>{camp.totalTickets} <span className="font-medium text-slate-400">cotas</span></span>
+                                  <span className="text-slate-200">|</span>
+                                  <span>{restantes} <span className="font-medium text-slate-400">restam</span></span>
+                                </div>
+
+                                {/* The Trio of Info Boxes (Cotas, Vendidas, Restantes) */}
+                                <div className="hidden sm:grid grid-cols-3 gap-1.5 md:gap-2.5 mb-3 w-full">
+                                  <div className="bg-[#f0f8db]/80 border border-lime-200/60 rounded-2xl p-2 md:p-2.5 flex flex-col items-center justify-center text-center">
+                                    <span className="text-emerald-700 font-extrabold text-[9px] md:text-[11px] uppercase tracking-wider">Cotas</span>
+                                    <span className="text-emerald-800 font-black text-xs md:text-sm mt-0.5">{camp.totalTickets}</span>
+                                  </div>
+                                  <div className="bg-[#f1f9db]/85 border border-lime-200/60 rounded-2xl p-2 md:p-2.5 flex flex-col items-center justify-center text-center">
+                                    <span className="text-amber-700 font-extrabold text-[9px] md:text-[11px] uppercase tracking-wider font-semibold">Vendidas</span>
+                                    <span className="text-amber-800 font-black text-xs md:text-sm mt-0.5">{vendidas}</span>
+                                  </div>
+                                  <div className="bg-[#f1f9db]/85 border border-lime-200/60 rounded-2xl p-2 md:p-2.5 flex flex-col items-center justify-center text-center">
+                                    <span className="text-red-500 font-extrabold text-[9px] md:text-[11px] uppercase tracking-wider font-semibold">Restantes</span>
+                                    <span className="text-red-700 font-black text-xs md:text-sm mt-0.5">{restantes}</span>
+                                  </div>
+                                </div>
+
+                                {/* Dynamic Projection Box based on sales velocity */}
+                                <div className="hidden sm:block w-full">
+                                  {(() => {
+                                    const proj = getCampaignDrawProjection(camp, campTickets);
+                                    return (
+                                      <div className="mb-4 bg-indigo-50/50 border border-indigo-100/60 rounded-2xl p-2.5 flex flex-col justify-center space-y-1 w-full text-left">
+                                        <div className="flex justify-between items-center text-[10px]">
+                                          <span className="text-indigo-950 font-extrabold uppercase tracking-wider flex items-center gap-1 font-semibold">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-650 animate-pulse" />
+                                            Sorteio Provável
+                                          </span>
+                                          <span className={`font-extrabold text-[9px] px-1.5 py-0.2 rounded-md ${
+                                            proj.confidenceRating === "high" 
+                                              ? "bg-emerald-100 text-emerald-800" 
+                                              : proj.confidenceRating === "medium"
+                                                ? "bg-indigo-100 text-indigo-800"
+                                                : "bg-amber-100 text-amber-700"
+                                          }`}>
+                                            Confiança: {proj.confidenceRating === "high" ? "Alta" : proj.confidenceRating === "medium" ? "Média" : "Baixa"}
+                                          </span>
+                                        </div>
+                                        <div className="text-[11.5px] font-black text-slate-800 leading-snug tracking-tight">
+                                          {proj.formattedProbableDrawDate.split(" às ")[0]}
+                                        </div>
+                                        <div className="text-[9.5px] text-slate-500 flex items-center justify-between font-semibold">
+                                          <span>Est: ~{proj.daysRemainingEst} dias</span>
+                                          <span>Velo: {proj.salesVelocity}/dia</span>
+                                        </div>
+                                      </div>
+                                    );
+                                  })()}
+                                </div>
+
+                                {/* Comprar Bilhetes Button */}
+                                <div className={`w-full text-center text-[10px] sm:text-xs md:text-sm font-black py-1.5 sm:py-2.5 md:py-3 px-3 rounded-lg sm:rounded-2xl transition-all duration-200 border mt-auto ${
+                                  restantes === 0
+                                    ? "bg-slate-400 text-white border-slate-400 select-none cursor-not-allowed opacity-95 shadow-none"
+                                    : isSelected
+                                      ? "bg-green-600 text-white border-green-600 shadow-md"
+                                      : "bg-[#82C943] text-white border-[#82C943] hover:bg-[#72b834] hover:border-[#72b834]"
+                                }`}>
+                                  {restantes === 0 ? "Esgotado ❌" : isSelected ? "Comprar ✓" : "Ver Cotas 🎫"}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {campaignShowingTab === "drawn" && (
+                    <div className="space-y-4 animate-fadeIn">
+                      <WinnerHighlight
+                        campaigns={campaigns}
+                        allReservations={allReservations}
+                        userProfile={userProfile}
+                        onSelectCampaign={(camp) => {
+                          setSelectedCampaign(camp);
+                          setSuccessReserved(null);
+                          setSelectedNumbers([]);
+                          setTicketSearch("");
+                          setTicketPage(0);
+                          setGridFilter("all");
+                          setShowFullDescriptionMobile(false);
+                          const boardEl = document.getElementById("quadro-bilhetes");
+                          if (boardEl) {
+                            boardEl.scrollIntoView({ behavior: "smooth", block: "start" });
+                          }
+                        }}
+                        selectedCampaignId={selectedCampaign?.id}
+                        maskWinnerName={maskWinnerName}
+                      />
+
+                      {closedCampaigns.length === 0 ? (
+                        <div className="text-center p-8 bg-slate-50 rounded-2xl border border-dashed border-slate-200/80">
+                          <Trophy className="w-8 h-8 mx-auto text-slate-300 mb-1.5" />
+                          <h4 className="text-slate-650 font-bold text-xs">Nenhum sorteio realizado ainda</h4>
+                          <p className="text-slate-400 text-[10px] mt-0.5">As rifas encerradas e seus ganhadores aparecerão listados aqui.</p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6 animate-fadeIn">
+                          {closedCampaigns.map((camp) => {
+                            const isSelected = selectedCampaign?.id === camp.id;
+                            const userTicketsCount = myTickets[camp.id]?.length || 0;
+
+                            // Calculate real-time tickets metrics
+                            const campTickets = allReservations[camp.id] || [];
+                            const vendidas = campTickets.filter(t => t.status === "confirmed").length;
+                            const restantes = Math.max(0, camp.totalTickets - campTickets.length);
+
+                            return (
+                              <button
+                                key={camp.id}
+                                onClick={() => {
+                                  setSelectedCampaign(camp);
+                                  setSuccessReserved(null);
+                                  setSelectedNumbers([]);
+                                  setTicketSearch("");
+                                  setTicketPage(0);
+                                  setGridFilter("all");
+                                  setShowFullDescriptionMobile(false);
+                                  
+                                  const boardEl = document.getElementById("quadro-bilhetes");
+                                  if (boardEl) {
+                                    boardEl.scrollIntoView({ behavior: "smooth", block: "start" });
+                                  }
+                                }}
+                                className={`group relative flex flex-col text-left bg-white rounded-2xl md:rounded-3xl border overflow-hidden p-3 md:p-5 transition-all duration-300 cursor-pointer w-full opacity-90 hover:opacity-100 ${
+                                  isSelected
+                                    ? "border-amber-500 ring-4 ring-amber-500/15 shadow-lg transform scale-[1.01]"
+                                    : "border-slate-200 hover:border-amber-350 hover:shadow-lg hover:-translate-y-0.5"
+                                }`}
+                              >
+                                {/* Thumbnail Image Container ("Foto da Campanha" - Concluido) */}
+                                <div className="relative aspect-[4/3] sm:aspect-square w-full overflow-hidden bg-slate-50 rounded-xl md:rounded-2xl border border-slate-100 shrink-0 mb-3 grayscale group-hover:grayscale-0 transition-all duration-350">
+                                  <img
+                                    src={camp.imageUrl || getCampaignPlaceholderImage(camp.title, camp.id)}
+                                    alt={camp.title}
+                                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                    referrerPolicy="no-referrer"
+                                  />
+
+                                  {/* Diagonal Sold Out Banner */}
+                                  {restantes === 0 && (
+                                    <div className="absolute inset-0 bg-black/30 z-10 pointer-events-none flex items-center justify-center overflow-hidden">
+                                      <div className="bg-gradient-to-r from-red-700 via-rose-500 to-red-700 text-white font-extrabold text-[8px] md:text-xs py-1.5 w-[160%] text-center uppercase tracking-widest rotate-[-25deg] shadow-[0_10px_20px_rgba(0,0,0,0.4)] border-y border-yellow-400 animate-pulse select-none">
+                                        ESGOTADO
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Floating Winner Number Tag */}
+                                  <div className="absolute top-1.5 left-1.5 md:top-2.5 md:left-2.5 bg-amber-500 text-white font-black text-[9px] sm:text-xs md:text-sm px-2 py-0.5 md:px-3.5 md:py-1.5 rounded-lg md:rounded-xl shadow-lg border border-white/10 flex items-center justify-center gap-1 font-mono">
+                                    🏆 Nº {camp.winningNumber || "Sorteado"}
+                                  </div>
+
+                                  {/* Floating status badge (right side) */}
+                                  <div className="absolute top-1.5 right-1.5 md:top-2.5 md:right-2.5 flex items-center gap-1">
+                                    {userTicketsCount > 0 && (
+                                      <span className="bg-slate-600 text-white text-[7px] md:text-[9.5px] font-black px-1.5 py-0.5 rounded-full shadow-md">
+                                        {userTicketsCount} Adquirido
+                                      </span>
+                                    )}
+                                    <span className="bg-slate-900/85 backdrop-blur-sm text-white px-1.5 py-0.5 md:px-2.5 md:py-1 text-[7px] md:text-[9.5px] font-bold rounded-full flex items-center gap-1 border border-white/10">
+                                      <Trophy className="w-2 h-2 text-amber-450 animate-bounce" />
+                                      Encerrada
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {/* Title and Description */}
+                                <div className="space-y-1 mb-2 flex-1 flex flex-col justify-start">
+                                  <h3 className="font-extrabold text-slate-800 text-[11px] xs:text-xs sm:text-sm md:text-base leading-snug group-hover:text-amber-600 transition-colors line-clamp-2">
+                                    {camp.title}
+                                  </h3>
+                                  <p className="hidden md:block text-slate-450 text-[10px] md:text-xs line-clamp-2 leading-relaxed">
+                                    {camp.description ? stripHtml(camp.description) : "Confira os detalhes e o bilhete contemplado para este sorteio encerrado de formatura."}
+                                  </p>
+                                </div>
+
+                                {/* Compact horizontal stats for mobile */}
+                                <div className="flex sm:hidden justify-between items-center bg-slate-50 border border-slate-100 rounded-xl px-2 py-1.5 text-[9px] text-slate-600 font-bold w-full mb-2.5 select-none font-mono">
+                                  <span>{camp.totalTickets} <span className="font-medium text-slate-400">cotas</span></span>
+                                  <span className="text-slate-200">|</span>
+                                  <span>{restantes} <span className="font-medium text-slate-400">sobra</span></span>
+                                </div>
+
+                                {/* The Trio of Info Boxes (Cotas, Vendidas, Restantes) */}
+                                <div className="hidden sm:grid grid-cols-3 gap-1.5 md:gap-2.5 mb-4 w-full">
+                                  <div className="bg-slate-50 border border-slate-100 rounded-2xl p-2 md:p-2.5 flex flex-col items-center justify-center text-center">
+                                    <span className="text-slate-500 font-extrabold text-[9px] md:text-[11px] uppercase tracking-wider">Cotas</span>
+                                    <span className="text-slate-700 font-black text-xs md:text-sm mt-0.5">{camp.totalTickets}</span>
+                                  </div>
+                                  <div className="bg-slate-50 border border-slate-100 rounded-2xl p-2 md:p-2.5 flex flex-col items-center justify-center text-center">
+                                    <span className="text-slate-500 font-extrabold text-[9px] md:text-[11px] uppercase tracking-wider font-semibold">Vendidas</span>
+                                    <span className="text-slate-700 font-black text-xs md:text-sm mt-0.5">{vendidas}</span>
+                                  </div>
+                                  <div className="bg-slate-50 border border-slate-100 rounded-2xl p-2 md:p-2.5 flex flex-col items-center justify-center text-center">
+                                    <span className="text-slate-450 font-extrabold text-[9px] md:text-[11px] uppercase tracking-wider font-semibold">Sobra</span>
+                                    <span className="text-slate-600 font-black text-xs md:text-sm mt-0.5">{restantes}</span>
+                                  </div>
+                                </div>
+
+                                {/* Resultado / Ver Ganhador Button */}
+                                <div className={`w-full text-center text-[10px] sm:text-xs md:text-sm font-black py-1.5 sm:py-2.5 md:py-3 px-3 rounded-lg sm:rounded-2xl transition-all duration-200 border mt-auto ${
+                                  isSelected
+                                    ? "bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/10"
+                                    : "bg-slate-100 text-slate-700 border-slate-200 hover:bg-amber-100 hover:text-amber-800 hover:border-amber-200 shadow-sm"
+                                }`}>
+                                  {isSelected ? "Ganhador ✓" : "Ganhador 🏆"}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {campaignShowingTab === "paused" && (
+                    <div className="space-y-4 animate-fadeIn">
+                      {upcomingCampaigns.length === 0 ? (
+                        <div className="text-center p-8 bg-slate-50 rounded-2xl border border-dashed border-slate-200/80">
+                          <Clock className="w-8 h-8 mx-auto text-slate-350 mb-1.5 animate-pulse" />
+                          <h4 className="text-slate-650 font-bold text-xs">Nenhuma campanha em breve</h4>
+                          <p className="text-slate-400 text-[10px] mt-0.5">Por hora não há novas ofertas listadas. Fique de olho!</p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6 animate-fadeIn">
+                          {upcomingCampaigns.map((camp) => {
+                            const isSelected = selectedCampaign?.id === camp.id;
+                            const userTicketsCount = myTickets[camp.id]?.length || 0;
+
+                            // Calculate real-time tickets metrics
+                            const campTickets = allReservations[camp.id] || [];
+                            const vendidas = campTickets.filter(t => t.status === "confirmed").length;
+                            const restantes = Math.max(0, camp.totalTickets - campTickets.length);
+
+                            return (
+                              <button
+                                key={camp.id}
+                                onClick={() => {
+                                  setSelectedCampaign(camp);
+                                  setSuccessReserved(null);
+                                  setSelectedNumbers([]);
+                                  setTicketSearch("");
+                                  setTicketPage(0);
+                                  setGridFilter("all");
+                                  setShowFullDescriptionMobile(false);
+                                  
+                                  const boardEl = document.getElementById("quadro-bilhetes");
+                                  if (boardEl) {
+                                    boardEl.scrollIntoView({ behavior: "smooth", block: "start" });
+                                  }
+                                }}
+                                className={`group relative flex flex-col text-left bg-white rounded-2xl md:rounded-3xl border overflow-hidden p-3 md:p-5 transition-all duration-350 cursor-pointer w-full opacity-90 hover:opacity-100 ${
+                                  isSelected
+                                    ? "border-slate-805 ring-4 ring-slate-800/15 shadow-lg transform scale-[1.01]"
+                                    : "border-slate-200 hover:border-slate-350 hover:shadow-lg hover:-translate-y-0.5"
+                                }`}
+                              >
+                                {/* Thumbnail Image Container ("Foto da Campanha" - Em Breve) */}
+                                <div className="relative aspect-[4/3] sm:aspect-square w-full overflow-hidden bg-slate-50 rounded-xl md:rounded-2xl border border-slate-100 shrink-0 mb-3 grayscale group-hover:grayscale-0 transition-all duration-350">
+                                  <img
+                                    src={camp.imageUrl || getCampaignPlaceholderImage(camp.title, camp.id)}
+                                    alt={camp.title}
+                                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                    referrerPolicy="no-referrer"
+                                  />
+
+                                  {/* Floating Price Tag */}
+                                  <div className="absolute top-1.5 left-1.5 md:top-2.5 md:left-2.5 bg-slate-700 text-white font-black text-[9px] sm:text-xs md:text-sm px-2 py-0.5 md:px-3.5 md:py-1.5 rounded-lg md:rounded-xl shadow-lg border border-white/10 flex items-center justify-center font-mono font-bold">
+                                    R$ {camp.ticketPrice.toFixed(2)}
+                                  </div>
+
+                                  {/* Floating status badge (right side) */}
+                                  <div className="absolute top-1.5 right-1.5 md:top-2.5 md:right-2.5 flex items-center gap-1">
+                                    <span className="bg-slate-900/85 backdrop-blur-sm text-white px-1.5 py-0.5 md:px-2.5 md:py-1 text-[7px] md:text-[9.5px] font-bold rounded-full flex items-center gap-1 border border-white/10">
+                                      <Clock className="w-2 h-2 text-amber-450 animate-pulse" />
+                                      Em Breve
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {/* Countdown below the image, above the title */}
+                                <div className="mt-2.5 mb-1 flex justify-center w-full">
+                                  <CampaignCountdown campaign={camp} tickets={campTickets} />
+                                </div>
+
+                                {/* Title and Description */}
+                                <div className="space-y-1 mb-2 flex-1 flex flex-col justify-start">
+                                  <h3 className="font-extrabold text-slate-800 text-[11px] xs:text-xs sm:text-sm md:text-base leading-snug group-hover:text-slate-600 transition-colors line-clamp-2">
+                                    {camp.title}
+                                  </h3>
+                                  <p className="hidden md:block text-slate-450 text-[10px] md:text-xs line-clamp-2 leading-relaxed">
+                                    {camp.description ? stripHtml(camp.description) : "Esta rifa está com as reservas pausadas e será lançada em breve. Acompanhe as novidades!"}
+                                  </p>
+                                </div>
+
+                                {/* Compact horizontal stats for mobile */}
+                                <div className="flex sm:hidden justify-between items-center bg-slate-50 border border-slate-100 rounded-xl px-2 py-1.5 text-[9px] text-slate-605 font-bold w-full mb-2.5 select-none font-mono">
+                                  <span>{camp.totalTickets} <span className="font-medium text-slate-400">cotas</span></span>
+                                  <span className="text-slate-200">|</span>
+                                  <span>Pausada</span>
+                                </div>
+
+                                {/* The Trio of Info Boxes (Cotas, Vendidas, Restantes) */}
+                                <div className="hidden sm:grid grid-cols-3 gap-1.5 md:gap-2.5 mb-4 w-full">
+                                  <div className="bg-slate-50 border border-slate-100 rounded-2xl p-2 md:p-2.5 flex flex-col items-center justify-center text-center font-bold">
+                                    <span className="text-slate-500 font-extrabold text-[9px] md:text-[11px] uppercase tracking-wider">Cotas</span>
+                                    <span className="text-slate-700 font-black text-xs md:text-sm mt-0.5">{camp.totalTickets}</span>
+                                  </div>
+                                  <div className="bg-slate-50 border border-slate-100 rounded-2xl p-2 md:p-2.5 flex flex-col items-center justify-center text-center font-bold font-semibold">
+                                    <span className="text-slate-500 font-extrabold text-[9px] md:text-[11px] uppercase tracking-wider">Status</span>
+                                    <span className="text-slate-700 font-black text-[10px] md:text-xs mt-0.5">Em Breve</span>
+                                  </div>
+                                  <div className="bg-slate-50 border border-slate-100 rounded-2xl p-2 md:p-2.5 flex flex-col items-center justify-center text-center font-bold font-semibold">
+                                    <span className="text-slate-455 font-extrabold text-[9px] md:text-[11px] uppercase tracking-wider">Reservas</span>
+                                    <span className="text-rose-600 font-black text-[10px] md:text-xs mt-0.5">Pausadas</span>
+                                  </div>
+                                </div>
+
+                                {/* Regulamento Button */}
+                                <div className={`w-full text-center text-[10px] sm:text-xs md:text-sm font-black py-1.5 sm:py-2.5 md:py-3 px-3 rounded-lg sm:rounded-2xl transition-all duration-200 border mt-auto ${
+                                  isSelected
+                                    ? "bg-slate-800 text-white border-slate-800 shadow-md shadow-slate-800/10"
+                                    : "bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200 hover:text-slate-800 shadow-sm"
+                                }`}>
+                                  {isSelected ? "Em Breve ✓" : "Ver Regulamento 📜"}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1900,6 +2096,11 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                             Loteria Federal de: {selectedCampaign.drawDate.includes("-") ? selectedCampaign.drawDate.split("-").reverse().join("/") : selectedCampaign.drawDate}{selectedCampaign.drawHour ? ` às ${selectedCampaign.drawHour}` : ""}
                           </span>
                         )}
+                        {selectedCampaign.status !== "drawn" && (
+                          <div className="inline-flex">
+                            <CampaignCountdown campaign={selectedCampaign} tickets={allReservations[selectedCampaign.id] || []} />
+                          </div>
+                        )}
                       </div>
                       <h2 className="text-xl md:text-2xl font-extrabold tracking-tight text-slate-800">{selectedCampaign.title}</h2>
                       <div 
@@ -1921,13 +2122,27 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                       </div>
                       <h3 className="text-xl font-bold tracking-tight">Sorteio Realizado!</h3>
                       <p className="text-slate-300 text-xs mt-1 max-w-md leading-relaxed">
-                        Extração concurso nº <strong>{selectedCampaign.federalLotteryDrawId || "Oficial"}</strong> da Loteria Federal
-                        {selectedCampaign.drawDate && (
-                          <> realizada em <strong>{selectedCampaign.drawDate.includes("-") ? selectedCampaign.drawDate.split("-").reverse().join("/") : selectedCampaign.drawDate}</strong></>
+                        {selectedCampaign.drawMode === "express" ? (
+                          <>
+                            Sorteio automático disparado na venda e confirmação de todas as cotas da ação
+                            {selectedCampaign.drawDate && (
+                              <> realizado em <strong>{selectedCampaign.drawDate}</strong></>
+                            )}
+                            {selectedCampaign.drawHour && (
+                              <> às <strong>{selectedCampaign.drawHour}</strong></>
+                            )}.
+                          </>
+                        ) : (
+                          <>
+                            Extração concurso nº <strong>{selectedCampaign.federalLotteryDrawId || "Oficial"}</strong> da Loteria Federal
+                            {selectedCampaign.drawDate && (
+                              <> realizada em <strong>{selectedCampaign.drawDate.includes("-") ? selectedCampaign.drawDate.split("-").reverse().join("/") : selectedCampaign.drawDate}</strong></>
+                            )}
+                            {selectedCampaign.drawHour && (
+                              <> às <strong>{selectedCampaign.drawHour}</strong></>
+                            )}.
+                          </>
                         )}
-                        {selectedCampaign.drawHour && (
-                          <> às <strong>{selectedCampaign.drawHour}</strong></>
-                        )}.
                       </p>
 
                       <div className="my-6 bg-indigo-900 border border-indigo-800 rounded-2xl px-8 py-5 flex flex-col items-center">
@@ -1946,11 +2161,11 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                         <div className="text-xs text-indigo-300 bg-indigo-900/40 p-3.5 border border-indigo-800/30 rounded-xl leading-relaxed max-w-sm">
                           ✨ Parabéns ao vencedor! <br />
                           <strong>
-                            {userProfile.role === "admin"
+                            {userProfile?.role === "admin"
                               ? tickets[selectedCampaign.winningNumber || ""].buyerName
                               : maskWinnerName(tickets[selectedCampaign.winningNumber || ""].buyerName)}
                           </strong>
-                          {userProfile.role === "admin" ? (
+                          {userProfile?.role === "admin" ? (
                             <> de <strong>{tickets[selectedCampaign.winningNumber || ""].buyerCpf || "CPF verificado"}</strong></>
                           ) : (
                             <> (CPF verificado)</>
@@ -2213,16 +2428,20 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                               {[5, 10, 25, 50, 100].map((count) => {
                                 if (selectedCampaign.totalTickets < count) return null;
                                 const isSelectedCount = selectedNumbers.length === count;
+                                const isBtnDisabled = selectedCampaignIsSoldOut || selectedCampaignRestantes < count;
                                 
                                 return (
                                   <button
                                     key={count}
                                     type="button"
-                                    onClick={() => handleQuickSelectRandom(count)}
-                                    className={`relative py-2.5 px-1 sm:px-3 rounded-xl shadow-xs transition-all duration-205 hover:-translate-y-0.5 active:translate-y-0 text-center flex flex-col items-center justify-center cursor-pointer border font-black text-xs ${
-                                      isSelectedCount
-                                        ? "bg-emerald-600 border-emerald-600 text-white shadow-md font-bold"
-                                        : "bg-[#82C943] border-[#82C943] hover:bg-[#72b834] hover:border-[#72b834] text-white"
+                                    disabled={isBtnDisabled}
+                                    onClick={() => !isBtnDisabled && handleQuickSelectRandom(count)}
+                                    className={`relative py-2.5 px-1 sm:px-3 rounded-xl shadow-xs transition-transform duration-205 text-center flex flex-col items-center justify-center border font-black text-xs cursor-pointer ${
+                                      isBtnDisabled
+                                        ? "bg-slate-300 border-slate-300 text-slate-500 cursor-not-allowed select-none pointer-events-none opacity-80"
+                                        : isSelectedCount
+                                          ? "bg-emerald-600 border-emerald-600 text-white shadow-md font-bold"
+                                          : "bg-[#82C943] border-[#82C943] hover:bg-[#72b834] hover:border-[#72b834] text-white hover:-translate-y-0.5"
                                     }`}
                                   >
                                     <span className="text-[15px] leading-tight">+{count}</span>
@@ -2244,8 +2463,9 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                                 <div className="flex items-center bg-white border-2 border-slate-200 rounded-xl overflow-hidden shadow-xs h-10 select-none">
                                   <button
                                     type="button"
+                                    disabled={selectedCampaignIsSoldOut}
                                     onClick={() => setCustomQuantity(q => Math.max(1, q - 1))}
-                                    className="px-3 bg-slate-50 text-slate-700 font-black text-sm hover:bg-slate-100 h-full border-r border-slate-200 active:bg-slate-200 transition-all outline-none"
+                                    className="px-3 bg-slate-50 text-slate-700 font-black text-sm hover:bg-slate-100 h-full border-r border-slate-200 active:bg-slate-200 transition-all outline-none disabled:opacity-50 disabled:cursor-not-allowed"
                                   >
                                     -
                                   </button>
@@ -2253,25 +2473,32 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                                     type="number"
                                     min="1"
                                     max={selectedCampaign.totalTickets}
+                                    disabled={selectedCampaignIsSoldOut}
                                     value={customQuantity}
                                     onChange={(e) => {
                                       const val = Math.min(selectedCampaign.totalTickets, Math.max(1, parseInt(e.target.value) || 1));
                                       setCustomQuantity(val);
                                     }}
-                                    className="w-12 text-center font-mono font-black text-xs text-slate-800 bg-transparent py-1 h-full outline-none focus:ring-0"
+                                    className="w-12 text-center font-mono font-black text-xs text-slate-800 bg-transparent py-1 h-full outline-none focus:ring-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                   />
                                   <button
                                     type="button"
+                                    disabled={selectedCampaignIsSoldOut}
                                     onClick={() => setCustomQuantity(q => Math.min(selectedCampaign.totalTickets, q + 1))}
-                                    className="px-3 bg-slate-50 text-slate-700 font-black text-sm hover:bg-slate-100 h-full border-l border-slate-200 active:bg-slate-200 transition-all outline-none"
+                                    className="px-3 bg-slate-50 text-slate-700 font-black text-sm hover:bg-slate-100 h-full border-l border-slate-200 active:bg-slate-200 transition-all outline-none disabled:opacity-50 disabled:cursor-not-allowed"
                                   >
                                     +
                                   </button>
                                 </div>
                                 <button
                                   type="button"
+                                  disabled={selectedCampaignIsSoldOut || customQuantity > selectedCampaignRestantes}
                                   onClick={() => handleQuickSelectRandom(customQuantity)}
-                                  className="h-10 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-md shadow-emerald-600/10 flex items-center justify-center gap-1 shrink-0 cursor-pointer"
+                                  className={`h-10 px-4 font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-md flex items-center justify-center gap-1 shrink-0 cursor-pointer ${
+                                    selectedCampaignIsSoldOut || customQuantity > selectedCampaignRestantes
+                                      ? "bg-slate-300 border-slate-300 text-slate-500 cursor-not-allowed select-none pointer-events-none shadow-none opacity-80"
+                                      : "bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/10 active:scale-95"
+                                  }`}
                                 >
                                   <span>Pegar {customQuantity} Cotas 🎲</span>
                                 </button>
@@ -3323,7 +3550,7 @@ Acompanhe os resultados no link de nossa plataforma.
           campaigns={campaigns}
           allReservations={allReservations}
           loading={loadingAllReservations}
-          isAdmin={userProfile.role === "admin"}
+          isAdmin={userProfile?.role === "admin"}
         />
       )}
 
@@ -3467,7 +3694,7 @@ Acompanhe os resultados no link de nossa plataforma.
                                       Ganhador(a) Oficial
                                     </span>
                                     <h4 className="text-xs md:text-sm font-black text-slate-850 truncate">
-                                      {userProfile.role === "admin"
+                                      {userProfile?.role === "admin"
                                         ? winnerTicket.buyerName
                                         : maskWinnerName(winnerTicket.buyerName || "")}
                                     </h4>
@@ -3508,9 +3735,18 @@ Acompanhe os resultados no link de nossa plataforma.
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-1 text-[10px] font-black text-indigo-700">
-                            <span>Concurso Loteria Federal:</span>
-                            <strong className="text-slate-800 font-mono">#{camp.federalLotteryDrawId || "Oficial"}</strong>
+                          <div className="flex items-center gap-1 text-[10px] font-black text-indigo-705">
+                            {camp.drawMode === "express" ? (
+                              <span className="inline-flex items-center gap-1.5 bg-purple-100/70 text-purple-800 border border-purple-200/50 px-2.5 py-1 rounded-full text-[9px] uppercase tracking-wide font-sans cursor-help" title="O sorteio ocorre instantaneamente no momento em que todas as cotas forem cheias e confirmadas pelo administrador.">
+                                <span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse" />
+                                <span>Sorteio Express</span>
+                              </span>
+                            ) : (
+                              <>
+                                <span>Concurso Loteria Federal:</span>
+                                <strong className="text-slate-800 font-mono">#{camp.federalLotteryDrawId || "Oficial"}</strong>
+                              </>
+                            )}
                           </div>
                         </div>
                       </div>

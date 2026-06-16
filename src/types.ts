@@ -30,6 +30,7 @@ export interface Campaign {
   prizeExpenses?: number; // Cost/expenses spent on the prizes of this campaign
   createdAt: string;
   progressiveDiscounts?: { minQuantity: number; discountPrice: number; discountPercentage?: number }[];
+  drawMode?: "traditional" | "express";
 }
 
 export type TicketStatus = "available" | "reserved" | "confirmed";

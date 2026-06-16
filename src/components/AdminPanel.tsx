@@ -117,6 +117,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
   const [newCampaignExpenses, setNewCampaignExpenses] = useState<number>(0);
   const [newCampaignDrawDate, setNewCampaignDrawDate] = useState("");
   const [newCampaignDrawId, setNewCampaignDrawId] = useState("");
+  const [newCampaignDrawMode, setNewCampaignDrawMode] = useState<"traditional" | "express">("traditional");
   const [newCampaignImage, setNewCampaignImage] = useState("");
   const [imageUploadLoading, setImageUploadLoading] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
@@ -134,6 +135,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
   const [editCampaignExpenses, setEditCampaignExpenses] = useState<number>(0);
   const [editCampaignDrawDate, setEditCampaignDrawDate] = useState("");
   const [editCampaignDrawId, setEditCampaignDrawId] = useState("");
+  const [editCampaignDrawMode, setEditCampaignDrawMode] = useState<"traditional" | "express">("traditional");
   const [editCampaignImage, setEditCampaignImage] = useState("");
   const [editCampaignDiscounts, setEditCampaignDiscounts] = useState<{ minQuantity: number; discountPrice: number; discountPercentage?: number }[]>([]);
   const [editCampaignDiscountEnabled, setEditCampaignDiscountEnabled] = useState(false);
@@ -1241,6 +1243,27 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
           ticketList.push(d.data() as Ticket);
         });
 
+        // Check for automatic express drawing
+        const confirmedTickets = ticketList.filter(t => t.status === "confirmed");
+        if (camp.status === "active" && camp.drawMode === "express" && confirmedTickets.length === camp.totalTickets && camp.totalTickets > 0) {
+          const randomIndex = Math.floor(Math.random() * confirmedTickets.length);
+          const winningTicket = confirmedTickets[randomIndex];
+          if (winningTicket) {
+            const now = new Date();
+            const drawDateStr = now.toLocaleDateString("pt-BR");
+            const drawHourStr = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+
+            updateDoc(doc(db, "campaigns", camp.id), {
+              status: "drawn",
+              winningNumber: winningTicket.number,
+              drawDate: drawDateStr,
+              drawHour: drawHourStr
+            }).catch((err) => {
+              console.error("Failed to auto-draw express campaign:", err);
+            });
+          }
+        }
+
         setAllReservations((prev) => ({
           ...prev,
           [camp.id]: ticketList
@@ -1382,6 +1405,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
     setEditCampaignExpenses(camp.prizeExpenses || 0);
     setEditCampaignDrawDate(camp.drawDate || "");
     setEditCampaignDrawId(camp.federalLotteryDrawId || "");
+    setEditCampaignDrawMode(camp.drawMode || "traditional");
     setEditCampaignImage(camp.imageUrl || "");
     if (camp.progressiveDiscounts && camp.progressiveDiscounts.length > 0) {
       setEditCampaignDiscounts(camp.progressiveDiscounts);
@@ -1403,6 +1427,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
       ticketPrice: Number(editCampaignPrice),
       totalTickets: Number(editCampaignTotal),
       prizeExpenses: Number(editCampaignExpenses),
+      drawMode: editCampaignDrawMode,
     };
 
     if (editCampaignImage.trim()) {
@@ -1450,7 +1475,8 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
       totalTickets: Number(newCampaignTotal),
       status: "active",
       prizeExpenses: Number(newCampaignExpenses || 0),
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      drawMode: newCampaignDrawMode,
     };
 
     if (newCampaignImage.trim()) {
@@ -1477,6 +1503,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
       setNewCampaignExpenses(0);
       setNewCampaignDrawDate("");
       setNewCampaignDrawId("");
+      setNewCampaignDrawMode("traditional");
       setNewCampaignImage("");
       setNewCampaignDiscounts([]);
       setNewCampaignDiscountEnabled(false);
@@ -2773,6 +2800,18 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                   </select>
                 </div>
 
+                <div>
+                  <label className="block font-semibold text-slate-600 mb-1">Modalidade do Sorteio</label>
+                  <select
+                    value={newCampaignDrawMode}
+                    onChange={(e) => setNewCampaignDrawMode(e.target.value as "traditional" | "express")}
+                    className="w-full bg-white p-2.5 border border-slate-300 rounded-lg text-xs"
+                  >
+                    <option value="traditional">Tradicional (Loteria Federal Caixa)</option>
+                    <option value="express">Expressa (Sorteio Automático ao Vender Tudo)</option>
+                  </select>
+                </div>
+
                 {/* PROGRESSIVE DISCOUNTS WIDGET FOR NEW CAMPAIGN */}
                 <div className="md:col-span-2 bg-indigo-50/40 p-4 rounded-xl border border-indigo-100 space-y-3.5">
                   <div className="flex items-center gap-2">
@@ -3525,6 +3564,18 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                         <option value={100}>100 bilhetes (00-99)</option>
                         <option value={1000}>1000 bilhetes (000-999)</option>
                         <option value={10000}>10000 bilhetes (0000-9999)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-slate-600 mb-1">Modalidade do Sorteio</label>
+                      <select
+                        value={editCampaignDrawMode}
+                        onChange={(e) => setEditCampaignDrawMode(e.target.value as "traditional" | "express")}
+                        className="w-full bg-white p-2.5 border border-slate-300 rounded-lg text-xs"
+                      >
+                        <option value="traditional">Tradicional (Loteria Federal Caixa)</option>
+                        <option value="express">Expressa (Sorteio Automático ao Vender Tudo)</option>
                       </select>
                     </div>
 

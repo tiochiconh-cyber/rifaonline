@@ -7,7 +7,8 @@ import LoginForm from "./components/LoginForm";
 import ClientDashboard from "./components/ClientDashboard";
 import Admin2FA from "./components/Admin2FA";
 import AdminPanel from "./components/AdminPanel";
-import { Loader2, GraduationCap, Sparkles, LogIn, Lock, BookOpen, Clock, ShieldCheck, Trophy, AlertCircle, DollarSign, Calendar } from "lucide-react";
+import AppLogo from "./components/AppLogo";
+import { Loader2, GraduationCap, Sparkles, LogIn, LogOut, Lock, BookOpen, Clock, ShieldCheck, Trophy, AlertCircle, DollarSign, Calendar } from "lucide-react";
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -20,6 +21,7 @@ export default function App() {
   const [showTerms, setShowTerms] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [showRules, setShowRules] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
   useEffect(() => {
     const consent = localStorage.getItem("lgpd_consent_accepted");
@@ -155,9 +157,7 @@ export default function App() {
       {/* Modern, elegant main branding and regulations navbar header */}
       <header className="max-w-7xl mx-auto px-4 md:px-8 pt-4 md:pt-6 flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-slate-200/60 pb-4">
         <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-600/20">
-            <GraduationCap className="w-6 h-6" />
-          </div>
+          <AppLogo settings={settings} size="lg" className="ring-1 ring-indigo-500/20 shadow-md" />
           <div>
             <h1 className="font-black text-lg text-slate-800 tracking-tight">
               Rifas de Formatura
@@ -165,27 +165,77 @@ export default function App() {
             <p className="text-[11px] text-slate-400 font-bold uppercase tracking-wider">
               Apoie meu sonho de colar grau! 🎓
             </p>
+            <p className="text-[11px] text-slate-500 mt-0.5" id="header-support-contact-email-container">
+              <span>Contato: </span>
+              <a 
+                href={`mailto:${settings.supportEmail || "contato@rifadochiquinho.com.br"}`} 
+                className="text-indigo-600 hover:underline font-semibold transition-colors"
+                id="header-support-contact-email"
+              >
+                {settings.supportEmail || "contato@rifadochiquinho.com.br"}
+              </a>
+            </p>
           </div>
         </div>
         
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          {profile && (
+            <div className="flex flex-col text-right mr-1.5 bg-indigo-50/50 px-3 py-1.5 rounded-xl border border-indigo-100/40">
+              <span className="text-xs font-black text-indigo-900 leading-none">{profile.name}</span>
+              <span className="text-[9px] text-slate-500 font-bold mt-0.5 font-mono">CPF: {profile.cpf}</span>
+            </div>
+          )}
+
           <button
             type="button"
             onClick={() => setShowRules(true)}
-            className="flex items-center gap-1.5 px-4 md:px-5 py-2.5 bg-indigo-50 hover:bg-indigo-100 active:scale-95 text-indigo-700 font-extrabold text-xs rounded-xl shadow-xs border border-indigo-150 transition cursor-pointer"
+            className="flex items-center gap-1.5 px-3.5 md:px-5 py-2.5 bg-indigo-50 hover:bg-indigo-100 active:scale-95 text-indigo-700 font-extrabold text-xs rounded-xl shadow-xs border border-indigo-150 transition cursor-pointer"
           >
             <BookOpen className="w-4 h-4" />
-            <span>Ver Regulamento da Rifa</span>
+            <span>Regulamento</span>
           </button>
+          
+          {user && (
+            <button
+              type="button"
+              onClick={() => setShowPrivacy(true)}
+              className="flex items-center gap-1.5 px-3 md:px-4 py-2.5 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-750 font-extrabold text-xs rounded-xl shadow-xs border border-slate-200 transition cursor-pointer"
+            >
+              <ShieldCheck className="w-4 h-4 text-emerald-650 animate-pulse" />
+              <span className="hidden sm:inline">Meus Dados</span>
+            </button>
+          )}
+
+          {!user ? (
+            <button
+              type="button"
+              onClick={() => setShowAuthModal(true)}
+              className="flex items-center gap-1.5 px-4 md:px-5 py-2.5 bg-gradient-to-r from-indigo-500 to-indigo-650 hover:from-indigo-600 hover:to-indigo-700 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-md border border-indigo-500/10 transition cursor-pointer"
+            >
+              <LogIn className="w-4 h-4" />
+              <span>Entrar / Cadastrar ✅</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="flex items-center gap-1.5 px-3 md:px-4 py-2.5 bg-rose-50 hover:bg-rose-100 active:scale-95 text-rose-700 font-extrabold text-xs rounded-xl shadow-xs border border-rose-150 transition cursor-pointer"
+            >
+              <LogOut className="w-4 h-4" />
+              <span>Sair</span>
+            </button>
+          )}
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto p-4 md:p-8 shrink-0">
+      <main className="max-w-7xl mx-auto shrink-0 p-2 md:p-4 lg:p-6">
         {!user ? (
-          /* Initial Screen: Auth or Register option */
-          <div className="py-8">
-            <LoginForm onLoginSuccess={handleLoginSuccess} />
-          </div>
+          /* GUEST VISITOR FLOW: Render main client dashboard with null user profile support */
+          <ClientDashboard 
+            userProfile={null} 
+            onLogout={handleLogout} 
+            onPromptLogin={() => setShowAuthModal(true)} 
+          />
         ) : (
           /* User is logged in: Check for admin or normal client flow */
           <div className="space-y-6">
@@ -209,10 +259,16 @@ export default function App() {
               /* REGULAR CLIENT FLOW */
               profile ? (
                 /* Active complete profile - enter raffle cockpit */
-                <ClientDashboard userProfile={profile} onLogout={handleLogout} />
+                <ClientDashboard 
+                  userProfile={profile} 
+                  onLogout={handleLogout} 
+                  onPromptLogin={() => setShowAuthModal(true)} 
+                />
               ) : (
                 /* Signed-in but needs to complete missing fields */
-                <div className="py-8 col-span-12">
+                <div className="py-8 col-span-12 max-w-lg mx-auto bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+                  <h3 className="font-extrabold text-lg text-slate-800 text-center mb-1">Quase lá!</h3>
+                  <p className="text-xs text-slate-500 text-center mb-6">Complete seu cadastro para começar a concorrer e reservar bilhetes.</p>
                   <LoginForm onLoginSuccess={handleLoginSuccess} initialUser={user} />
                 </div>
               )
@@ -523,6 +579,31 @@ export default function App() {
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* Floating Auth Modal Popup */}
+      {showAuthModal && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-all animate-fadeIn select-none">
+          <div className="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl relative border border-slate-100/50 p-1">
+            <button 
+              type="button"
+              onClick={() => setShowAuthModal(false)}
+              className="absolute top-4 right-4 z-[130] w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold text-sm flex items-center justify-center cursor-pointer transition-all active:scale-90"
+            >
+              ✕
+            </button>
+            <div className="max-h-[90vh] overflow-y-auto p-4 md:p-6 text-slate-900 select-auto">
+              <div className="text-center mb-4">
+                <h3 className="font-extrabold text-xl text-slate-800 tracking-tight">Entrar ou Cadastrar-se 🎟️</h3>
+                <p className="text-xs text-slate-500 mt-1">Identifique-se de forma rápida para faturar suas cotas com total segurança</p>
+              </div>
+              <LoginForm onLoginSuccess={(loggedInUser) => {
+                handleLoginSuccess(loggedInUser);
+                setShowAuthModal(false);
+              }} />
+            </div>
           </div>
         </div>
       )}
