@@ -266,9 +266,7 @@ export default function App() {
                 />
               ) : (
                 /* Signed-in but needs to complete missing fields */
-                <div className="py-8 col-span-12 max-w-lg mx-auto bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
-                  <h3 className="font-extrabold text-lg text-slate-800 text-center mb-1">Quase lá!</h3>
-                  <p className="text-xs text-slate-500 text-center mb-6">Complete seu cadastro para começar a concorrer e reservar bilhetes.</p>
+                <div className="py-8 col-span-12 max-w-4xl lg:max-w-5xl mx-auto w-full">
                   <LoginForm onLoginSuccess={handleLoginSuccess} initialUser={user} />
                 </div>
               )
@@ -585,20 +583,17 @@ export default function App() {
 
       {/* Floating Auth Modal Popup */}
       {showAuthModal && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-all animate-fadeIn select-none">
-          <div className="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl relative border border-slate-100/50 p-1">
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fadeIn select-none">
+          <div className="relative w-full max-w-4xl lg:max-w-5xl max-h-[92vh] flex flex-col">
             <button 
               type="button"
               onClick={() => setShowAuthModal(false)}
-              className="absolute top-4 right-4 z-[130] w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold text-sm flex items-center justify-center cursor-pointer transition-all active:scale-90"
+              className="absolute top-4 right-4 z-[130] w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-850 font-extrabold text-xs flex items-center justify-center cursor-pointer transition-all active:scale-90 shadow-md border border-slate-250/70"
+              title="Fechar"
             >
               ✕
             </button>
-            <div className="max-h-[90vh] overflow-y-auto p-4 md:p-6 text-slate-900 select-auto">
-              <div className="text-center mb-4">
-                <h3 className="font-extrabold text-xl text-slate-800 tracking-tight">Entrar ou Cadastrar-se 🎟️</h3>
-                <p className="text-xs text-slate-500 mt-1">Identifique-se de forma rápida para faturar suas cotas com total segurança</p>
-              </div>
+            <div className="overflow-y-auto rounded-3xl shadow-2xl">
               <LoginForm onLoginSuccess={(loggedInUser) => {
                 handleLoginSuccess(loggedInUser);
                 setShowAuthModal(false);

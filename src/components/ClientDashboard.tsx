@@ -2846,6 +2846,19 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                   <p className="text-slate-505 text-xs font-normal">
                     Acompanhe o status do pagamento manual das suas reservas enviadas ao administrador.
                   </p>
+                  
+                  {myTotalTicketsCount > 0 && (
+                    <button
+                      onClick={() => {
+                        setActiveTab("compras");
+                        setSuccessReserved(null);
+                      }}
+                      className="w-full bg-gradient-to-r from-indigo-55 to-indigo-100 hover:from-indigo-100 hover:to-indigo-150 text-indigo-900 text-[11px] font-black py-2.5 px-3 rounded-xl cursor-pointer transition flex items-center justify-center gap-1.5 border border-indigo-200/50 shadow-2xs active:scale-95"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-indigo-650 animate-pulse" />
+                      <span>Ver Acompanhamento Passo a Passo 📈</span>
+                    </button>
+                  )}
                   <div className="space-y-4 max-h-[300px] overflow-y-auto pr-1">
                       {(() => {
                         const entries = Object.entries(myTickets) as [string, Ticket[]][];
@@ -2980,17 +2993,28 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
         </div>
       )}
 
-      {/* 3. RETRO COMPATIBLE "COMPRAS" TAB SEARCH ON MOBILE (ONLY) */}
+      {/* 3. RETRO COMPATIBLE "COMPRAS" TAB SEARCH ON MOBILE & DESKTOP */}
       {activeTab === "compras" && (
-        <div className="block lg:hidden space-y-6 animate-fadeIn">
-          <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 space-y-4">
-            <h2 className="font-bold text-slate-800 text-sm uppercase tracking-wider flex items-center gap-2">
-              <ShoppingBag className="w-4 h-4 text-indigo-650 shrink-0" />
-              Minhas Reservas & Bilhetes
-            </h2>
-            <p className="text-slate-500 text-xs">
-              Acompanhe o status do pagamento manual das suas reservas enviadas ao administrador.
-            </p>
+        <div className="space-y-6 animate-fadeIn">
+          <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-100 space-y-6 max-w-5xl mx-auto">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+              <div>
+                <h2 className="font-extrabold text-slate-900 text-lg flex items-center gap-2">
+                  <ShoppingBag className="w-5 h-5 text-indigo-650 shrink-0 uppercase tracking-wide" />
+                  Acompanhamento de Reservas & Bilhetes 📈
+                </h2>
+                <p className="text-slate-500 text-xs mt-1">
+                  Verifique e valide o status passo a passo de cada uma de suas participações de forma transparente e em tempo real.
+                </p>
+              </div>
+
+              {myTotalTicketsCount > 0 && (
+                <div className="bg-indigo-50 border border-indigo-100/50 px-3.5 py-2 rounded-2xl flex items-center gap-2 text-xs font-bold text-indigo-900 shadow-2xs shrink-0 select-none">
+                  <span className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse" />
+                  <span>{myTotalTicketsCount} Cota(s) Ativa(s)</span>
+                </div>
+              )}
+            </div>
 
             {myTotalTicketsCount === 0 ? (
               <div className="text-center p-6 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-slate-450 text-xs text-center normal-case">
@@ -3029,81 +3053,264 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                   return allBatches.map(({ campaign, tickets, key }) => {
                     const confirmedTickets = tickets.filter(item => item.status === "confirmed");
                     const reservedTickets = tickets.filter(item => item.status === "reserved");
+                    const isAllConfirmed = reservedTickets.length === 0;
+                    const firstTicket = tickets[0] as Ticket | undefined;
+                    const totalVal = tickets.length * campaign.ticketPrice;
+
+                    // Compute dynamic tracking steps
+                    const steps = [
+                      {
+                        num: 1,
+                        title: "Cotas Reservadas com Sucesso 📝",
+                        desc: `Suas cotas foram separadas com segurança sob seu CPF no sistema da comissão de formatura.`,
+                        status: "done",
+                        sub: firstTicket?.reservedAt 
+                          ? `Realizado em ${new Date(firstTicket.reservedAt).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}h`
+                          : "Reserva Efetuada",
+                      },
+                      {
+                        num: 2,
+                        title: "Pagamento via PIX 💵",
+                        desc: isAllConfirmed 
+                          ? `Chave identificada, Pix recebido e aprovado pela comissão de formatura.`
+                          : `Aguardando a transferência do valor de R$ ${totalVal.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} via PIX para o administrador.`,
+                        status: isAllConfirmed ? "done" : "pending",
+                        sub: isAllConfirmed && firstTicket?.confirmedAt
+                          ? `Confirmado em ${new Date(firstTicket.confirmedAt).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}h`
+                          : isAllConfirmed
+                            ? "Compensado e Validado"
+                            : "Transferência Pendente",
+                        interactive: !isAllConfirmed && (
+                          <div className="flex flex-wrap gap-2 mt-3 select-none">
+                            <button
+                              type="button"
+                              onClick={() => setExclusiveMobilePayment({ campaign: campaign, tickets: reservedTickets })}
+                              className="bg-amber-500 hover:bg-amber-600 text-slate-950 text-[10.5px] font-black px-3.5 py-2 rounded-xl cursor-pointer transition flex items-center gap-1 shadow-md shadow-amber-500/10 active:scale-95"
+                            >
+                              <span>Visualizar Chave PIX 💳</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleWhatsAppRedirect(reservedTickets, campaign)}
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10.5px] font-bold px-3 py-2 rounded-xl cursor-pointer transition flex items-center gap-1 active:scale-95"
+                            >
+                              <span>Enviar Comprovante (WhatsApp) 💬</span>
+                            </button>
+                          </div>
+                        )
+                      },
+                      {
+                        num: 3,
+                        title: "Homologação & Emissão Oficial 🎟️",
+                        desc: isAllConfirmed
+                          ? `Seus bilhetes oficiais certificados foram emitidos legalmente para concorrer.`
+                          : `Chancela digital em processamento automático. Será liberado assim que o Pix for aprovado pelo administrador.`,
+                        status: isAllConfirmed ? "done" : "idle",
+                        sub: isAllConfirmed ? "Chancela eletrônica ativa!" : "Aguardando homologação",
+                        interactive: isAllConfirmed && (
+                          <div className="mt-3">
+                            <button
+                              type="button"
+                              onClick={() => setTicketModalConfig({ campaign: campaign, tickets: confirmedTickets })}
+                              className="bg-indigo-600 hover:bg-indigo-700 text-white text-[10.5px] font-bold px-3.5 py-2 rounded-xl cursor-pointer transition flex items-center gap-1.5 shadow-md shadow-indigo-500/15 active:scale-95"
+                              title="Emitir bilhetes desta reserva"
+                            >
+                              <span>Visualizar & Imprimir Bilhetes 🎫</span>
+                            </button>
+                          </div>
+                        )
+                      },
+                      {
+                        num: 4,
+                        title: "Status do Sorteio 🔮",
+                        desc: campaign.status === "drawn"
+                          ? `Apuração realizada de acordo com a extração oficial da Loteria Federal.`
+                          : `Disponível em breve. Suas cotas concorrem pela Loteria Federal no concurso de encerramento da campanha.`,
+                        status: campaign.status === "drawn" ? "drawn" : "idle",
+                        sub: campaign.status === "drawn"
+                          ? `Sorteado! Número contemplado: #${campaign.winningNumber}`
+                          : campaign.drawDate
+                            ? `Previsão: ${campaign.drawDate} ${campaign.drawHour || ""}`
+                            : "Aguardando apuração",
+                      }
+                    ];
+
+                    const winningTicket = tickets.find(t => t.number === campaign.winningNumber);
+                    const drawFinished = campaign.status === "drawn";
 
                     return (
-                      <div key={key} className="space-y-2 pb-3 border-b border-slate-100 last:border-0 last:pb-0">
-                        <div className="flex items-center justify-between gap-1.5">
-                          <strong className="text-slate-800 text-xs block truncate max-w-[55%]" title={campaign.title}>{campaign.title}</strong>
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            <span className="text-[10px] text-slate-400">{tickets.length} cota(s)</span>
-                            {reservedTickets.length > 0 && (
-                              <div className="flex gap-1 items-center">
-                                <button
-                                  onClick={() => setExclusiveMobilePayment({ campaign: campaign, tickets: reservedTickets })}
-                                  className="bg-amber-500 hover:bg-amber-655 text-slate-950 text-[9px] font-extrabold px-1.5 py-0.5 rounded-md cursor-pointer transition flex items-center gap-0.5 animate-pulse"
-                                  title="Abrir página exclusiva de pagamento e PIX da reserva"
-                                >
-                                  <span>Pagar PIX 💵</span>
-                                </button>
-                                <button
-                                  onClick={() => handleWhatsAppRedirect(reservedTickets, campaign)}
-                                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md cursor-pointer transition flex items-center gap-0.5"
-                                  title="Enviar comprovante de reserva desta campanha por WhatsApp"
-                                >
-                                  <span>WhatsApp 💬</span>
-                                </button>
-                              </div>
-                            )}
-                            {confirmedTickets.length > 0 && (
-                              <button
-                                onClick={() => setTicketModalConfig({ campaign: campaign, tickets: confirmedTickets })}
-                                className="bg-indigo-600 hover:bg-indigo-700 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md cursor-pointer transition flex items-center gap-0.5"
-                                title="Emitir todos os bilhetes confirmados desta campanha"
-                              >
-                                <span>Emitir 🎟️</span>
-                              </button>
+                      <div 
+                        key={key} 
+                        className="bg-slate-50/40 border border-slate-150 rounded-2xl p-4 sm:p-6 space-y-6 transition-all hover:bg-slate-50 duration-205 shadow-3xs"
+                      >
+                        {/* Batch Header Context */}
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-200/50 pb-4 select-text">
+                          <div className="space-y-1">
+                            <h3 className="font-extrabold text-slate-800 text-sm sm:text-base flex items-center gap-2">
+                              <TicketIcon className="w-5 h-5 text-indigo-650 shrink-0" />
+                              {campaign.title}
+                            </h3>
+                            <div className="flex items-center gap-2 flex-wrap text-slate-400 text-[10px] font-bold uppercase tracking-wider">
+                              <span>{tickets.length} {tickets.length === 1 ? "cota" : "cotas"} reservada(s)</span>
+                              <span>•</span>
+                              <span>Total: R$ {totalVal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                            </div>
+                          </div>
+
+                          <div className="shrink-0">
+                            {isAllConfirmed ? (
+                              <span className="bg-emerald-50 text-emerald-800 border border-emerald-200/80 px-2.5 py-1 rounded-xl text-[10px] font-extrabold flex items-center gap-1 shadow-2xs">
+                                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                Pago & Aprovado 🌟
+                              </span>
+                            ) : (
+                              <span className="bg-amber-50 text-amber-800 border border-amber-200/80 px-2.5 py-1 rounded-xl text-[10px] font-extrabold flex items-center gap-1 shadow-2xs animate-pulse">
+                                <Clock className="w-3.5 h-3.5 text-amber-600" />
+                                Aguardando Pix ⏳
+                              </span>
                             )}
                           </div>
                         </div>
-                        <div className="flex flex-wrap gap-1.5">
-                          {tickets.map((t) => {
-                            const isConfirmed = t.status === "confirmed";
-                            return (
-                              <button
-                                key={t.id}
-                                type="button"
-                                onClick={() => {
-                                  if (isConfirmed) {
-                                    setTicketModalConfig({ campaign: campaign, tickets: [t] });
-                                  }
-                                }}
-                                className={`px-2 py-1 rounded-lg border text-[11px] font-semibold font-mono flex items-center gap-1 transition-all ${
-                                  isConfirmed
-                                    ? "bg-indigo-50 border-indigo-200 text-indigo-800 hover:scale-[1.03] hover:bg-indigo-100 cursor-pointer"
-                                    : "bg-amber-55 border-amber-200 text-amber-800 cursor-default"
-                                }`}
-                                title={isConfirmed ? "Clique para emitir seu Bilhete Oficial 🎟️" : "Aguardando confirmação de pagamento"}
-                              >
-                                <span>#{t.number}</span>
-                                <span className="text-[9px] uppercase px-1 rounded bg-white font-sans font-bold shrink-0">
-                                  {isConfirmed ? "Pago 🌟" : "Pend."}
-                                </span>
-                                {t.status === "reserved" && (
-                                  <span
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleCancelReservation(campaign.id, t.id);
-                                    }}
-                                    className="text-red-500 hover:text-red-700 ml-0.5 font-sans font-extrabold cursor-pointer text-xs leading-none"
-                                    title="Desistir da reserva"
-                                  >
-                                    ×
+
+                        {/* Visual Tickets Row */}
+                        <div className="space-y-2">
+                          <span className="block text-[9.5px] uppercase tracking-wider font-extrabold text-slate-400">Suas Cotas deste pedido:</span>
+                          <div className="flex flex-wrap gap-2">
+                            {tickets.map((t) => {
+                              const isConfirmed = t.status === "confirmed";
+                              return (
+                                <button
+                                  key={t.id}
+                                  type="button"
+                                  onClick={() => {
+                                    if (isConfirmed) {
+                                      setTicketModalConfig({ campaign: campaign, tickets: [t] });
+                                    }
+                                  }}
+                                  className={`px-3 py-1.5 rounded-xl border text-xs font-extrabold font-mono flex items-center gap-1.5 transition-all shadow-3xs ${
+                                    isConfirmed
+                                      ? "bg-indigo-50 border-indigo-200 hover:border-indigo-300 text-indigo-900 hover:scale-[1.03] hover:bg-indigo-100/80 cursor-pointer"
+                                      : "bg-amber-50 border-amber-210 text-amber-900 cursor-default"
+                                  }`}
+                                  title={isConfirmed ? "Clique para emitir seu Bilhete Oficial 🎟️" : "Aguardando confirmação de pagamento"}
+                                >
+                                  <span>#{t.number}</span>
+                                  <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-white border border-slate-100 font-sans font-extrabold shrink-0">
+                                    {isConfirmed ? "Ativo 🌟" : "Pend."}
                                   </span>
-                                )}
-                              </button>
-                            );
-                          })}
+                                  {t.status === "reserved" && (
+                                    <span
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleCancelReservation(campaign.id, t.id);
+                                      }}
+                                      className="text-rose-500 hover:text-rose-700 ml-1 font-sans font-black cursor-pointer text-[13px] leading-none px-1 p-0.5 rounded hover:bg-rose-50 transition"
+                                      title="Cancelar reserva deste número"
+                                    >
+                                      ×
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
                         </div>
+
+                        {/* Elegant Stepper Tracker Timeline */}
+                        <div className="border-t border-slate-150 pt-5 space-y-4">
+                          <span className="block text-[9.5px] uppercase tracking-wider font-extrabold text-indigo-650 flex items-center gap-1">
+                            <span>📈 Linha do Tempo e Acompanhamento Passo a Passo</span>
+                          </span>
+
+                          <div className="relative pl-6 sm:pl-8 space-y-6 before:absolute before:left-[11px] sm:before:left-[15px] before:top-2 before:bottom-2 before:w-[2px] before:bg-slate-200 select-text">
+                            {steps.map((st) => {
+                              const isCompleted = st.status === "done";
+                              const isPendingStatus = st.status === "pending";
+                              const isDrawnStatus = st.status === "drawn";
+
+                              return (
+                                <div key={st.num} className="relative group animate-fadeIn">
+                                  {/* Marker Circle */}
+                                  <div className={`absolute -left-[19px] sm:-left-[23px] top-0.5 w-[14px] h-[14px] sm:w-[18px] sm:h-[18px] rounded-full border-2 flex items-center justify-center transition-all duration-300 ${
+                                    isCompleted 
+                                      ? "bg-indigo-600 border-indigo-700 ring-4 ring-indigo-50"
+                                      : isPendingStatus
+                                        ? "bg-amber-500 border-amber-600 ring-4 ring-amber-50 animate-pulse"
+                                        : isDrawnStatus
+                                          ? "bg-emerald-600 border-emerald-700 ring-4 ring-emerald-50"
+                                          : "bg-white border-slate-300 ring-4 ring-slate-50"
+                                  }`}>
+                                    {isCompleted && <Check className="w-2 h-2 text-white" />}
+                                  </div>
+
+                                  {/* Content Area */}
+                                  <div className="space-y-1">
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                                      <h4 className={`font-black text-xs sm:text-[13px] tracking-tight ${
+                                        isCompleted 
+                                          ? "text-indigo-900" 
+                                          : isPendingStatus
+                                            ? "text-amber-900"
+                                            : isDrawnStatus
+                                              ? "text-emerald-950 animate-pulse"
+                                              : "text-slate-500"
+                                      }`}>
+                                        {st.title}
+                                      </h4>
+                                      <span className="text-[10px] font-sans font-bold text-slate-400 block shrink-0">
+                                        {st.sub}
+                                      </span>
+                                    </div>
+                                    <p className="text-[11.5px] text-slate-500 leading-relaxed font-medium">
+                                      {st.desc}
+                                    </p>
+
+                                    {st.interactive && (
+                                      <div>{st.interactive}</div>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Drawn Conclusion Box */}
+                        {drawFinished && (
+                          <div className="border-t border-slate-150 pt-5 animate-fadeIn">
+                            {winningTicket ? (
+                              <div className="bg-gradient-to-br from-amber-500 to-yellow-600 border border-amber-500/30 p-5 rounded-2xl text-white space-y-2 relative overflow-hidden shadow-md">
+                                <div className="absolute top-0 right-0 -mr-6 -mt-6 w-32 h-32 bg-white/10 rounded-full blur-2xl pointer-events-none" />
+                                <div className="flex items-center gap-2">
+                                  <Trophy className="w-6 h-6 text-yellow-100 animate-bounce" />
+                                  <span className="text-sm font-black uppercase tracking-wide">🏆 PARABÉNS! VOCÊ FOI O GANHADOR OFICIAL!</span>
+                                </div>
+                                <p className="text-xs text-yellow-50 font-normal leading-relaxed">
+                                  Sua cota contemplada foi a <strong className="text-white font-extrabold font-mono px-1 bg-[#111827]/35 rounded text-sm">#{winningTicket.number}</strong> na extração oficial da Loteria Federal! Parabéns por garantir o prêmio principal em apoio à nossa colação de grau de formatura.
+                                </p>
+                                <div className="pt-2 select-none">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleWhatsAppRedirect([winningTicket], campaign)}
+                                    className="px-4 py-2 bg-[#111827] hover:bg-slate-900 text-white font-black text-[11px] uppercase tracking-wider rounded-xl transition shadow-lg active:scale-95 cursor-pointer block sm:inline-block text-center"
+                                  >
+                                    Reivindicar Prêmio via WhatsApp 💬
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="bg-slate-100/80 border border-slate-200/50 p-4 rounded-xl text-slate-500 space-y-1 text-xs">
+                                <div className="flex items-center gap-1.5 font-bold text-slate-755">
+                                  <HelpCircle className="w-4 h-4 text-slate-500" />
+                                  <span>Apuração Concluída</span>
+                                </div>
+                                <p className="text-[11px] leading-relaxed">
+                                  O bilhete contemplado na extração da Loteria Federal foi o número <strong className="font-mono text-slate-900">#{campaign.winningNumber}</strong>. Não foi desta vez que o seu número foi o premiado principal, mas sua ajuda com as cotas financiou a formatura e aproximou toda a turma do sonho de colar grau! Agradecemos cordialmente sua generosidade.
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     );
                   });
