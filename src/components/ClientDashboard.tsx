@@ -663,6 +663,7 @@ export default function ClientDashboard({ userProfile, onLogout, onPromptLogin }
 
   // LGPD - Export Stored Personal Data (Data Portability)
   const handleExportMyData = () => {
+    if (!userProfile) return;
     try {
       const dataToExport = {
         lgpd_compliance: "Lei Geral de Proteção de Dados (Lei nº 13.709/2018) - Brasil",
@@ -710,6 +711,7 @@ export default function ClientDashboard({ userProfile, onLogout, onPromptLogin }
 
   // LGPD - Right to be forgotten (Direito ao Esquecimento) - Account elimination
   const handleDeleteMyDataAndAccount = async () => {
+    if (!userProfile) return;
     const confirmation1 = window.confirm(
       "DIREITO AO ESQUECIMENTO (LGPD):\n\n" +
       "Deseja realmente solicitar a eliminação definitiva dos seus dados pessoais?\n" +
@@ -2695,7 +2697,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                                   bgClass = "bg-indigo-100/70 text-indigo-400 border-indigo-100 cursor-not-allowed pointer-events-none opacity-60";
                                   statusLabel = `Confirmado por ${tInfo.buyerName}`;
                                 } else if (tInfo.status === "reserved") {
-                                  const isMine = tInfo.buyerUid === userProfile.uid;
+                                  const isMine = userProfile && tInfo.buyerUid === userProfile.uid;
                                   bgClass = isMine
                                     ? "bg-amber-400 text-slate-900 border-amber-400 hover:bg-amber-500 font-bold"
                                     : "bg-amber-100 text-amber-800 border-amber-200 cursor-not-allowed pointer-events-none opacity-70";
@@ -2706,7 +2708,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                               return (
                                 <button
                                   key={numStr}
-                                  disabled={tInfo?.status === "confirmed" || (tInfo?.status === "reserved" && tInfo.buyerUid !== userProfile.uid)}
+                                  disabled={tInfo?.status === "confirmed" || (tInfo?.status === "reserved" && (!userProfile || tInfo.buyerUid !== userProfile.uid))}
                                   onClick={() => {
                                     setSuccessReserved(null);
                                     handleToggleNumberSelection(numStr);
@@ -3591,23 +3593,23 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                   <div className="bg-slate-50 border border-slate-150 p-3.5 rounded-2xl">
                     <span className="text-[10px] font-bold text-slate-400 block uppercase">Nome Cadastrado</span>
-                    <span className="text-sm font-bold text-slate-800">{userProfile.name}</span>
+                    <span className="text-sm font-bold text-slate-800">{userProfile?.name || ""}</span>
                   </div>
                   <div className="bg-slate-50 border border-slate-150 p-3.5 rounded-2xl">
                     <span className="text-[10px] font-bold text-slate-400 block uppercase">E-mail de Autenticação</span>
-                    <span className="text-sm font-semibold text-slate-705 font-mono">{userProfile.email}</span>
+                    <span className="text-sm font-semibold text-slate-705 font-mono">{userProfile?.email || ""}</span>
                   </div>
                   <div className="bg-slate-50 border border-slate-150 p-3.5 rounded-2xl">
                     <span className="text-[10px] font-bold text-slate-400 block uppercase">CPF (Tratado p/ antifraude)</span>
-                    <span className="text-sm font-mono text-slate-805 font-bold">{userProfile.cpf}</span>
+                    <span className="text-sm font-mono text-slate-805 font-bold">{userProfile?.cpf || ""}</span>
                   </div>
                   <div className="bg-slate-50 border border-slate-150 p-3.5 rounded-2xl">
                     <span className="text-[10px] font-bold text-slate-400 block uppercase">WhatsApp / Celular</span>
-                    <span className="text-sm font-semibold text-slate-805 font-mono">{userProfile.phone}</span>
+                    <span className="text-sm font-semibold text-slate-805 font-mono">{userProfile?.phone || ""}</span>
                   </div>
                   <div className="bg-slate-50 border border-slate-150 p-3.5 rounded-2xl md:col-span-2">
                     <span className="text-[10px] font-bold text-slate-400 block uppercase">Cidade do Usuário</span>
-                    <span className="text-xs font-semibold text-slate-750">{userProfile.city}</span>
+                    <span className="text-xs font-semibold text-slate-750">{userProfile?.city || ""}</span>
                   </div>
                 </div>
               </div>
@@ -3744,7 +3746,8 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
               <div id="printable-tickets-area">
                 {(() => {
                   const purchasedNumbers = ticketModalConfig.tickets.map((t) => t.number);
-                  const combinedAuth = `${ticketModalConfig.campaign.id.slice(0, 6)}-LOTE-${purchasedNumbers.slice(0, 3).join("-")}-${userProfile.uid.slice(0, 5)}`.toUpperCase();
+                  const userUidStr = userProfile?.uid || "GUEST";
+                  const combinedAuth = `${ticketModalConfig.campaign.id.slice(0, 6)}-LOTE-${purchasedNumbers.slice(0, 3).join("-")}-${userUidStr.slice(0, 5)}`.toUpperCase();
 
                   return (
                     <div className="print-ticket-card bg-[#fefdf0] rounded-2xl border-t-[12px] border-emerald-600 border-l border-r border-b border-emerald-250 p-5 md:p-6 overflow-hidden relative shadow-lg text-slate-900 font-sans">
@@ -3795,15 +3798,15 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                         <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-emerald-900 font-mono">
                           <div>
                             <span className="text-[8px] text-emerald-700 block uppercase font-bold text-[7px]">COMPRADOR INTEGRAL</span>
-                            <span className="font-sans font-extrabold truncate block text-emerald-950 text-xs">{userProfile.name}</span>
+                            <span className="font-sans font-extrabold truncate block text-emerald-950 text-xs">{userProfile?.name || "N/A"}</span>
                           </div>
                           <div>
                             <span className="text-[8px] text-emerald-700 block uppercase font-bold text-[7px]">DOCUMENTO / CPF</span>
-                            <span className="block truncate text-xs font-bold">{userProfile.cpf || "Tratado"}</span>
+                            <span className="block truncate text-xs font-bold">{userProfile?.cpf || "Tratado"}</span>
                           </div>
                           <div>
                             <span className="text-[8px] text-emerald-700 block uppercase font-bold text-[7px]">WHATSAPP / CONTATO</span>
-                            <span className="block text-xs">{userProfile.phone || "Informado"}</span>
+                            <span className="block text-xs">{userProfile?.phone || "Informado"}</span>
                           </div>
                           <div>
                             <span className="text-[8px] text-emerald-700 block uppercase font-bold text-[7px]">CHAVE DO LOTE</span>
@@ -3846,7 +3849,8 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                   onClick={() => {
                     const purchasedNumbers = ticketModalConfig.tickets.map((t) => t.number);
                     const itemsText = purchasedNumbers.map((num) => `#${num}`).join(", ");
-                    const keyList = ticketModalConfig.tickets.map((t) => `[Cota #${t.number}: ${ticketModalConfig.campaign.id.slice(0, 6).toUpperCase()}-${t.number}-${userProfile.uid.slice(0, 6).toUpperCase()}-APOSTADO]`).join("\n");
+                    const userUidSafe = userProfile?.uid || "GUEST";
+                    const keyList = ticketModalConfig.tickets.map((t) => `[Cota #${t.number}: ${ticketModalConfig.campaign.id.slice(0, 6).toUpperCase()}-${t.number}-${userUidSafe.slice(0, 6).toUpperCase()}-APOSTADO]`).join("\n");
                     const txtContent = `
 ========================================
        COMPROVANTE OFICIAL DE VOLANTE       
@@ -3862,9 +3866,9 @@ DATA CONFIRMAÇÃO: ${ticketModalConfig.tickets[0]?.confirmedAt ? new Date(ticke
 
 ----------------------------------------
 DADOS DO PARTICIPANTE:
-NOME: ${userProfile.name}
-E-MAIL: ${userProfile.email}
-CPF: ${userProfile.cpf || "Tratado"}
+NOME: ${userProfile?.name || "N/A"}
+E-MAIL: ${userProfile?.email || "N/A"}
+CPF: ${userProfile?.cpf || "Tratado"}
 ----------------------------------------
 CHAVES CRIPTOGRAFICAS DE VALIDAÇÃO:
 ${keyList}
