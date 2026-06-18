@@ -1286,27 +1286,6 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
           ticketList.push(d.data() as Ticket);
         });
 
-        // Check for automatic express drawing
-        const confirmedTickets = ticketList.filter(t => t.status === "confirmed");
-        if (camp.status === "active" && camp.drawMode === "express" && confirmedTickets.length === camp.totalTickets && camp.totalTickets > 0) {
-          const randomIndex = Math.floor(Math.random() * confirmedTickets.length);
-          const winningTicket = confirmedTickets[randomIndex];
-          if (winningTicket) {
-            const now = new Date();
-            const drawDateStr = now.toLocaleDateString("pt-BR");
-            const drawHourStr = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-
-            updateDoc(doc(db, "campaigns", camp.id), {
-              status: "drawn",
-              winningNumber: winningTicket.number,
-              drawDate: drawDateStr,
-              drawHour: drawHourStr
-            }).catch((err) => {
-              console.error("Failed to auto-draw express campaign:", err);
-            });
-          }
-        }
-
         setAllReservations((prev) => ({
           ...prev,
           [camp.id]: ticketList
@@ -1758,6 +1737,58 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
     } catch (err) {
       console.error("Error drawing campaign:", err);
       handleFirestoreError(err, OperationType.UPDATE, `campaigns/${id}`);
+    }
+  };
+
+  const handleRevertDraw = async (ca: Campaign) => {
+    if (!window.confirm(`Deseja realmente reverter o sorteio de "${ca.title}"? Ela será reativada e o número do bilhete ganhador (${ca.winningNumber}) será limpo do sistema, permitindo que novas compras ou um novo sorteio sejam realizados.`)) return;
+
+    try {
+      await updateDoc(doc(db, "campaigns", ca.id), {
+        status: "active",
+        winningNumber: "",
+        federalLotteryNumber: "",
+        drawDate: "",
+        drawHour: "",
+        federalLotteryDrawId: ""
+      });
+      alert("Sorteio revertido com sucesso! A campanha se encontra 'Ativa' novamente.");
+    } catch (err) {
+      console.error("Error reverting draw:", err);
+      handleFirestoreError(err, OperationType.UPDATE, `campaigns/${ca.id}`);
+    }
+  };
+
+  const handleExpressDraw = async (ca: Campaign) => {
+    const ticketsList = allReservations[ca.id] || [];
+    const confirmedTickets = ticketsList.filter(t => t.status === "confirmed");
+
+    if (confirmedTickets.length === 0) {
+      alert("Nenhum de seus bilhetes foi pago (confirmado) nesta campanha de modalidade expressa ainda. Não é possível realizar o sorteio sem nenhuma cota confirmada.");
+      return;
+    }
+
+    if (!window.confirm(`Deseja realmente sortear a cota contemplada para "${ca.title}" agora? Um ganhador será definido aleatoriamente entre as ${confirmedTickets.length} cotas confirmadas (pagas).`)) return;
+
+    try {
+      const randomIndex = Math.floor(Math.random() * confirmedTickets.length);
+      const winningTicket = confirmedTickets[randomIndex];
+      
+      const now = new Date();
+      const drawDateStr = now.toLocaleDateString("pt-BR");
+      const drawHourStr = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+
+      await updateDoc(doc(db, "campaigns", ca.id), {
+        status: "drawn",
+        winningNumber: winningTicket.number,
+        drawDate: drawDateStr,
+        drawHour: drawHourStr
+      });
+
+      alert(`Sorteio realizado com sucesso! O bilhete contemplado foi #${winningTicket.number} comprado por ${winningTicket.buyerName || "Cliente Desconhecido"}.`);
+    } catch (err) {
+      console.error("Error running express draw:", err);
+      handleFirestoreError(err, OperationType.UPDATE, `campaigns/${ca.id}`);
     }
   };
 
@@ -3716,7 +3747,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                         </td>
                         <td className="py-4 px-4 text-right">
                           <div className="flex items-center justify-end gap-1.5">
-                            {ca.status !== "drawn" && (
+                            {ca.status !== "drawn" ? (
                               <>
                                 <button
                                   onClick={() => handleToggleStatus(ca.id, ca.status as any)}
@@ -3730,13 +3761,24 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                                   {ca.status === "active" ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
                                 </button>
 
-                                <button
-                                  onClick={() => handleOpenDrawingModal(ca)}
-                                  className="p-1.5 text-slate-500 hover:text-indigo-700 hover:bg-indigo-100 rounded transition cursor-pointer"
-                                  title="Definir Ganhador (Loteria Federal)"
-                                >
-                                  <Trophy className="w-4 h-4" />
-                                </button>
+                                {ca.drawMode === "express" ? (
+                                  <button
+                                    onClick={() => handleExpressDraw(ca)}
+                                    className="p-1 text-slate-700 hover:text-indigo-800 hover:bg-indigo-100/80 bg-indigo-50 border border-indigo-200 rounded transition cursor-pointer flex items-center gap-1 px-1.5 text-[10px] font-extrabold leading-none"
+                                    title="Sortear Agora (Modalidade Expressa)"
+                                  >
+                                    <Trophy className="w-3.5 h-3.5 text-indigo-700 shrink-0" />
+                                    <span>Sortear Agora</span>
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={() => handleOpenDrawingModal(ca)}
+                                    className="p-1.5 text-slate-500 hover:text-indigo-700 hover:bg-indigo-100 rounded transition cursor-pointer"
+                                    title="Definir Ganhador (Loteria Federal)"
+                                  >
+                                    <Trophy className="w-4 h-4" />
+                                  </button>
+                                )}
 
                                 <button
                                   onClick={() => handleStartEditCampaign(ca)}
@@ -3746,9 +3788,18 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                                     <Edit className="w-4 h-4" />
                                   </button>
                                 </>
-                              )}
-
+                            ) : (
                               <button
+                                onClick={() => handleRevertDraw(ca)}
+                                className="p-1 text-rose-700 hover:text-rose-800 hover:bg-rose-100 bg-rose-50 border border-rose-200 rounded transition cursor-pointer flex items-center gap-1 px-1.5 text-[10px] font-extrabold leading-none"
+                                title="Reverter Sorteio"
+                              >
+                                <X className="w-3.5 h-3.5 text-rose-700 shrink-0" />
+                                <span>Reverter Sorteio</span>
+                              </button>
+                            )}
+
+                            <button
                               onClick={() => handleDeleteCampaign(ca.id)}
                               className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition cursor-pointer"
                               title="Deletar campanha"
@@ -3853,8 +3904,8 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                       )}
                     </div>
 
-                    <div className="flex items-center justify-end gap-2 pt-1">
-                      {ca.status !== "drawn" && (
+                    <div className="flex items-center justify-end gap-2 pt-1 flex-wrap">
+                      {ca.status !== "drawn" ? (
                         <>
                           <button
                             onClick={() => handleToggleStatus(ca.id, ca.status as any)}
@@ -3867,13 +3918,23 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                             )}
                           </button>
 
-                          <button
-                            onClick={() => handleOpenDrawingModal(ca)}
-                            className="flex items-center gap-1.5 px-3 py-2 text-xs bg-indigo-50 text-indigo-700 border border-indigo-200/50 hover:bg-indigo-100 rounded-xl font-bold transition shadow-xs cursor-pointer"
-                          >
-                            <Trophy className="w-3.5 h-3.5 text-indigo-650" />
-                            <span>Sorteio</span>
-                          </button>
+                          {ca.drawMode === "express" ? (
+                            <button
+                              onClick={() => handleExpressDraw(ca)}
+                              className="flex items-center gap-1.5 px-3 py-2 text-xs bg-indigo-50 text-indigo-700 border border-indigo-200/50 hover:bg-indigo-100 rounded-xl font-bold transition shadow-xs cursor-pointer"
+                            >
+                              <Trophy className="w-3.5 h-3.5 text-indigo-650" />
+                              <span>Sortear Agora</span>
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleOpenDrawingModal(ca)}
+                              className="flex items-center gap-1.5 px-3 py-2 text-xs bg-indigo-50 text-indigo-700 border border-indigo-200/50 hover:bg-indigo-100 rounded-xl font-bold transition shadow-xs cursor-pointer"
+                            >
+                              <Trophy className="w-3.5 h-3.5 text-indigo-650" />
+                              <span>Sorteio</span>
+                            </button>
+                          )}
 
                           <button
                             onClick={() => handleStartEditCampaign(ca)}
@@ -3883,6 +3944,14 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                             <span>Editar</span>
                           </button>
                         </>
+                      ) : (
+                        <button
+                          onClick={() => handleRevertDraw(ca)}
+                          className="flex items-center gap-1.5 px-3 py-2 text-xs bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 rounded-xl font-bold transition shadow-xs cursor-pointer"
+                        >
+                          <X className="w-3.5 h-3.5 text-rose-700" />
+                          <span>Reverter Sorteio</span>
+                        </button>
                       )}
 
                       <button
@@ -4587,18 +4656,25 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                           )}
                         </div>
 
-                        {winnerTicket && (
-                          <div className="pt-1 select-none">
+                        <div className="flex gap-2 select-none w-full pt-1">
+                          {winnerTicket && (
                             <a
                               href={`https://wa.me/55${winnerTicket.buyerPhone.replace(/\D/g, "")}`}
                               target="_blank"
                               rel="noreferrer"
-                              className="w-full text-center flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow-sm transition"
+                              className="flex-1 text-center flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow-sm transition"
                             >
-                              <span>Entrar em contato para entregar prêmio</span>
+                              <span>Contatar Ganhador</span>
                             </a>
-                          </div>
-                        )}
+                          )}
+                          <button
+                            onClick={() => handleRevertDraw(ca)}
+                            className="flex-1 text-center flex items-center justify-center gap-1.5 px-3 py-2 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 rounded-xl font-bold text-xs transition"
+                          >
+                            <X className="w-4 h-4 text-rose-700 shrink-0" />
+                            <span>Reverter Sorteio</span>
+                          </button>
+                        </div>
                       </div>
                     );
                   })}

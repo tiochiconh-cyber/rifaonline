@@ -868,49 +868,7 @@ export default function ClientDashboard({ userProfile, onLogout, onPromptLogin }
     return () => unsubscribe();
   }, [selectedCampaignId]);
 
-  // Check and trigger automatic draw for active 'express' campaigns when all cotas are confirmed/sold
-  useEffect(() => {
-    if (!selectedCampaign || selectedCampaign.drawMode !== "express" || selectedCampaign.status !== "active") {
-      return;
-    }
 
-    const total = selectedCampaign.totalTickets;
-    const ticketList = Object.values(tickets) as Ticket[];
-    const confirmedCount = ticketList.filter((t: Ticket) => t.status === "confirmed").length;
-
-    if (confirmedCount === total && total > 0) {
-      const triggerDraw = async () => {
-        try {
-          const campRef = doc(db, "campaigns", selectedCampaign.id);
-          await runTransaction(db, async (transaction) => {
-            const campSnap = await transaction.get(campRef);
-            if (!campSnap.exists()) return;
-            const campData = campSnap.data() as Campaign;
-
-            if (campData.status === "active") {
-              const winningIndex = Math.floor(Math.random() * total);
-              const padLength = total > 1000 ? 4 : total > 100 ? 3 : 2;
-              const numValue = winningIndex + 1; // Express is 1-based (01 to 10000)
-              const winningNumberStr = numValue.toString().padStart(padLength, "0");
-
-              transaction.update(campRef, {
-                status: "drawn",
-                winningNumber: winningNumberStr,
-                drawDate: new Date().toLocaleDateString("pt-BR"),
-                drawHour: new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
-              });
-
-              addToast(`Sorteio automático concluído! Bilhete ganhador #${winningNumberStr}`, "success");
-            }
-          });
-        } catch (error) {
-          console.error("Error in automatic draw transaction:", error);
-        }
-      };
-
-      triggerDraw();
-    }
-  }, [tickets, selectedCampaign, db]);
 
   // Real-time automatic deselect to prevent duplicate in-flight selection between concurrent users
   useEffect(() => {
