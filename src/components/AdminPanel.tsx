@@ -100,7 +100,8 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
     logoUrl: "",
     logoBase64: "",
     vipAdvanceHours: 24,
-    vipDiscountPercentage: 10
+    vipDiscountPercentage: 10,
+    vipWhatsAppUrl: ""
   });
 
   const [groupReservationsByBuyer, setGroupReservationsByBuyer] = useState(false);
@@ -2830,7 +2831,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                 <h3 className="font-extrabold text-slate-800 text-xs flex items-center gap-1.5 uppercase tracking-wider">
                   <span className="text-amber-600">👑 Programa de Clientes VIP</span>
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-amber-50/20 p-4 rounded-xl border border-amber-100/50">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-amber-50/20 p-4 rounded-xl border border-amber-100/50">
                   <div className="space-y-1.5">
                     <label className="block font-extrabold text-slate-700 text-xs">Tempo de Acesso Antecipado (Horas)</label>
                     <input
@@ -2861,6 +2862,19 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                     />
                     <span className="text-[10.5px] text-slate-450 block leading-normal">
                       Percentual de desconto que será aplicado automaticamente ao valor total de todas as cotas reservadas e pagas por um portador do selo VIP.
+                    </span>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="block font-extrabold text-slate-700 text-xs text-emerald-700">Link do Grupo VIP no WhatsApp 🟢</label>
+                    <input
+                      type="text"
+                      value={settings.vipWhatsAppUrl || ""}
+                      onChange={(e) => setSettings({ ...settings, vipWhatsAppUrl: e.target.value })}
+                      className="w-full bg-white p-2.5 border border-emerald-300 focus:border-emerald-500 rounded-lg text-xs font-bold text-emerald-800 placeholder-emerald-350"
+                      placeholder="https://chat.whatsapp.com/..."
+                    />
+                    <span className="text-[10.5px] text-slate-450 block leading-normal">
+                      Link de convite do WhatsApp liberado automaticamente para quem reservar/comprar 10 ou mais cotas de uma única vez.
                     </span>
                   </div>
                 </div>

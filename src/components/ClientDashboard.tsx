@@ -1036,6 +1036,7 @@ export default function ClientDashboard({ userProfile, onLogout, onPromptLogin }
     autoWhatsAppRedirect: true,
     vipAdvanceHours: 24,
     vipDiscountPercentage: 10,
+    vipWhatsAppUrl: "",
   });
 
   useEffect(() => {
@@ -1446,6 +1447,32 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                   {/* Left Column (PIX Copy options and recipient details) */}
                   <div className="md:col-span-7 space-y-4">
                     
+                    {list.length >= 10 && settings?.vipWhatsAppUrl && (
+                      <div className="bg-gradient-to-r from-amber-500/15 via-emerald-500/10 to-emerald-600/15 border border-amber-300/30 p-4.5 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
+                        <div className="flex items-center gap-3">
+                          <div className="bg-amber-500 text-slate-950 p-2 rounded-xl shadow-md shrink-0">
+                            <Crown className="w-5 h-5 fill-slate-900 text-slate-950" />
+                          </div>
+                          <div>
+                            <h4 className="font-extrabold text-xs text-slate-800 uppercase tracking-wider flex items-center gap-1">
+                              Grupo VIP Liberado! 👑
+                            </h4>
+                            <p className="text-[10.5px] text-slate-500 leading-normal">
+                              Por comprar {list.length} cotas de uma vez, você tem acesso ao nosso grupo exclusivo do WhatsApp!
+                            </p>
+                          </div>
+                        </div>
+                        <a
+                          href={settings.vipWhatsAppUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs px-4 py-2.5 rounded-xl transition flex items-center justify-center gap-1.5 shadow-md shadow-emerald-500/10 whitespace-nowrap active:scale-95 cursor-pointer uppercase tracking-wider"
+                        >
+                          Entrar no Grupo 🟢
+                        </a>
+                      </div>
+                    )}
+
                     {/* Option 1: Copy Key */}
                     <div className="bg-emerald-500/5 border border-emerald-500/15 p-5 rounded-2xl space-y-3.5 relative overflow-hidden shadow-xs">
                       <span className="absolute top-3 right-3 flex h-2 w-2">
@@ -1621,7 +1648,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
           }`}
         >
           <ShoppingBag className="w-4 h-4 text-indigo-600" />
-          <span>Minhas Reservas</span>
+          <span>Minhas Compras 🛍️</span>
           {myTotalTicketsCount > 0 && (
             <span className="absolute top-1/2 -translate-y-1/2 right-3.5 bg-indigo-600 text-white font-extrabold text-[10px] h-[18px] min-w-[18px] px-1 rounded-full flex items-center justify-center border-2 border-slate-100">
               {myTotalTicketsCount}
@@ -2436,72 +2463,135 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
 
                       {/* ACTIVE RESERVATION SELECTION CARD */}
                       {selectedNumbers.length > 0 && (
-                        <div id="checkout-summary-card" className="bg-amber-50 border border-amber-200 rounded-xl p-5 text-slate-800 space-y-3 animate-fadeIn">
-                          <h4 className="font-bold text-slate-800 text-sm flex items-center gap-1.5">
-                            <AlertCircle className="w-4 h-4 text-amber-600 animate-pulse" />
-                            Deseja reservar as cotas selecionadas?
-                          </h4>
-                          <div className="text-xs text-slate-605 leading-relaxed">
-                            Você selecionou <strong className="text-slate-900">{selectedNumbers.length} cota(s)</strong>:{" "}
-                            <div className="flex flex-wrap gap-1.5 my-1.5">
-                              {selectedNumbers.map(n => (
-                                <span key={n} className="font-mono bg-amber-100 border border-amber-300 text-amber-900 rounded px-1.5 py-0.5 text-xs font-bold shadow-sm">
+                        <div id="checkout-summary-card" className="bg-white border border-slate-200/90 rounded-2xl p-5 md:p-6 text-slate-800 space-y-4 shadow-md animate-fadeIn relative overflow-hidden">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                            <h4 className="font-extrabold text-slate-900 text-sm md:text-base flex items-center gap-1.5 uppercase tracking-wide">
+                              <span className="text-indigo-600">🛒</span>
+                              Resumo do Pedido de Reserva
+                            </h4>
+                            <span className="text-[10.5px] bg-amber-500/10 text-amber-800 font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider flex items-center gap-1">
+                              ⏳ Reserva garantida por {settings?.expirationHours || 2} horas
+                            </span>
+                          </div>
+
+                          <div className="text-xs text-slate-600 leading-relaxed space-y-2">
+                            <p className="font-medium">
+                              Você selecionou <strong className="text-indigo-900 font-black">{selectedNumbers.length} cota{selectedNumbers.length === 1 ? "" : "s"}</strong>. 
+                              {selectedNumbers.length > 12 ? " Exibindo uma prévia das cotas:" : " Confira os números escolhidos:"}
+                            </p>
+                            
+                            <div className="flex flex-wrap gap-1.5 py-1">
+                              {selectedNumbers.slice(0, 12).map(n => (
+                                <span key={n} className="font-mono bg-slate-50 border border-slate-200/80 text-slate-700 rounded px-2 py-0.5 text-xs font-bold shadow-2xs">
                                   #{n}
                                 </span>
                               ))}
+                              {selectedNumbers.length > 12 && (
+                                <span className="font-sans bg-indigo-50 border border-indigo-100 text-indigo-700 rounded px-2.5 py-0.5 text-xs font-black shadow-2xs flex items-center justify-center animate-pulse">
+                                  +{selectedNumbers.length - 12} cota{selectedNumbers.length - 12 === 1 ? "" : "s"}
+                                </span>
+                              )}
                             </div>
-                            Ao confirmar as cotas selecionadas, estes números serão temporariamente reservados sob seu CPF por 2(Duas) horas e você será levado **imediatamente** para a página exclusiva de pagamento PIX e envio de comprovante.
+                            
+                            <p className="text-[11px] text-slate-450 font-bold leading-normal pt-1 flex items-start gap-1">
+                              <span className="text-emerald-500 shrink-0 select-none">▶</span>
+                              Após a confirmação, estes números ficam de sua posse para realizar o pagamento via PIX imediatamente.
+                            </p>
                           </div>
 
+                          {/* VIP WHATSAPP GROUP CONVITE / UPSELL INCENTIVE */}
+                          {settings?.vipWhatsAppUrl && (
+                            selectedNumbers.length >= 10 ? (
+                              <div className="bg-gradient-to-r from-amber-500/15 via-emerald-500/10 to-emerald-600/15 border border-amber-300/30 p-4 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-3.5 shadow-xs animate-pulse">
+                                <div className="flex items-center gap-2.5">
+                                  <div className="bg-amber-500 text-slate-950 p-2 rounded-xl shadow-md shrink-0">
+                                    <Crown className="w-5 h-5 fill-slate-900 text-slate-950" />
+                                  </div>
+                                  <div>
+                                    <h4 className="font-extrabold text-xs text-slate-800 uppercase tracking-wider flex items-center gap-1">
+                                      Grupo VIP WhatsApp Ativado! 👑
+                                    </h4>
+                                    <p className="text-[10.5px] text-slate-505 font-medium leading-normal">
+                                      Suas {selectedNumbers.length} cotas dão direito a participar hoje mesmo do nosso grupo exclusivo!
+                                    </p>
+                                  </div>
+                                </div>
+                                <a
+                                  href={settings.vipWhatsAppUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[11px] px-3.5 py-2 rounded-xl transition flex items-center justify-center gap-1 shadow-md shadow-emerald-500/10 active:scale-95 cursor-pointer uppercase tracking-wider whitespace-nowrap"
+                                >
+                                  Entrar no Grupo 🟢
+                                </a>
+                              </div>
+                            ) : (
+                              <div className="bg-gradient-to-r from-indigo-500/5 to-amber-500/5 border border-slate-200/60 rounded-xl p-3 flex items-center gap-2.5 shadow-2xs">
+                                <div className="bg-amber-500/10 text-amber-700 p-1.5 rounded-lg shrink-0">
+                                  <Crown className="w-4 h-4 text-amber-600 fill-amber-550/30" />
+                                </div>
+                                <p className="text-[10.5px] text-slate-600 leading-normal font-semibold">
+                                  🔥 <strong>Quer ser VIP?</strong> Reserve <span className="text-indigo-600 font-extrabold">{10 - selectedNumbers.length} cota{10 - selectedNumbers.length === 1 ? "" : "s"}</span> a mais para destravar o <strong>desconto exclusivo</strong> e o link do nosso <strong>Grupo VIP de WhatsApp!</strong>
+                                </p>
+                              </div>
+                            )
+                          )}
+
                           {/* DESTACADO VALOR TOTAL DA RESERVA SELECIONADA */}
-                          <div className="bg-gradient-to-br from-amber-50 to-amber-100/50 border-2 border-amber-300 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
-                            <div className="space-y-1">
-                              <span className="text-[10px] text-amber-850 font-black uppercase tracking-widest block leading-none">VALOR TOTAL DO PEDIDO</span>
+                          <div className="bg-gradient-to-br from-slate-900 to-indigo-950 text-white rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-md relative overflow-hidden">
+                            <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-indigo-500/10 rounded-full blur-xl pointer-events-none" />
+                            
+                            <div className="space-y-1 z-10">
+                              <span className="text-[9px] text-indigo-300 font-black uppercase tracking-widest block leading-none">VALOR TOTAL DO PEDIDO</span>
                               {(() => {
                                 const calc = getDiscountedPrice(selectedNumbers.length, selectedCampaign.ticketPrice, selectedCampaign.progressiveDiscounts, userProfile?.isVip, settings?.vipDiscountPercentage);
                                 const isVipDiscountActive = userProfile?.isVip && calc.discountPercentage === settings?.vipDiscountPercentage;
                                 return (
-                                  <div className="space-y-1.5">
-                                    <strong className="text-3xl md:text-4xl font-extrabold text-amber-950 font-sans block leading-none">
+                                  <div className="space-y-1.5 mt-1">
+                                    <strong className="text-3xl md:text-4xl font-extrabold text-white font-sans block leading-none tracking-tight">
                                       R$ {calc.totalPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                     </strong>
-                                    <span className="text-xs text-amber-800 font-semibold block leading-none">
-                                      {selectedNumbers.length} cota(s) • R$ {calc.unitPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} cada {isVipDiscountActive ? "(Com desconto especial VIP! 👑)" : calc.appliedDiscount ? "(Desconto Progressivo!)" : ""}
+                                    <span className="text-[11px] text-indigo-200 font-bold block leading-none">
+                                      {selectedNumbers.length} cota(s) • R$ {calc.unitPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} cada {isVipDiscountActive ? "👑" : calc.appliedDiscount ? "🏷️" : ""}
                                     </span>
                                   </div>
                                 );
                               })()}
                             </div>
+
                             {(() => {
                               const calc = getDiscountedPrice(selectedNumbers.length, selectedCampaign.ticketPrice, selectedCampaign.progressiveDiscounts, userProfile?.isVip, settings?.vipDiscountPercentage);
                               const isVipDiscountActive = userProfile?.isVip && calc.discountPercentage === settings?.vipDiscountPercentage;
                               return (
-                                <div className="flex flex-col items-end gap-1 shrink-0">
-                                  {(calc.appliedDiscount || isVipDiscountActive) && (
-                                    <span className="text-[9px] bg-emerald-600 text-white font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider shadow-4xs animate-pulse flex items-center gap-1">
-                                      {isVipDiscountActive ? "👑 VIP Desconto Ativo!" : "Melhor Desconto Ativo! 🏷️"}
+                                <div className="flex flex-col items-start sm:items-end gap-1.5 shrink-0 z-10">
+                                  {isVipDiscountActive ? (
+                                    <span className="text-[9.5px] bg-amber-500 text-slate-950 font-black px-2.5 py-1 rounded-lg uppercase tracking-wider shadow-sm flex items-center gap-1">
+                                      👑 VIP Ativo (-{settings?.vipDiscountPercentage}%)
                                     </span>
-                                  )}
-                                  <span className="text-3xl filter drop-shadow select-none hidden sm:inline">💎</span>
+                                  ) : calc.appliedDiscount ? (
+                                    <span className="text-[9.5px] bg-emerald-500 text-slate-950 font-black px-2.5 py-1 rounded-lg uppercase tracking-wider shadow-sm flex items-center gap-1 animate-pulse">
+                                      🏷️ Desconto Ativado!
+                                    </span>
+                                  ) : null}
                                 </div>
                               );
                             })()}
                           </div>
 
-                          <div className="flex gap-2 justify-end text-xs pt-1">
+                          <div className="flex gap-2.5 justify-end text-xs pt-1.5 border-t border-slate-100">
                             <button
                               onClick={() => setSelectedNumbers([])}
                               disabled={reserving}
-                              className="px-3.5 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold rounded-lg cursor-pointer"
+                              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-xl cursor-pointer transition-colors active:scale-95 disabled:opacity-50"
                             >
-                              Limpar Seleção
+                              Limpar Tudo
                             </button>
                             <button
                               onClick={handleReserveTickets}
                               disabled={reserving}
-                              className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-md shadow-emerald-500/20 cursor-pointer text-center flex items-center gap-1 transition-all active:scale-95"
+                              className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-xl shadow-lg shadow-emerald-500/15 cursor-pointer text-center flex items-center gap-1.5 transition-all active:scale-95 disabled:opacity-50 uppercase tracking-wider"
                             >
-                              {reserving ? "Reservando..." : `Confirmar Pré-Reserva de ${selectedNumbers.length} Cota(s) 💳`}
+                              {reserving ? "Reservando..." : `Confirmar Reserva 💳`}
                             </button>
                           </div>
                         </div>
@@ -2889,15 +2979,15 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                 </div>
               </div>
 
-              {/* Coluna Direita: Minhas Reservas (Desktop-only inside RIFAS view) */}
+              {/* Coluna Direita: Minhas Compras (Desktop-only inside RIFAS view) */}
               <div className="hidden lg:block lg:col-span-4 space-y-6">
                 <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 space-y-4 font-normal text-slate-705">
-                  <h2 className="font-bold text-slate-800 text-sm uppercase tracking-wider flex items-center gap-2">
+                  <h2 className="font-extrabold text-slate-800 text-sm uppercase tracking-wider flex items-center gap-2">
                     <ShoppingBag className="w-4 h-4 text-indigo-650 shrink-0" />
-                    Minhas Reservas & Bilhetes
+                    Minhas Compras & Bilhetes 🛍️
                   </h2>
                   <p className="text-slate-505 text-xs font-normal">
-                    Acompanhe o status do pagamento manual das suas reservas enviadas ao administrador.
+                    Acompanhe o status do pagamento das suas compras e acesse seus bilhetes.
                   </p>
                   
                   {myTotalTicketsCount > 0 && (
@@ -3050,24 +3140,67 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
       {activeTab === "compras" && (
         <div className="space-y-6 animate-fadeIn">
           <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-100 space-y-6 max-w-5xl mx-auto">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-100 pb-5">
               <div>
                 <h2 className="font-extrabold text-slate-900 text-lg flex items-center gap-2">
-                  <ShoppingBag className="w-5 h-5 text-indigo-650 shrink-0 uppercase tracking-wide" />
-                  Acompanhamento de Reservas & Bilhetes 📈
+                  <ShoppingBag className="w-5 h-5 text-indigo-650 shrink-0 uppercase tracking-wide animate-bounce" />
+                  Painel de Minhas Compras 🛍️
                 </h2>
                 <p className="text-slate-500 text-xs mt-1">
-                  Verifique e valide o status passo a passo de cada uma de suas participações de forma transparente e em tempo real.
+                  Gerencie todos os seus bilhetes adquiridos, status de pagamento, chaves PIX e emita seus bilhetes oficiais.
                 </p>
               </div>
 
               {myTotalTicketsCount > 0 && (
                 <div className="bg-indigo-50 border border-indigo-100/50 px-3.5 py-2 rounded-2xl flex items-center gap-2 text-xs font-bold text-indigo-900 shadow-2xs shrink-0 select-none">
                   <span className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse" />
-                  <span>{myTotalTicketsCount} Cota(s) Ativa(s)</span>
+                  <span>{myTotalTicketsCount} Cota(s) no Total</span>
                 </div>
               )}
             </div>
+
+            {/* STATS OVERVIEW SECTION */}
+            {myTotalTicketsCount > 0 && (() => {
+              const allMyTicketsList = Object.values(myTickets).flat() as Ticket[];
+              const confirmedCount = allMyTicketsList.filter(t => t.status === "confirmed").length;
+              const reservedCount = allMyTicketsList.filter(t => t.status === "reserved").length;
+              return (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 border-b border-slate-100/80 pb-6">
+                  <div className="bg-slate-50 border border-slate-150 rounded-2xl p-4 flex items-center justify-between shadow-3xs">
+                    <div className="space-y-0.5">
+                      <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest block leading-none">Total Adquirido</span>
+                      <strong className="text-2xl font-black text-slate-900 block font-mono mt-1">{allMyTicketsList.length}</strong>
+                      <span className="text-[10.5px] text-slate-500 font-semibold block leading-none">Cotas registradas</span>
+                    </div>
+                    <div className="bg-indigo-50 text-indigo-600 p-2.5 rounded-xl shrink-0 shadow-3xs">
+                      <ShoppingBag className="w-5 h-5" />
+                    </div>
+                  </div>
+
+                  <div className="bg-emerald-50/40 border border-emerald-100/50 rounded-2xl p-4 flex items-center justify-between shadow-3xs">
+                    <div className="space-y-0.5">
+                      <span className="text-[10px] text-emerald-600 font-extrabold uppercase tracking-widest block leading-none">Pagas & Ativas</span>
+                      <strong className="text-2xl font-black text-emerald-600 block font-mono mt-1">{confirmedCount}</strong>
+                      <span className="text-[10.5px] text-slate-500 font-semibold block leading-none">Concorrendo a prêmios 🍀</span>
+                    </div>
+                    <div className="bg-emerald-500/10 text-emerald-600 p-2.5 rounded-xl shrink-0">
+                      <Check className="w-5 h-5 font-black text-emerald-600" />
+                    </div>
+                  </div>
+
+                  <div className="bg-amber-50/40 border border-amber-100/50 rounded-2xl p-4 flex items-center justify-between shadow-3xs">
+                    <div className="space-y-0.5">
+                      <span className="text-[10px] text-amber-700 font-extrabold uppercase tracking-widest block leading-none">Aguardando Pagamento</span>
+                      <strong className="text-2xl font-black text-amber-600 block font-mono mt-1">{reservedCount}</strong>
+                      <span className="text-[10.5px] text-slate-500 font-semibold block leading-none font-sans">Pendentes no Pix ⏳</span>
+                    </div>
+                    <div className="bg-amber-500/10 text-amber-600 p-2.5 rounded-xl shrink-0">
+                      <Clock className="w-5 h-5 font-black text-amber-600" />
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
 
             {myTotalTicketsCount === 0 ? (
               <div className="text-center p-6 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-slate-450 text-xs text-center normal-case">
@@ -3224,6 +3357,33 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                             )}
                           </div>
                         </div>
+
+                        {/* WhatsApp VIP Group access banner if tickets.length >= 10 and links exists */}
+                        {tickets.length >= 10 && settings?.vipWhatsAppUrl && (
+                          <div className="bg-gradient-to-r from-amber-500/10 to-emerald-500/10 border border-amber-500/20 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-3xs">
+                            <div className="flex items-center gap-3">
+                              <div className="bg-amber-500 text-slate-900 p-2 rounded-xl shadow-md">
+                                <Crown className="w-5 h-5 text-yellow-100 fill-slate-950" />
+                              </div>
+                              <div>
+                                <h4 className="font-extrabold text-xs text-slate-800 uppercase tracking-wider flex items-center gap-1.5 leading-none">
+                                  Grupo VIP Liberado! 👑
+                                </h4>
+                                <p className="text-[10.5px] text-slate-500 leading-normal mt-1">
+                                  Você comprou {tickets.length} cotas de uma vez! Por isso, seu acesso ao Grupo VIP do WhatsApp está liberado.
+                                </p>
+                              </div>
+                            </div>
+                            <a
+                              href={settings.vipWhatsAppUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs px-4 py-2.5 rounded-xl transition flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/10 whitespace-nowrap active:scale-95 cursor-pointer uppercase tracking-wider text-center"
+                            >
+                              Entrar no Grupo 🟢
+                            </a>
+                          </div>
+                        )}
 
                         {/* Visual Tickets Row */}
                         <div className="space-y-2">
@@ -3386,46 +3546,35 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
 
             {/* FLOAT CHECKOUT POP-IN ON MOBILE SCENARIOS */}
             {selectedCampaign && selectedNumbers.length > 0 && (
-              <div className="fixed bottom-16 left-0 right-0 z-45 px-4 py-3 bg-indigo-950 text-white shadow-[0_-8px_24px_rgba(0,0,0,0.22)] flex lg:hidden items-center justify-between animate-slideUp select-none rounded-t-2xl border-t border-indigo-800">
+              <div className="fixed bottom-[60px] left-3.5 right-3.5 z-45 p-3.5 bg-slate-900/95 backdrop-blur-md text-white shadow-2xl flex lg:hidden items-center justify-between animate-slideUp select-none rounded-2xl border border-slate-800/80">
                 <div className="space-y-0.5">
-                  <span className="text-[9px] text-indigo-200 font-extrabold uppercase tracking-widest block">TOTAL DO PEDIDO</span>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <strong className="text-xs font-black text-indigo-100 bg-indigo-850 border border-indigo-700/50 px-1.5 py-0.5 rounded">
+                  <span className="text-[9px] text-slate-400 font-extrabold uppercase tracking-widest block leading-none">Total Selecionado</span>
+                  <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                    <span className="text-xs font-black text-white">
                       {selectedNumbers.length} {selectedNumbers.length === 1 ? "cota" : "cotas"}
-                    </strong>
-                    <span className="text-base font-black text-emerald-400 font-mono">
+                    </span>
+                    <span className="text-[10px] text-slate-500 font-bold">•</span>
+                    <span className="text-sm font-extrabold text-emerald-400 font-mono">
                       R$ {(() => {
                         const calc = getDiscountedPrice(selectedNumbers.length, selectedCampaign.ticketPrice, selectedCampaign.progressiveDiscounts, userProfile?.isVip, settings?.vipDiscountPercentage);
                         return calc.totalPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                       })()}
                     </span>
-                    {(() => {
-                      const calc = getDiscountedPrice(selectedNumbers.length, selectedCampaign.ticketPrice, selectedCampaign.progressiveDiscounts, userProfile?.isVip, settings?.vipDiscountPercentage);
-                      const isVipDiscountActive = userProfile?.isVip && calc.discountPercentage === settings?.vipDiscountPercentage;
-                      if (calc.appliedDiscount || isVipDiscountActive) {
-                        return (
-                          <span className="text-[8px] bg-emerald-600 text-white font-black px-1.5 py-0.5 rounded-full uppercase tracking-wider scale-90">
-                            {isVipDiscountActive ? "VIP!" : "Desconto!"}
-                          </span>
-                        );
-                      }
-                      return null;
-                    })()}
                   </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex items-center gap-2">
                   <button
                     onClick={() => setSelectedNumbers([])}
-                    className="px-3 py-1.5 bg-slate-105 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition border border-slate-200/45 cursor-pointer active:scale-95"
+                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-[11px] font-bold transition active:scale-95 cursor-pointer whitespace-nowrap"
                   >
                     Limpar
                   </button>
                   <button
                     onClick={handleReserveTickets}
                     disabled={reserving}
-                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-md shadow-emerald-500/15 cursor-pointer flex items-center justify-center gap-1 active:scale-95 disabled:opacity-50"
+                    className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[11.5px] font-black transition shadow-md shadow-emerald-500/15 cursor-pointer flex items-center justify-center gap-1 active:scale-95 disabled:opacity-50 uppercase tracking-wider whitespace-nowrap"
                   >
-                    {reserving ? "Reservando..." : "Reservar e Pagar 💳"}
+                    {reserving ? "Reservando..." : "Confirmar 💳"}
                   </button>
                 </div>
               </div>
@@ -3451,47 +3600,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
               </span>
             </footer>
 
-            {/* STICKY BOTTOM CARD SUMMARY WHENEVER USER SELECTS TICKETS ON MOBILE */}
-            {selectedCampaign && selectedNumbers.length > 0 && activeTab === "rifas" && selectedCampaign.status === "active" && (
-              <div className="fixed bottom-[64px] left-3 right-3 z-40 bg-slate-900 border border-slate-800 text-white rounded-2xl shadow-2xl p-3 flex items-center justify-between animate-fadeIn lg:hidden select-none">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center animate-pulse">
-                    <ShoppingBag className="w-5 h-5 text-white" />
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest block leading-none">Cotas Selecionadas</span>
-                    <span className="text-sm font-black tracking-tight mt-0.5 block">
-                      {selectedNumbers.length} {selectedNumbers.length === 1 ? "cota" : "cotas"} •{" "}
-                      {(() => {
-                        const priceResult = getDiscountedPrice(selectedNumbers.length, selectedCampaign.ticketPrice, selectedCampaign.progressiveDiscounts, userProfile?.isVip, settings?.vipDiscountPercentage);
-                        return (
-                          <span className="text-emerald-400 font-extrabold font-mono">
-                            R$ {priceResult.totalPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </span>
-                        );
-                      })()}
-                    </span>
-                  </div>
-                </div>
-                
-                <button
-                  type="button"
-                  onClick={() => {
-                    const card = document.getElementById("checkout-summary-card");
-                    if (card) {
-                      card.scrollIntoView({ behavior: "smooth" });
-                    } else {
-                      // fallback if card is not rendered yet, trigger scroll to matric grid
-                      document.getElementById("quadro-bilhetes")?.scrollIntoView({ behavior: "smooth" });
-                    }
-                  }}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black uppercase tracking-wider px-4 py-2.5 rounded-xl active:scale-95 transition-all flex items-center gap-1 shadow-md shadow-emerald-600/30 cursor-pointer"
-                >
-                  <span>Pagar Reserva 💳</span>
-                  <ArrowRight className="w-3.5 h-3.5 text-white animate-pulse" />
-                </button>
-              </div>
-            )}
+
 
             {/* FIXED FLOATING FOOTER NAVIGATION TABS FOR HEALTHY MOBILE THUMB CONTROL */}
             <div className="fixed bottom-0 left-0 right-0 z-45 bg-white/95 backdrop-blur-md border-t border-slate-200/75 shadow-[0_-4px_24px_rgba(0,0,0,0.06)] px-2 py-1.5 flex justify-around items-center lg:hidden select-none">
@@ -3518,7 +3627,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                 }`}
               >
                 <ShoppingBag className={`w-4.5 h-4.5 mb-1 ${activeTab === "compras" ? "text-indigo-600" : "text-slate-400"}`} />
-                <span className="text-[9.5px]">Reservas</span>
+                <span className="text-[9.5px]">Minhas Compras</span>
                 {myTotalTicketsCount > 0 && (
                   <span className="absolute top-1 right-2.5 bg-indigo-650 border border-white text-white font-extrabold text-[8.5px] min-w-[14px] h-[14px] rounded-full flex items-center justify-center px-0.5 shadow-sm">
                     {myTotalTicketsCount}
