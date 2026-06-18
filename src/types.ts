@@ -10,6 +10,7 @@ export interface UserProfile {
   role: UserRole;
   createdAt: string;
   isBlocked?: boolean;
+  isVip?: boolean;
 }
 
 export type CampaignStatus = "active" | "paused" | "drawn";
@@ -66,4 +67,6 @@ export interface GlobalSettings {
   supportContact: string;
   rulesText: string;
   backgroundAudioUrl?: string;
+  vipAdvanceHours?: number;
+  vipDiscountPercentage?: number;
 }

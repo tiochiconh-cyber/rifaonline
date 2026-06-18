@@ -208,7 +208,17 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
       }
     } catch (err: any) {
       console.error("Login attempt failed:", err);
-      setFormError("Não foi possível conectar com o Google. Certifique-se de autorizar popups e tente novamente.");
+      if (err.code === "auth/popup-blocked" || err.message?.includes("popup") || err.message?.includes("blocked")) {
+        setFormError(
+          "⚠️ O navegador bloqueou a janela de login do Google.\n\n" +
+          "Isso ocorre por segurança ao rodar o aplicativo de demonstração dentro de um iFrame.\n\n" +
+          "Para resolver:\n" +
+          "1. Clique no botão \"Abrir em nova aba\" (ícone superior direito do visualizador da aplicação) para liberar o Google completo.\n" +
+          "2. Ou utilize o login convencional de E-mail/Senha acima."
+        );
+      } else {
+        setFormError("Não foi possível conectar com o Google. Certifique-se de autorizar popups e tente novamente.");
+      }
     } finally {
       setLoading(false);
     }
@@ -739,7 +749,7 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
               </div>
 
               {formError && (
-                <div className="p-3.5 bg-red-50 text-red-700 rounded-xl border border-red-100 text-xs leading-relaxed font-medium">
+                <div className="p-3.5 bg-red-50 text-red-700 rounded-xl border border-red-100 text-xs leading-relaxed font-semibold whitespace-pre-line">
                   {formError}
                 </div>
               )}
@@ -1023,7 +1033,7 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
             </div>
 
             {formError && (
-              <div className="p-3 bg-red-50 text-red-700 rounded-xl border border-red-100 text-xs leading-relaxed font-semibold">
+              <div className="p-3 bg-red-50 text-red-700 rounded-xl border border-red-100 text-xs leading-relaxed font-semibold whitespace-pre-line">
                 {formError}
               </div>
             )}

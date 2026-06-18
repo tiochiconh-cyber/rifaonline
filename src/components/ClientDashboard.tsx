@@ -12,32 +12,48 @@ import AppLogo from "./AppLogo";
 export function getDiscountedPrice(
   quantity: number,
   ticketPrice: number,
-  discounts?: { minQuantity: number; discountPrice: number; discountPercentage?: number }[]
+  discounts?: { minQuantity: number; discountPrice: number; discountPercentage?: number }[],
+  isVip?: boolean,
+  vipDiscountPct?: number
 ) {
-  if (!discounts || discounts.length === 0) {
-    return { unitPrice: ticketPrice, totalPrice: ticketPrice * quantity, appliedDiscount: false, discountPercentage: 0 };
-  }
-  const sortedDiscounts = [...discounts].sort((a, b) => b.minQuantity - a.minQuantity);
-  const matchingTier = sortedDiscounts.find(tier => quantity >= tier.minQuantity);
-  if (matchingTier) {
-    const finalPct = matchingTier.discountPercentage !== undefined
-      ? matchingTier.discountPercentage
-      : matchingTier.discountPrice > 0 && ticketPrice > 0
-        ? Math.max(0, Math.round((1 - matchingTier.discountPrice / ticketPrice) * 100))
-        : 0;
+  let baseCalc = { unitPrice: ticketPrice, totalPrice: ticketPrice * quantity, appliedDiscount: false, discountPercentage: 0 };
 
-    const finalUnitPrice = matchingTier.discountPercentage !== undefined
-      ? ticketPrice * (1 - matchingTier.discountPercentage / 100)
-      : matchingTier.discountPrice;
+  if (discounts && discounts.length > 0) {
+    const sortedDiscounts = [...discounts].sort((a, b) => b.minQuantity - a.minQuantity);
+    const matchingTier = sortedDiscounts.find(tier => quantity >= tier.minQuantity);
+    if (matchingTier) {
+      const finalPct = matchingTier.discountPercentage !== undefined
+        ? matchingTier.discountPercentage
+        : matchingTier.discountPrice > 0 && ticketPrice > 0
+          ? Math.max(0, Math.round((1 - matchingTier.discountPrice / ticketPrice) * 100))
+          : 0;
 
-    return {
-      unitPrice: finalUnitPrice,
-      totalPrice: finalUnitPrice * quantity,
-      appliedDiscount: true,
-      discountPercentage: finalPct
-    };
+      const finalUnitPrice = matchingTier.discountPercentage !== undefined
+        ? ticketPrice * (1 - matchingTier.discountPercentage / 100)
+        : matchingTier.discountPrice;
+
+      baseCalc = {
+        unitPrice: finalUnitPrice,
+        totalPrice: finalUnitPrice * quantity,
+        appliedDiscount: true,
+        discountPercentage: finalPct
+      };
+    }
   }
-  return { unitPrice: ticketPrice, totalPrice: ticketPrice * quantity, appliedDiscount: false, discountPercentage: 0 };
+
+  if (isVip && vipDiscountPct && vipDiscountPct > 0) {
+    if (vipDiscountPct > baseCalc.discountPercentage) {
+      const vipUnitPrice = ticketPrice * (1 - vipDiscountPct / 100);
+      return {
+        unitPrice: vipUnitPrice,
+        totalPrice: vipUnitPrice * quantity,
+        appliedDiscount: true,
+        discountPercentage: vipDiscountPct
+      };
+    }
+  }
+
+  return baseCalc;
 }
 
 export function stripHtml(html: string): string {
@@ -435,7 +451,12 @@ export default function ClientDashboard({ userProfile, onLogout, onPromptLogin }
       try {
         const startMs = Date.parse(startStr);
         if (!isNaN(startMs)) {
-          return startMs > Date.now();
+          let targetMs = startMs;
+          if (userProfile?.isVip) {
+            const advanceHours = settings?.vipAdvanceHours || 24;
+            targetMs = startMs - (advanceHours * 60 * 60 * 1000);
+          }
+          return Date.now() < targetMs;
         }
       } catch (err) {
         console.error("Error parsing campaign launch time:", err);
@@ -444,6 +465,23 @@ export default function ClientDashboard({ userProfile, onLogout, onPromptLogin }
     return false;
   };
   
+  const isCurrentlyInVipEarlyAccess = (camp: Campaign): boolean => {
+    if (camp.status !== "active" || !camp.startDate) return false;
+    const startStr = camp.startTime ? `${camp.startDate}T${camp.startTime}` : `${camp.startDate}T00:00:00`;
+    try {
+      const startMs = Date.parse(startStr);
+      if (!isNaN(startMs)) {
+        const now = Date.now();
+        if (now < startMs) {
+          const advanceHours = settings?.vipAdvanceHours || 24;
+          const vipStartMs = startMs - (advanceHours * 60 * 60 * 1000);
+          return now >= vipStartMs;
+        }
+      }
+    } catch (_) {}
+    return false;
+  };
+
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
   const [tickets, setTickets] = useState<{ [id: string]: Ticket }>({});
   const [myTickets, setMyTickets] = useState<{ [campaignId: string]: Ticket[] }>({});
@@ -996,6 +1034,8 @@ export default function ClientDashboard({ userProfile, onLogout, onPromptLogin }
     rulesText: "Os bilhetes reservados têm prazo de validade. Caso a transferência via PIX não seja comprovada, a cota retornará à disponibilidade geral automaticamente.",
     backgroundAudioUrl: "",
     autoWhatsAppRedirect: true,
+    vipAdvanceHours: 24,
+    vipDiscountPercentage: 10,
   });
 
   useEffect(() => {
@@ -1056,7 +1096,7 @@ export default function ClientDashboard({ userProfile, onLogout, onPromptLogin }
 
     if (targetTickets && camp) {
       const numbers = targetTickets.map(t => `#${t.number}`).join(", ");
-      const calc = getDiscountedPrice(targetTickets.length, camp.ticketPrice, camp.progressiveDiscounts);
+      const calc = getDiscountedPrice(targetTickets.length, camp.ticketPrice, camp.progressiveDiscounts, userProfile?.isVip, settings?.vipDiscountPercentage);
       totalValue = calc.totalPrice;
       billsText = `📋 *Rifa:* ${camp.title}\n🎫 *Números Reservados:* ${numbers}\n💰 *Valor Total:* R$ ${totalValue.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
     } else {
@@ -1079,7 +1119,7 @@ export default function ClientDashboard({ userProfile, onLogout, onPromptLogin }
       billsText = reservedListByCampaign
         .map(({ campaign, tickets }) => {
           const numbers = tickets.map(t => `#${t.number}`).join(", ");
-          const calc = getDiscountedPrice(tickets.length, campaign.ticketPrice, campaign.progressiveDiscounts);
+          const calc = getDiscountedPrice(tickets.length, campaign.ticketPrice, campaign.progressiveDiscounts, userProfile?.isVip, settings?.vipDiscountPercentage);
           totalValue += calc.totalPrice;
           return `📋 *Rifa:* ${campaign.title}\n🎫 *Números:* ${numbers}\n💰 *Valor:* R$ ${calc.totalPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
         })
@@ -1357,7 +1397,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
       {/* EXCLUSIVE MOBILE PAYMENT OVERLAY */}
       {exclusiveMobilePayment && (() => {
         const { campaign: camp, tickets: list } = exclusiveMobilePayment;
-        const calc = getDiscountedPrice(list.length, camp.ticketPrice, camp.progressiveDiscounts);
+        const calc = getDiscountedPrice(list.length, camp.ticketPrice, camp.progressiveDiscounts, userProfile?.isVip, settings?.vipDiscountPercentage);
         return (
           <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[99999] overflow-y-auto font-sans flex items-center justify-center p-2 sm:p-4 select-text animate-fadeIn">
             {/* Modal Dialog container mimicking the screenshot */}
@@ -1801,7 +1841,13 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                                   </div>
 
                                   {/* Floating status badges */}
-                                  <div className="absolute top-1.5 right-1.5 md:top-2.5 md:right-2.5 flex items-center gap-1">
+                                  <div className="absolute top-1.5 right-1.5 md:top-2.5 md:right-2.5 flex items-center gap-1.5 flex-wrap justify-end">
+                                    {isCurrentlyInVipEarlyAccess(camp) && (
+                                      <span className="bg-amber-500 text-slate-950 px-1.5 py-0.5 md:px-2 md:py-1 text-[7px] md:text-[9px] font-black rounded-lg flex items-center gap-0.5 border border-amber-300 shadow-md animate-pulse">
+                                        <Crown className="w-2.5 h-2.5 fill-slate-900 shrink-0 text-slate-950" />
+                                        VIP
+                                      </span>
+                                    )}
                                     {userTicketsCount > 0 && (
                                       <span className="bg-indigo-600 text-white text-[7px] md:text-[9px] font-black px-1.5 py-0.5 rounded-full shadow-md">
                                         {userTicketsCount} Reservado
@@ -1809,7 +1855,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                                     )}
                                     <span className="bg-slate-950/75 backdrop-blur-sm text-white px-1.5 py-0.5 md:px-2.5 md:py-1 text-[7px] md:text-[9.5px] font-bold rounded-full flex items-center gap-1 border border-white/10">
                                       <span className="w-1 h-1 md:w-1.5 md:h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                                      Ativa
+                                      {isCurrentlyInVipEarlyAccess(camp) ? "VIP Ativo" : "Ativa"}
                                     </span>
                                   </div>
                                 </div>
@@ -2109,10 +2155,13 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                                   </div>
 
                                   {/* Floating status badge (right side) */}
-                                  <div className="absolute top-1.5 right-1.5 md:top-2.5 md:right-2.5 flex items-center gap-1">
+                                  <div className="absolute top-1.5 right-1.5 md:top-2.5 md:right-2.5 flex flex-col items-end gap-1">
                                     <span className="bg-slate-900/85 backdrop-blur-sm text-white px-1.5 py-0.5 md:px-2.5 md:py-1 text-[7px] md:text-[9.5px] font-bold rounded-full flex items-center gap-1 border border-white/10">
                                       <Clock className="w-2 h-2 text-amber-450 animate-pulse" />
                                       Em Breve
+                                    </span>
+                                    <span className="bg-amber-500/90 text-[7px] text-slate-950 font-black px-1.5 py-0.5 rounded-md flex items-center gap-0.5 shadow-sm border border-amber-300">
+                                      <Crown className="w-2 h-2 fill-slate-900" /> VIP -{settings?.vipAdvanceHours || 24}h
                                     </span>
                                   </div>
                                 </div>
@@ -2409,26 +2458,28 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                             <div className="space-y-1">
                               <span className="text-[10px] text-amber-850 font-black uppercase tracking-widest block leading-none">VALOR TOTAL DO PEDIDO</span>
                               {(() => {
-                                const calc = getDiscountedPrice(selectedNumbers.length, selectedCampaign.ticketPrice, selectedCampaign.progressiveDiscounts);
+                                const calc = getDiscountedPrice(selectedNumbers.length, selectedCampaign.ticketPrice, selectedCampaign.progressiveDiscounts, userProfile?.isVip, settings?.vipDiscountPercentage);
+                                const isVipDiscountActive = userProfile?.isVip && calc.discountPercentage === settings?.vipDiscountPercentage;
                                 return (
                                   <div className="space-y-1.5">
                                     <strong className="text-3xl md:text-4xl font-extrabold text-amber-950 font-sans block leading-none">
                                       R$ {calc.totalPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                     </strong>
                                     <span className="text-xs text-amber-800 font-semibold block leading-none">
-                                      {selectedNumbers.length} cota(s) • R$ {calc.unitPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} cada {calc.appliedDiscount ? "(Desconto Progressivo!)" : ""}
+                                      {selectedNumbers.length} cota(s) • R$ {calc.unitPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} cada {isVipDiscountActive ? "(Com desconto especial VIP! 👑)" : calc.appliedDiscount ? "(Desconto Progressivo!)" : ""}
                                     </span>
                                   </div>
                                 );
                               })()}
                             </div>
                             {(() => {
-                              const calc = getDiscountedPrice(selectedNumbers.length, selectedCampaign.ticketPrice, selectedCampaign.progressiveDiscounts);
+                              const calc = getDiscountedPrice(selectedNumbers.length, selectedCampaign.ticketPrice, selectedCampaign.progressiveDiscounts, userProfile?.isVip, settings?.vipDiscountPercentage);
+                              const isVipDiscountActive = userProfile?.isVip && calc.discountPercentage === settings?.vipDiscountPercentage;
                               return (
                                 <div className="flex flex-col items-end gap-1 shrink-0">
-                                  {calc.appliedDiscount && (
-                                    <span className="text-[9px] bg-emerald-600 text-white font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider shadow-4xs animate-pulse">
-                                      Melhor Desconto Ativo! 🏷️
+                                  {(calc.appliedDiscount || isVipDiscountActive) && (
+                                    <span className="text-[9px] bg-emerald-600 text-white font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider shadow-4xs animate-pulse flex items-center gap-1">
+                                      {isVipDiscountActive ? "👑 VIP Desconto Ativo!" : "Melhor Desconto Ativo! 🏷️"}
                                     </span>
                                   )}
                                   <span className="text-3xl filter drop-shadow select-none hidden sm:inline">💎</span>
@@ -3344,16 +3395,17 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                     </strong>
                     <span className="text-base font-black text-emerald-400 font-mono">
                       R$ {(() => {
-                        const calc = getDiscountedPrice(selectedNumbers.length, selectedCampaign.ticketPrice, selectedCampaign.progressiveDiscounts);
+                        const calc = getDiscountedPrice(selectedNumbers.length, selectedCampaign.ticketPrice, selectedCampaign.progressiveDiscounts, userProfile?.isVip, settings?.vipDiscountPercentage);
                         return calc.totalPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                       })()}
                     </span>
                     {(() => {
-                      const calc = getDiscountedPrice(selectedNumbers.length, selectedCampaign.ticketPrice, selectedCampaign.progressiveDiscounts);
-                      if (calc.appliedDiscount) {
+                      const calc = getDiscountedPrice(selectedNumbers.length, selectedCampaign.ticketPrice, selectedCampaign.progressiveDiscounts, userProfile?.isVip, settings?.vipDiscountPercentage);
+                      const isVipDiscountActive = userProfile?.isVip && calc.discountPercentage === settings?.vipDiscountPercentage;
+                      if (calc.appliedDiscount || isVipDiscountActive) {
                         return (
                           <span className="text-[8px] bg-emerald-600 text-white font-black px-1.5 py-0.5 rounded-full uppercase tracking-wider scale-90">
-                            Desconto!
+                            {isVipDiscountActive ? "VIP!" : "Desconto!"}
                           </span>
                         );
                       }
@@ -3411,7 +3463,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                     <span className="text-sm font-black tracking-tight mt-0.5 block">
                       {selectedNumbers.length} {selectedNumbers.length === 1 ? "cota" : "cotas"} •{" "}
                       {(() => {
-                        const priceResult = getDiscountedPrice(selectedNumbers.length, selectedCampaign.ticketPrice, selectedCampaign.progressiveDiscounts);
+                        const priceResult = getDiscountedPrice(selectedNumbers.length, selectedCampaign.ticketPrice, selectedCampaign.progressiveDiscounts, userProfile?.isVip, settings?.vipDiscountPercentage);
                         return (
                           <span className="text-emerald-400 font-extrabold font-mono">
                             R$ {priceResult.totalPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

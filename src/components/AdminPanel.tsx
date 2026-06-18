@@ -34,7 +34,8 @@ import {
   Database,
   Download,
   Calculator,
-  Percent
+  Percent,
+  Crown
 } from "lucide-react";
 
 export function getCampaignRevenueStats(campaign: Campaign, tickets: Ticket[]) {
@@ -97,7 +98,9 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
     rulesText: "Os bilhetes reservados têm prazo de validade. Caso a transferência via PIX não seja comprovada, a cota retornará à disponibilidade geral automaticamente.",
     autoWhatsAppRedirect: true,
     logoUrl: "",
-    logoBase64: ""
+    logoBase64: "",
+    vipAdvanceHours: 24,
+    vipDiscountPercentage: 10
   });
 
   const [groupReservationsByBuyer, setGroupReservationsByBuyer] = useState(false);
@@ -881,6 +884,17 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
       const ref = doc(db, "users", client.uid);
       await updateDoc(ref, { isBlocked: newBlockedState });
       alert(`Cliente ${client.name} foi ${newBlockedState ? "Bloqueado" : "Desbloqueado"} com sucesso.`);
+    } catch (err: any) {
+      handleFirestoreError(err, OperationType.WRITE, `users/${client.uid}`);
+    }
+  };
+
+  const handleToggleVipClient = async (client: UserProfile) => {
+    try {
+      const newVipState = !client.isVip;
+      const ref = doc(db, "users", client.uid);
+      await updateDoc(ref, { isVip: newVipState });
+      alert(`Cliente ${client.name} foi ${newVipState ? "definido como VIP 👑" : "removido do VIP"} com sucesso.`);
     } catch (err: any) {
       handleFirestoreError(err, OperationType.WRITE, `users/${client.uid}`);
     }
@@ -2812,6 +2826,46 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                 </div>
               </div>
 
+              <div className="space-y-4 md:col-span-2 border-t border-slate-200 pt-4 mt-2">
+                <h3 className="font-extrabold text-slate-800 text-xs flex items-center gap-1.5 uppercase tracking-wider">
+                  <span className="text-amber-600">👑 Programa de Clientes VIP</span>
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-amber-50/20 p-4 rounded-xl border border-amber-100/50">
+                  <div className="space-y-1.5">
+                    <label className="block font-extrabold text-slate-700 text-xs">Tempo de Acesso Antecipado (Horas)</label>
+                    <input
+                      type="number"
+                      required
+                      min={0}
+                      max={168}
+                      value={settings.vipAdvanceHours || 24}
+                      onChange={(e) => setSettings({ ...settings, vipAdvanceHours: Number(e.target.value) })}
+                      className="w-full bg-white p-2.5 border border-slate-300 rounded-lg text-xs font-bold"
+                      placeholder="Ex: 24"
+                    />
+                    <span className="text-[10.5px] text-slate-450 block leading-normal">
+                      Prazo de antecedência em horas que o cliente VIP poderá visualizar e comprar cotas de campanhas com início agendado (data/hora de início futuro).
+                    </span>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="block font-extrabold text-slate-700 text-xs">Desconto Especial em Cotas (%)</label>
+                    <input
+                      type="number"
+                      required
+                      min={0}
+                      max={100}
+                      value={settings.vipDiscountPercentage || 10}
+                      onChange={(e) => setSettings({ ...settings, vipDiscountPercentage: Number(e.target.value) })}
+                      className="w-full bg-white p-2.5 border border-slate-300 rounded-lg text-xs font-bold"
+                      placeholder="Ex: 10"
+                    />
+                    <span className="text-[10.5px] text-slate-450 block leading-normal">
+                      Percentual de desconto que será aplicado automaticamente ao valor total de todas as cotas reservadas e pagas por um portador do selo VIP.
+                    </span>
+                  </div>
+                </div>
+              </div>
+
               <div className="space-y-1.5 md:col-span-2 border-t border-slate-200 pt-4 mt-2">
                 <label className="block font-extrabold text-slate-800 text-xs uppercase tracking-wider">Logotipo da Plataforma (Logo) 🎨</label>
                 <div className="bg-white border border-slate-200 p-4 rounded-xl flex flex-col sm:flex-row items-center gap-5 shadow-inner">
@@ -4619,6 +4673,11 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                           {cl.isBlocked && (
                             <span className="px-1.5 py-0.5 text-[8.5px] font-black text-rose-700 bg-rose-50 border border-rose-200 rounded-md uppercase tracking-wider">BLOQUEADO</span>
                           )}
+                          {cl.isVip && (
+                            <span className="px-1.5 py-0.5 text-[8.5px] font-black text-amber-800 bg-amber-50 border border-amber-200 rounded-md uppercase tracking-wider flex items-center gap-0.5" title="Portador VIP - Desconto e acesso antecipado ativos">
+                              <Crown className="w-2.5 h-2.5 text-amber-600 fill-amber-400" /> VIP
+                            </span>
+                          )}
                         </div>
                         <div className="text-[10px] text-slate-400 font-normal">{cl.email}</div>
                       </td>
@@ -4683,6 +4742,18 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                           </button>
                           <button
                             type="button"
+                            onClick={() => handleToggleVipClient(cl)}
+                            className={`p-1.5 rounded-lg transition ${
+                              cl.isVip 
+                                ? "text-amber-500 hover:text-amber-700 hover:bg-amber-50" 
+                                : "text-slate-400 hover:text-amber-600 hover:bg-amber-50/50"
+                            }`}
+                            title={cl.isVip ? "Remover de VIP" : "Tornar em VIP (Vantagens de desconto e antecipação)"}
+                          >
+                            <Crown className={`w-4 h-4 ${cl.isVip ? "fill-amber-400 text-amber-500" : ""}`} />
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => handleToggleBlockClient(cl)}
                             className={`p-1.5 rounded-lg transition ${
                               cl.isBlocked 
@@ -4736,6 +4807,11 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                             <span>{cl.name}</span>
                             {cl.isBlocked && (
                               <span className="px-1.5 py-0.5 text-[8px] font-black text-rose-700 bg-rose-50 border border-rose-200 rounded-md uppercase tracking-wider">BLOQUEADO</span>
+                            )}
+                            {cl.isVip && (
+                              <span className="px-1.5 py-0.5 text-[8.5px] font-black text-amber-850 bg-amber-50 border border-amber-200 rounded-md uppercase tracking-wider flex items-center gap-0.5" title="Portador VIP">
+                                <Crown className="w-2.5 h-2.5 text-amber-600 fill-amber-400" /> VIP
+                              </span>
                             )}
                           </h4>
                           <span className="text-[10px] text-slate-400 block">{cl.email}</span>
@@ -4798,19 +4874,31 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                         <Plus className="w-3.5 h-3.5 text-white" />
                         <span>Lançar Cotas Manuais</span>
                       </button>
-                      <div className="grid grid-cols-3 gap-2">
+                      <div className="grid grid-cols-2 gap-2">
                         <button
                           type="button"
                           onClick={() => handleOpenEditClient(cl)}
-                          className="flex items-center justify-center gap-1.5 px-2.5 py-2 hover:bg-slate-100 rounded-xl font-bold text-slate-700 bg-white border border-slate-200 shadow-xs transition"
+                          className="flex items-center justify-center gap-1.5 px-2 py-2 hover:bg-slate-100 rounded-xl font-bold text-slate-700 bg-white border border-slate-200 shadow-xs transition text-xs"
                         >
                           <Edit className="w-3.5 h-3.5 text-indigo-600" />
                           <span>Editar</span>
                         </button>
                         <button
                           type="button"
+                          onClick={() => handleToggleVipClient(cl)}
+                          className={`flex items-center justify-center gap-1.5 px-2 py-2 rounded-xl font-bold transition shadow-xs text-xs ${
+                            cl.isVip
+                              ? "bg-amber-50 text-amber-800 border border-amber-200"
+                              : "bg-white text-slate-700 border border-slate-200 hover:bg-slate-100"
+                          }`}
+                        >
+                          <Crown className={`w-3.5 h-3.5 ${cl.isVip ? "text-amber-600 fill-amber-400" : "text-slate-400"}`} />
+                          <span>{cl.isVip ? "Remover VIP" : "Tornar VIP"}</span>
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => handleToggleBlockClient(cl)}
-                          className={`flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-xl font-bold transition shadow-xs ${
+                          className={`flex items-center justify-center gap-1.5 px-2 py-2 rounded-xl font-bold transition shadow-xs text-xs ${
                             cl.isBlocked
                               ? "bg-rose-50 text-rose-700 border border-rose-200"
                               : "bg-white text-slate-700 border border-slate-200 hover:bg-slate-100"
@@ -4822,7 +4910,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                         <button
                           type="button"
                           onClick={() => handleDeleteClient(cl)}
-                          className="flex items-center justify-center gap-1.5 px-2.5 py-2 hover:bg-rose-50 text-rose-700 bg-white border border-rose-100 shadow-xs rounded-xl font-bold transition"
+                          className="flex items-center justify-center gap-1.5 px-2 py-2 hover:bg-rose-50 text-rose-700 bg-white border border-rose-100 shadow-xs rounded-xl font-bold transition text-xs"
                         >
                           <Trash2 className="w-3.5 h-3.5 text-rose-600" />
                           <span>Excluir</span>
