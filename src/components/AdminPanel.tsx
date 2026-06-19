@@ -94,6 +94,8 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
   const [isExpressSpinning, setIsExpressSpinning] = useState(false);
   const [spinningTicket, setSpinningTicket] = useState<Ticket | null>(null);
   const [expressCelebrationWinner, setExpressCelebrationWinner] = useState<{ ticket: Ticket; name: string } | null>(null);
+  const [antiVicioActive, setAntiVicioActive] = useState(true);
+  const [clientFilterTab, setClientFilterTab] = useState<"all" | "vip_only" | "eligible_vip">("all");
 
   // Global dynamically editable settings
   const [settings, setSettings] = useState({
@@ -2011,11 +2013,100 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
     ca.title.toLowerCase().includes(campaignSearch.toLowerCase())
   );
 
-  const filteredClients = clients.filter((cl) =>
-    cl.name.toLowerCase().includes(clientSearch.toLowerCase()) ||
-    cl.cpf.includes(clientSearch) ||
-    cl.email.toLowerCase().includes(clientSearch.toLowerCase())
-  );
+  // Identify VIP eligibility based on cumulative single purchase checks (at least 10 tickets at once)
+  const eligibleVipClientsMap = useMemo(() => {
+    const map: {
+      [clientUid: string]: {
+        maxSinglePurchaseCount: number;
+        qualifyingBatches: { campaignTitle: string; count: number; date: string }[];
+      };
+    } = {};
+
+    clients.forEach((cl) => {
+      map[cl.uid] = { maxSinglePurchaseCount: 0, qualifyingBatches: [] };
+    });
+
+    Object.entries(allReservations).forEach(([campaignId, tickets]) => {
+      const ca = campaigns.find((c) => c.id === campaignId);
+      if (!ca) return;
+
+      const ticketsList = (tickets as Ticket[]) || [];
+      const groups: { [buyerKey: string]: Ticket[] } = {};
+      ticketsList.forEach((t) => {
+        const key = t.buyerPhone || t.buyerCpf || t.buyerEmail || t.buyerName || "Mapeado manualmente";
+        if (!groups[key]) {
+          groups[key] = [];
+        }
+        groups[key].push(t);
+      });
+
+      Object.entries(groups).forEach(([buyerKey, tList]) => {
+        const batches = splitTicketsIntoBatches(tList);
+        batches.forEach((batch) => {
+          const confirmedTicketsInBatch = batch.filter((t) => t.status === "confirmed");
+          const count = confirmedTicketsInBatch.length;
+          if (count > 0) {
+            const firstTick = confirmedTicketsInBatch[0] || batch[0];
+            const matchingClient = clients.find((cl) => {
+              const cleanClPhone = cl.phone?.replace(/\D/g, "");
+              const cleanTkPhone = firstTick.buyerPhone?.replace(/\D/g, "");
+              const phoneMatch = cleanClPhone && cleanTkPhone && cleanClPhone === cleanTkPhone;
+              const cpfMatch = cl.cpf && firstTick.buyerCpf && cl.cpf.replace(/\D/g, "") === firstTick.buyerCpf.replace(/\D/g, "");
+              const emailMatch = cl.email && firstTick.buyerEmail && cl.email.trim().toLowerCase() === firstTick.buyerEmail.trim().toLowerCase();
+              const uidMatch = cl.uid && firstTick.buyerUid && cl.uid === firstTick.buyerUid;
+              return phoneMatch || cpfMatch || emailMatch || uidMatch;
+            });
+
+            if (matchingClient) {
+              const entry = map[matchingClient.uid];
+              if (entry) {
+                if (count > entry.maxSinglePurchaseCount) {
+                  entry.maxSinglePurchaseCount = count;
+                }
+                const dateStr = firstTick.confirmedAt 
+                  ? new Date(firstTick.confirmedAt).toLocaleDateString("pt-BR") 
+                  : (firstTick.reservedAt ? new Date(firstTick.reservedAt).toLocaleDateString("pt-BR") : "----");
+                
+                // Avoid duplicating the exact same batch log
+                const exists = entry.qualifyingBatches.some(
+                  (qb) => qb.campaignTitle === ca.title && qb.count === count && qb.date === dateStr
+                );
+                if (count >= 10 && !exists) {
+                  entry.qualifyingBatches.push({
+                    campaignTitle: ca.title,
+                    count,
+                    date: dateStr,
+                  });
+                }
+              }
+            }
+          }
+        });
+      });
+    });
+
+    return map;
+  }, [campaigns, allReservations, clients]);
+
+  const filteredClients = clients.filter((cl) => {
+    // 1. Search text filter
+    const matchesSearch =
+      cl.name.toLowerCase().includes(clientSearch.toLowerCase()) ||
+      cl.cpf.includes(clientSearch) ||
+      cl.email.toLowerCase().includes(clientSearch.toLowerCase());
+
+    if (!matchesSearch) return false;
+
+    // 2. Filter client tab
+    if (clientFilterTab === "vip_only") {
+      return cl.isVip;
+    }
+    if (clientFilterTab === "eligible_vip") {
+      const result = eligibleVipClientsMap[cl.uid];
+      return result && result.qualifyingBatches.length > 0;
+    }
+    return true;
+  });
 
   return (
     <div className="space-y-6">
@@ -4748,15 +4839,74 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
               </div>
             </div>
 
-            <div className="relative max-w-md text-xs">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Buscar clientes por nome, CPF ou E-mail..."
-                value={clientSearch}
-                onChange={(e) => setClientSearch(e.target.value)}
-                className="pl-9 pr-4 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 w-full bg-slate-50"
-              />
+            {/* Banner explicativo do Sistema de Sinalização VIP */}
+            <div className="bg-gradient-to-r from-amber-500/10 via-indigo-500/10 to-indigo-500/5 border border-indigo-150 rounded-2xl p-4 text-xs flex gap-3.5 items-start text-slate-800 animate-fadeIn">
+              <Sparkles className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5 animate-pulse" />
+              <div className="space-y-1">
+                <h4 className="font-extrabold text-slate-850 text-xs flex items-center gap-1.5">
+                  Painel de Sinalização Premium (Anti-Vício & Inteligência VIP) 💎
+                </h4>
+                <p className="text-slate-550 leading-relaxed text-[11px]">
+                  O sistema analisa automaticamente os lotes de reservas integradas. Clientes com a sinalização <strong className="text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded text-[10px] font-bold">✨ Elegível VIP</strong> compraram <strong>pelo menos 10 cotas confirmadas de uma única vez</strong>. Você pode habilitá-los como VIPs clicando no ícone de coroa ou convidá-los diretamente para seu grupo do WhatsApp clicando no botão de contato.
+                </p>
+              </div>
+            </div>
+
+            {/* Quick tabs filters for Clients table */}
+            <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center border-b border-slate-150 pb-2">
+              <div className="flex flex-wrap gap-2 text-[11px] font-bold">
+                <button
+                  type="button"
+                  onClick={() => setClientFilterTab("all")}
+                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                    clientFilterTab === "all"
+                      ? "bg-slate-900 text-white shadow-xs"
+                      : "bg-slate-50 text-slate-500 hover:text-slate-800 hover:bg-slate-100/80"
+                  }`}
+                >
+                  Todos ({clients.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setClientFilterTab("vip_only")}
+                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                    clientFilterTab === "vip_only"
+                      ? "bg-amber-600 text-white shadow-xs"
+                      : "bg-slate-50 text-slate-500 hover:text-slate-800 hover:bg-slate-100/80"
+                  }`}
+                >
+                  <Crown className="w-3.5 h-3.5 shrink-0" />
+                  Portadores VIP ({clients.filter((c) => c.isVip).length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setClientFilterTab("eligible_vip")}
+                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                    clientFilterTab === "eligible_vip"
+                      ? "bg-indigo-600 text-white shadow-xs"
+                      : "bg-slate-50 text-indigo-600 hover:text-indigo-850 hover:bg-indigo-100/50"
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5 shrink-0 animate-bounce" />
+                  Elegíveis VIP ({
+                    clients.filter((c) => {
+                      const res = eligibleVipClientsMap[c.uid];
+                      return res && res.qualifyingBatches.length > 0;
+                    }).length
+                  })
+                </button>
+              </div>
+
+              <div className="relative w-full sm:max-w-xs text-xs">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Buscar por nome, CPF, e-mail..."
+                  value={clientSearch}
+                  onChange={(e) => setClientSearch(e.target.value)}
+                  className="pl-9 pr-4 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 w-full bg-slate-50"
+                />
+              </div>
             </div>
 
             <div className="hidden md:block overflow-x-auto text-xs">
@@ -4785,8 +4935,24 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                               <Crown className="w-2.5 h-2.5 text-amber-600 fill-amber-400" /> VIP
                             </span>
                           )}
+                          {!cl.isVip && eligibleVipClientsMap[cl.uid]?.qualifyingBatches.length > 0 && (
+                            <span className="px-1.5 py-0.5 text-[8.5px] font-black text-indigo-800 bg-indigo-50 border border-indigo-200 rounded-md uppercase tracking-wider flex items-center gap-0.5 animate-pulse" title={`Qualificado: comprou ${eligibleVipClientsMap[cl.uid]?.maxSinglePurchaseCount} cotas de uma única vez!`}>
+                              <Sparkles className="w-2.5 h-2.5 text-indigo-600" /> Elegível VIP
+                            </span>
+                          )}
                         </div>
                         <div className="text-[10px] text-slate-400 font-normal">{cl.email}</div>
+                        {eligibleVipClientsMap[cl.uid]?.qualifyingBatches.length > 0 && (
+                          <div className="text-[9.5px] text-indigo-600 mt-1 font-semibold flex flex-col gap-0.5 bg-indigo-50/50 p-1.5 rounded-lg border border-indigo-100/50 max-w-[250px]">
+                            <div className="flex items-center gap-1">
+                              <Sparkles className="w-3 h-3 text-indigo-500" />
+                              <span>Comprou {eligibleVipClientsMap[cl.uid]?.maxSinglePurchaseCount} cotas de uma vez!</span>
+                            </div>
+                            <span className="text-slate-400 font-normal text-[8.5px]">
+                              Campanha: {eligibleVipClientsMap[cl.uid]?.qualifyingBatches[0]?.campaignTitle}
+                            </span>
+                          </div>
+                        )}
                       </td>
                       <td className="py-4 px-4 font-mono text-slate-600">
                         {cl.cpf.slice(0, 3)}.{cl.cpf.slice(3, 6)}.{cl.cpf.slice(6, 9)}-{cl.cpf.slice(9, 11)}
@@ -4920,8 +5086,24 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                                 <Crown className="w-2.5 h-2.5 text-amber-600 fill-amber-400" /> VIP
                               </span>
                             )}
+                            {!cl.isVip && eligibleVipClientsMap[cl.uid]?.qualifyingBatches.length > 0 && (
+                              <span className="px-1.5 py-0.5 text-[8px] font-black text-indigo-800 bg-indigo-50 border border-indigo-200 rounded-md uppercase tracking-wider flex items-center gap-0.5 animate-pulse">
+                                <Sparkles className="w-2.5 h-2.5 text-indigo-600" /> Elegível VIP
+                              </span>
+                            )}
                           </h4>
                           <span className="text-[10px] text-slate-400 block">{cl.email}</span>
+                          {eligibleVipClientsMap[cl.uid]?.qualifyingBatches.length > 0 && (
+                            <div className="text-[9.5px] text-indigo-600 mt-1 font-semibold flex flex-col gap-0.5 bg-indigo-50/50 p-1.5 rounded-lg border border-indigo-100/50 max-w-full">
+                              <div className="flex items-center gap-1">
+                                <Sparkles className="w-3 h-3 text-indigo-500" />
+                                <span>Comprou {eligibleVipClientsMap[cl.uid]?.maxSinglePurchaseCount} cotas de uma vez!</span>
+                              </div>
+                              <span className="text-slate-400 font-normal text-[8.5px]">
+                                Campanha: {eligibleVipClientsMap[cl.uid]?.qualifyingBatches[0]?.campaignTitle}
+                              </span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -5987,6 +6169,50 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                       </button>
                     </div>
 
+                    {/* Módulo de Prevenção de Ganhadores Repetidos e Dados Viciados (Anti-Vício) */}
+                    <div className="bg-slate-950/60 border border-white/5 rounded-2xl p-4 space-y-3.5 select-none animate-fadeIn">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="p-1 bg-indigo-500/10 text-indigo-400 rounded-lg border border-indigo-500/20">
+                            <Sparkles className="w-4 h-4 text-indigo-400" />
+                          </div>
+                          <div>
+                            <span className="text-xs font-extrabold text-slate-200 block">Módulo Anti-Vício Avançado</span>
+                            <span className="text-[10px] text-slate-500 block">Distribuição justa de prêmios com alta entropia</span>
+                          </div>
+                        </div>
+
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={antiVicioActive}
+                            onChange={(e) => setAntiVicioActive(e.target.checked)}
+                            disabled={isExpressSpinning}
+                            className="sr-only peer"
+                          />
+                          <div className="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-400 after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-650 peer-checked:after:bg-indigo-100" />
+                        </label>
+                      </div>
+
+                      <div className="text-[10px] text-slate-400 leading-normal space-y-1 bg-white/5 p-2 rounded-xl border border-white/[0.03]">
+                        <p className="font-semibold text-slate-300">Como funciona a prevenção:</p>
+                        <p>
+                          1. **Detecção de Frequência**: Evita que o mesmo cliente (detectado por CPF, Telefone ou Nome) ganhe repetidamente se houverem outros compradores pagos elegíveis que ainda não foram contemplados.
+                        </p>
+                        <p>
+                          2. **Entropia Criptográfica**: Gera a semente de sorteamento utilizando `window.crypto.getRandomValues()` (computação de bytes físicos de segurança), blindando o algoritmo contra dados viciados ou padrões previsíveis.
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2 text-[9.5px] font-mono text-indigo-400">
+                        <span className="flex h-1.5 w-1.5 relative">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-indigo-500"></span>
+                        </span>
+                        <span>API de Amostragem Criptográfica: {window.crypto ? "Ativa e Confiável" : "Emulação Ativa"}</span>
+                      </div>
+                    </div>
+
                     {/* Center slot machine / display */}
                     <div className="bg-slate-950 border border-white/10 rounded-2xl p-6 flex flex-col items-center justify-center text-center space-y-6 shadow-2xl relative min-h-[220px]">
                       
@@ -6082,30 +6308,73 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                         disabled={isExpressSpinning}
                         onClick={() => {
                           const ticketsList = allReservations[selectedExpressCamp.id] || [];
-                          const confirmedCount = ticketsList.filter(t => t.status === "confirmed").length;
+                          const confirmedTickets = ticketsList.filter(t => t.status === "confirmed");
+                          const confirmedCount = confirmedTickets.length;
                           
                           if (confirmedCount === 0) {
                             alert("Não é possível realizar sorteio sem nenhuma cota confirmada (paga) na campanha.");
                             return;
                           }
 
-                          if (window.confirm(`Deseja iniciar o sorteio agora? O ganhador será definido aleatoriamente entre as ${confirmedCount} cotas vagas.`)) {
+                          if (window.confirm(`Deseja iniciar o sorteio agora? O ganhador será definido através do sistema anti-vício de alta entropia entre as ${confirmedCount} cotas vagas.`)) {
                             // Run the animation
                             setIsExpressSpinning(true);
                             setExpressCelebrationWinner(null);
                             setSpinningTicket(null);
 
-                            // Select true winner beforehand
-                            const confirmedTickets = ticketsList.filter(t => t.status === "confirmed");
-                            const randomIndex = Math.floor(Math.random() * confirmedTickets.length);
-                            const realWinnerObj = confirmedTickets[randomIndex];
+                            // Collect recent winners across all other campaigns to prevent frequent repetition (anti-vicio module)
+                            const recentWinnersList = campaigns
+                              .filter(c => c.status === "drawn" && c.id !== selectedExpressCamp.id)
+                              .map(c => {
+                                const tList = allReservations[c.id] || [];
+                                const winTicket = tList.find(t => t.number === c.winningNumber);
+                                return winTicket;
+                              })
+                              .filter(Boolean); // Array of Ticket objects who won other campaigns
+
+                            const recentWinnerPhones = new Set(recentWinnersList.map(t => t?.buyerPhone).filter(Boolean));
+                            const recentWinnerCpfs = new Set(recentWinnersList.map(t => t?.buyerCpf).filter(Boolean));
+                            const recentWinnerNames = new Set(recentWinnersList.map(t => t?.buyerName).filter(Boolean));
+
+                            // Decide eligible pools of candidates
+                            let eligiblePoolInput = [...confirmedTickets];
+
+                            if (antiVicioActive) {
+                              const nonWinnerPool = confirmedTickets.filter(t => {
+                                const hasPhone = t.buyerPhone && recentWinnerPhones.has(t.buyerPhone);
+                                const hasCpf = t.buyerCpf && recentWinnerCpfs.has(t.buyerCpf);
+                                const hasName = t.buyerName && recentWinnerNames.has(t.buyerName);
+                                return !(hasPhone || hasCpf || hasName);
+                              });
+
+                              // If we have at least 1 buyer who has NOT won recently, we strictly narrow the pool to them
+                              // to prevent repetitive distribution. Otherwise, we gracefully fall back to the whole pool.
+                              if (nonWinnerPool.length > 0) {
+                                eligiblePoolInput = nonWinnerPool;
+                              }
+                            }
+
+                            // Cryptographically secure secure pseudo-random number generator
+                            const getSecureRandomIndex = (maxRange: number): number => {
+                              if (window.crypto && window.crypto.getRandomValues) {
+                                const array = new Uint32Array(1);
+                                window.crypto.getRandomValues(array);
+                                return array[0] % maxRange;
+                              }
+                              return Math.floor(Math.random() * maxRange);
+                            };
+
+                            const secureWinnerIndex = getSecureRandomIndex(eligiblePoolInput.length);
+                            const realWinnerObj = eligiblePoolInput[secureWinnerIndex];
 
                             let currentIdx = 0;
                             const animLength = 22;
                             let delayTime = 50;
 
                             const performStep = () => {
-                              const randomPreview = confirmedTickets[Math.floor(Math.random() * confirmedTickets.length)];
+                              // Display randomized elements during spin to match user expectation (high visual fidelity)
+                              const randomPreviewIndex = getSecureRandomIndex(confirmedTickets.length);
+                              const randomPreview = confirmedTickets[randomPreviewIndex];
                               setSpinningTicket(randomPreview);
                               currentIdx++;
 
