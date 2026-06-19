@@ -35,7 +35,9 @@ import {
   Download,
   Calculator,
   Percent,
-  Crown
+  Crown,
+  Sparkles,
+  Zap
 } from "lucide-react";
 
 export function getCampaignRevenueStats(campaign: Campaign, tickets: Ticket[]) {
@@ -80,12 +82,18 @@ interface AdminPanelProps {
 
 export default function AdminPanel({ onLogout }: AdminPanelProps) {
   // Navigation tabs: metris, reservations, config, campaigns, winners, clients
-  const [activeTab, setActiveTab] = useState<"metrics" | "reservations" | "config" | "campaigns" | "winners" | "clients" | "backup" | "pricing">("metrics");
+  const [activeTab, setActiveTab] = useState<"metrics" | "reservations" | "config" | "campaigns" | "winners" | "clients" | "backup" | "pricing" | "expressDraw">("metrics");
 
   // Databases States
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [clients, setClients] = useState<UserProfile[]>([]);
   const [allReservations, setAllReservations] = useState<{ [campaignId: string]: Ticket[] }>({});
+
+  // Express draw states for high-fidelity interactive simulation
+  const [selectedExpressCamp, setSelectedExpressCamp] = useState<Campaign | null>(null);
+  const [isExpressSpinning, setIsExpressSpinning] = useState(false);
+  const [spinningTicket, setSpinningTicket] = useState<Ticket | null>(null);
+  const [expressCelebrationWinner, setExpressCelebrationWinner] = useState<{ ticket: Ticket; name: string } | null>(null);
 
   // Global dynamically editable settings
   const [settings, setSettings] = useState({
@@ -2075,6 +2083,15 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
           >
             <Trophy className="w-4 h-4 text-amber-500 animate-pulse" />
             Ganhadores
+          </button>
+          <button
+            onClick={() => setActiveTab("expressDraw")}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl font-bold text-[11px] tracking-wide uppercase transition cursor-pointer min-w-[170px] ${
+              activeTab === "expressDraw" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"
+            }`}
+          >
+            <Sparkles className="w-4 h-4 text-amber-500" />
+            Sorteio Expressas ⚡
           </button>
           <button
             onClick={() => setActiveTab("clients")}
@@ -5776,10 +5793,480 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                     </ul>
                   </div>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
 
+        {activeTab === "expressDraw" && (
+          /* SECTION 9: INTERACTIVE LIVE EXPRESS DRAWING SCREEN */
+          <div className="space-y-8 animate-fadeIn text-slate-800">
+            {/* Header info */}
+            <div>
+              <h2 className="font-extrabold text-slate-800 text-lg flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-indigo-600 animate-pulse" />
+                Painel do Sorteador Inteligente (Campanhas Expressas) ⚡
+              </h2>
+              <p className="text-xs text-slate-400">
+                Visualize as campanhas expressas fechadas ou ativas, confira a lista de compradores confirmados e realize o sorteio animado em tempo real.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+              
+              {/* LEFT COLUMN: LIST OF EXPRESS CAMPAIGNS FOR DRAWING */}
+              <div className="lg:col-span-5 space-y-5">
+                <div className="border-b border-slate-150 pb-3">
+                  <h3 className="font-bold text-slate-800 text-xs uppercase tracking-wider text-slate-500">
+                    Campanhas Expressas Disponíveis
+                  </h3>
+                </div>
+
+                {(() => {
+                  const expressCampList = campaigns.filter(c => c.drawMode === "express");
+                  const activeExpress = expressCampList.filter(c => c.status !== "drawn");
+
+                  if (activeExpress.length === 0) {
+                    return (
+                      <div className="bg-slate-50 border border-slate-205 border-dashed rounded-2xl p-6 text-center text-xs text-slate-400 space-y-2">
+                        <Trophy className="w-8 h-8 text-slate-300 mx-auto" />
+                        <p className="font-bold">Nenhuma campanha expressa pendente de sorteio!</p>
+                        <p className="text-[10px] text-slate-400/80 leading-snug">
+                          Apenas campanhas ativas configuradas no modo 'Expressa' que ainda não foram sorteadas aparecerão aqui para serem contempladas.
+                        </p>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="space-y-4">
+                      {activeExpress.map((camp) => {
+                        const ticketsList = allReservations[camp.id] || [];
+                        const confirmedTickets = ticketsList.filter(t => t.status === "confirmed");
+                        const reservedTickets = ticketsList.filter(t => t.status === "reserved");
+                        const confirmedPercentage = Math.min(100, Math.ceil((confirmedTickets.length / camp.totalTickets) * 100));
+
+                        const isSelected = selectedExpressCamp?.id === camp.id;
+
+                        return (
+                          <div
+                            key={camp.id}
+                            className={`bg-white border rounded-2xl p-5 transition shadow-xs hover:shadow-md cursor-pointer flex flex-col justify-between space-y-4 relative overflow-hidden ${
+                              isSelected
+                                ? "border-indigo-500 ring-2 ring-indigo-500/20 bg-indigo-50/5"
+                                : "border-slate-200"
+                            }`}
+                            onClick={() => {
+                              setSelectedExpressCamp(camp);
+                              setExpressCelebrationWinner(null);
+                              setSpinningTicket(null);
+                            }}
+                          >
+                            <div>
+                              <div className="flex justify-between items-start gap-2">
+                                <h4 className="font-extrabold text-xs text-slate-800 line-clamp-1">{camp.title}</h4>
+                                <span className={`shrink-0 font-extrabold text-[8.5px] uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                                  confirmedPercentage === 105
+                                    ? "bg-emerald-100 text-emerald-800 border border-emerald-150"
+                                    : "bg-indigo-50 text-indigo-700 border border-indigo-150"
+                                }`}>
+                                  {confirmedPercentage === 100 ? "100% Vendido" : "Ativa"}
+                                </span>
+                              </div>
+                              <p className="text-[10px] text-slate-400 mt-0.5 font-mono">
+                                Preço unitário: R$ {camp.ticketPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                              </p>
+                            </div>
+
+                            {/* Status progress indicator bar */}
+                            <div className="space-y-1 text-[10px]">
+                              <div className="flex justify-between text-slate-500 font-semibold">
+                                <span>Progresso de Vendas Pagas:</span>
+                                <strong className="font-mono text-slate-800">{confirmedTickets.length} / {camp.totalTickets} ({confirmedPercentage}%)</strong>
+                              </div>
+                              <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden border border-slate-150">
+                                <div
+                                  className={`h-full rounded-full transition-all duration-300 ${
+                                    confirmedPercentage === 100 ? "bg-emerald-500" : "bg-indigo-550"
+                                  }`}
+                                  style={{ width: `${confirmedPercentage}%` }}
+                                />
+                              </div>
+                              <div className="flex gap-4 text-[9.5px] text-slate-400 font-medium">
+                                <span>Confirmadas: <strong className="text-slate-650 font-mono">{confirmedTickets.length}</strong></span>
+                                <span>Reservadas: <strong className="text-slate-650 font-mono">{reservedTickets.length}</strong></span>
+                              </div>
+                            </div>
+
+                            {/* Ticket scroll preview if selected */}
+                            {isSelected && confirmedTickets.length > 0 && (
+                              <div className="bg-slate-50 rounded-xl p-3 border border-slate-150 space-y-1.5 animate-fadeIn" onClick={(e) => e.stopPropagation()}>
+                                <span className="text-[9px] font-black uppercase tracking-wider text-slate-500 block">Compradores Elegíveis ({confirmedTickets.length}):</span>
+                                <div className="max-h-[110px] overflow-y-auto divide-y divide-slate-150 text-[10px] scrollbar-thin">
+                                  {confirmedTickets.map((t) => (
+                                    <div key={t.number} className="py-1 flex justify-between font-medium">
+                                      <span className="text-slate-700 truncate max-w-[150px]">{t.buyerName || "Consumidor"}</span>
+                                      <span className="font-mono text-indigo-700 font-bold">#{t.number}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            <button
+                              type="button"
+                              className={`w-full py-2.5 rounded-xl font-extrabold text-[11px] leading-tight transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs ${
+                                isSelected
+                                  ? "bg-indigo-650 hover:bg-indigo-700 text-white font-black"
+                                  : "bg-slate-100 hover:bg-slate-200 text-slate-755 border border-slate-200"
+                              }`}
+                            >
+                              <Trophy className="w-3.5 h-3.5 shrink-0" />
+                              <span>{isSelected ? "Pronto no Terminal" : "Carregar no Terminal"}</span>
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* RIGHT COLUMN: INTERACTIVE DRAW WORKING AREA */}
+              <div className="lg:col-span-7">
+                <div className="border-b border-slate-150 pb-3 mb-5">
+                  <h3 className="font-bold text-slate-800 text-xs uppercase tracking-wider text-slate-500">
+                    Terminal Eletrônico de Sorteios
+                  </h3>
+                </div>
+
+                {!selectedExpressCamp ? (
+                  <div className="bg-slate-50 border border-slate-150 border-dashed rounded-3xl p-10 text-center flex flex-col items-center justify-center min-h-[420px] text-slate-400 space-y-4 shadow-inner">
+                    <div className="w-16 h-16 rounded-full bg-slate-100 border border-slate-200/60 flex items-center justify-center text-slate-350 shadow-sm animate-pulse">
+                      <Zap className="w-8 h-8 text-indigo-400/80" />
+                    </div>
+                    <div className="max-w-md space-y-1.5">
+                      <h4 className="font-black text-slate-800 text-sm">Nenhum sorteio selecionado</h4>
+                      <p className="text-xs text-slate-400 flex-wrap text-center leading-relaxed">
+                        Escolha uma das campanhas da modalidade Expressa listadas à esquerda do painel para carregar as cotas no sistema de computação gráfica e realizar o sorteio aleatório auditável.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-slate-900 border border-slate-950 rounded-3xl p-6 md:p-8 space-y-6 text-white shadow-2xl relative overflow-hidden animate-fadeIn">
+                    
+                    {/* Background Neon Grid Accents */}
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+                    <div className="absolute bottom-0 left-0 w-32 h-32 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+
+                    {/* Active Campaign Info Header */}
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-white/10 pb-4 gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="flex h-2 w-2 relative">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                          </span>
+                          <span className="text-[10px] uppercase font-mono tracking-widest text-emerald-400 font-extrabold">Terminal Conectado</span>
+                        </div>
+                        <h4 className="font-black text-base text-slate-100 tracking-tight leading-tight mt-1">{selectedExpressCamp.title}</h4>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (isExpressSpinning) return;
+                          setSelectedExpressCamp(null);
+                          setExpressCelebrationWinner(null);
+                          setSpinningTicket(null);
+                        }}
+                        disabled={isExpressSpinning}
+                        className="text-xs text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl px-3 py-1.5 transition font-semibold disabled:opacity-50"
+                      >
+                        Desconectar
+                      </button>
+                    </div>
+
+                    {/* Center slot machine / display */}
+                    <div className="bg-slate-950 border border-white/10 rounded-2xl p-6 flex flex-col items-center justify-center text-center space-y-6 shadow-2xl relative min-h-[220px]">
+                      
+                      {!isExpressSpinning && !expressCelebrationWinner && (
+                        <div className="space-y-4 animate-fadeIn">
+                          <div className="p-4 bg-white/5 border border-white/5 rounded-2xl max-w-sm mx-auto animate-fadeIn">
+                            <span className="text-[10px] font-mono tracking-wider text-slate-400 block uppercase">Cotas Elegíveis para o Sorteio</span>
+                            <span className="text-3xl font-black text-white block mt-1 font-mono">
+                              {(allReservations[selectedExpressCamp.id] || []).filter(t => t.status === "confirmed").length}
+                            </span>
+                            <span className="text-[9px] text-slate-500 block mt-1 leading-normal">
+                              Bilhetes participantes (com status confirmados/pagos) de sua campanha. Sorteio aleatório em base de dados auditável.
+                            </span>
+                          </div>
+
+                          <p className="text-xs text-slate-400 leading-normal max-w-md mx-auto">
+                            Ao pressionar o botão de início, o sorteador executará o algoritmo de deceleramento por slot, exibindo os participantes na tela e selecionando o vencedor.
+                          </p>
+                        </div>
+                      )}
+
+                      {isExpressSpinning && (
+                        <div className="space-y-4 animate-pulse select-none">
+                          <span className="text-[10px] font-mono tracking-wider text-amber-400 font-extrabold uppercase animate-bounce block">SORTEANDO - AGUARDE</span>
+                          
+                          <div className="p-5 bg-gradient-to-r from-amber-500/20 to-indigo-500/20 border border-indigo-500/30 rounded-2xl shadow-indigo-500/10 shadow-lg min-w-[280px]">
+                            <span className="text-4xl font-extrabold font-mono tracking-tight text-white block scale-105 transition-transform duration-75">
+                              {spinningTicket ? `#${spinningTicket.number}` : "#----"}
+                            </span>
+                            <span className="text-sm font-semibold tracking-wide text-indigo-200 block truncate mt-2 max-w-[240px] mx-auto">
+                              {spinningTicket?.buyerName || "Buscando vencedor..."}
+                            </span>
+                          </div>
+
+                          <p className="text-[9.5px] text-slate-400 font-mono tracking-normal">
+                            Processando semente de segurança aleatória...
+                          </p>
+                        </div>
+                      )}
+
+                      {expressCelebrationWinner && (
+                        <div className="space-y-5 animate-scaleUp select-none w-full">
+                          <div className="flex flex-col items-center">
+                            <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-amber-400 mb-2">
+                              <Trophy className="w-8 h-8 text-amber-400 animate-bounce" />
+                            </div>
+                            <span className="text-xs font-black tracking-widest text-emerald-400 uppercase font-mono">🎉 PARABÉNS AO CONTEMPLADO! 🎉</span>
+                          </div>
+
+                          <div className="p-5 bg-gradient-to-b from-amber-500/10 to-transparent border border-amber-500/40 rounded-3xl shadow-amber-500/10 shadow-2xl relative overflow-hidden max-w-md mx-auto">
+                            {/* Decorative sparkles */}
+                            <Sparkles className="absolute top-2 left-2 text-amber-500/30 w-5 h-5 animate-spin" />
+                            <Sparkles className="absolute bottom-2 right-2 text-amber-500/30 w-5 h-5 animate-spin" />
+
+                            <span className="text-4xl font-extrabold font-mono text-amber-400 block tracking-wider drop-shadow-md">
+                              #{expressCelebrationWinner.ticket.number}
+                            </span>
+                            <h5 className="text-base font-bold text-slate-100 truncate mt-2.5 max-w-[280px] mx-auto uppercase leading-tight">
+                              {expressCelebrationWinner.name}
+                            </h5>
+                            
+                            <div className="grid grid-cols-2 gap-3 text-left border-t border-white/10 pt-3.5 mt-4 text-[10.5px] text-slate-300 font-medium font-sans">
+                              <div>
+                                <span className="text-slate-400 font-bold block text-[9px] uppercase tracking-wider">Telefone Comprador:</span>
+                                <span className="font-mono">{formatPhone(expressCelebrationWinner.ticket.buyerPhone)}</span>
+                              </div>
+                              <div>
+                                <span className="text-slate-400 font-bold block text-[9px] uppercase tracking-wider">Documento (CPF):</span>
+                                <span className="font-mono">{expressCelebrationWinner.ticket.buyerCpf ? formatCPF(expressCelebrationWinner.ticket.buyerCpf) : "Não Informado"}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="pt-2 select-none max-w-sm mx-auto">
+                            <a
+                              href={`https://wa.me/55${expressCelebrationWinner.ticket.buyerPhone.replace(/\D/g, "")}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="w-full text-center flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-extrabold text-xs shadow-md shadow-emerald-950/20 transition cursor-pointer font-sans"
+                            >
+                              <span>Entrar em contato via WhatsApp</span>
+                            </a>
+                          </div>
+                        </div>
+                      )}
+
+                    </div>
+
+                    {/* Bottom CTA trigger button */}
+                    {!expressCelebrationWinner && (
+                      <button
+                        type="button"
+                        disabled={isExpressSpinning}
+                        onClick={() => {
+                          const ticketsList = allReservations[selectedExpressCamp.id] || [];
+                          const confirmedCount = ticketsList.filter(t => t.status === "confirmed").length;
+                          
+                          if (confirmedCount === 0) {
+                            alert("Não é possível realizar sorteio sem nenhuma cota confirmada (paga) na campanha.");
+                            return;
+                          }
+
+                          if (window.confirm(`Deseja iniciar o sorteio agora? O ganhador será definido aleatoriamente entre as ${confirmedCount} cotas vagas.`)) {
+                            // Run the animation
+                            setIsExpressSpinning(true);
+                            setExpressCelebrationWinner(null);
+                            setSpinningTicket(null);
+
+                            // Select true winner beforehand
+                            const confirmedTickets = ticketsList.filter(t => t.status === "confirmed");
+                            const randomIndex = Math.floor(Math.random() * confirmedTickets.length);
+                            const realWinnerObj = confirmedTickets[randomIndex];
+
+                            let currentIdx = 0;
+                            const animLength = 22;
+                            let delayTime = 50;
+
+                            const performStep = () => {
+                              const randomPreview = confirmedTickets[Math.floor(Math.random() * confirmedTickets.length)];
+                              setSpinningTicket(randomPreview);
+                              currentIdx++;
+
+                              if (currentIdx < animLength) {
+                                delayTime += (currentIdx < 12 ? 8 : 45); // decelerates rapidly at the end
+                                setTimeout(performStep, delayTime);
+                              } else {
+                                // animation completes
+                                setSpinningTicket(realWinnerObj);
+                                
+                                const now = new Date();
+                                const drawDateStr = now.toLocaleDateString("pt-BR");
+                                const drawHourStr = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+
+                                updateDoc(doc(db, "campaigns", selectedExpressCamp.id), {
+                                  status: "drawn",
+                                  winningNumber: realWinnerObj.number,
+                                  drawDate: drawDateStr,
+                                  drawHour: drawHourStr
+                                }).then(() => {
+                                  setIsExpressSpinning(false);
+                                  setExpressCelebrationWinner({
+                                    ticket: realWinnerObj,
+                                    name: realWinnerObj.buyerName || "Cliente Desconhecido"
+                                  });
+                                }).catch((err) => {
+                                  console.error("Firestore update error:", err);
+                                  setIsExpressSpinning(false);
+                                  alert("Erro ao gravar resultado no banco.");
+                                });
+                              }
+                            };
+
+                            setTimeout(performStep, delayTime);
+                          }
+                        }}
+                        className="w-full flex items-center justify-center gap-2.5 py-4 bg-gradient-to-r from-amber-500 to-indigo-600 hover:from-amber-600 hover:to-indigo-700 disabled:from-slate-700 disabled:to-slate-800 disabled:text-slate-400 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl transition cursor-pointer"
+                      >
+                        {isExpressSpinning ? (
+                          <>
+                            <svg className="animate-spin h-4 w-4 text-white animate-fadeIn" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                            </svg>
+                            <span>Girando Roleta...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Trophy className="w-4.5 h-4.5 text-white animate-pulse" />
+                            <span>SORTEAR GANHADOR AGORA 🔮</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+
+                    {expressCelebrationWinner && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setExpressCelebrationWinner(null);
+                          setSpinningTicket(null);
+                          setSelectedExpressCamp(null);
+                        }}
+                        className="w-full py-3 bg-white/10 hover:bg-white/15 text-slate-100 rounded-xl font-bold text-xs transition cursor-pointer font-sans"
+                      >
+                        Finalizar e Voltar para Lista
+                      </button>
+                    )}
+
+                  </div>
+                )}
               </div>
 
             </div>
+
+            {/* LOWER SECTION: HISTORY OF COMPLETED EXPRESS DRAWS */}
+            <div className="bg-white border border-slate-200 rounded-3xl p-6 md:p-8 space-y-6 shadow-xs">
+              <div>
+                <h3 className="font-extrabold text-slate-850 text-sm flex items-center gap-2">
+                  <Trophy className="w-4.5 h-4.5 text-indigo-600" />
+                  Histórico de Sorteios Expressos Concluídos
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Todas as campanhas da modalidade expressas que já foram sorteadas são arquivadas abaixo para auditoria e controle.
+                </p>
+              </div>
+
+              {(() => {
+                const expressCompleteList = campaigns.filter(c => c.drawMode === "express" && c.status === "drawn");
+                
+                if (expressCompleteList.length === 0) {
+                  return (
+                    <p className="text-center py-6 text-slate-400 text-xs border border-dashed rounded-2xl font-sans">
+                      Nenhum sorteio expresso foi realizado ainda.
+                    </p>
+                  );
+                }
+
+                return (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 font-sans">
+                    {expressCompleteList.map((ca) => {
+                      const tList = allReservations[ca.id] || [];
+                      const winnersList = tList.filter(t => t.number === ca.winningNumber);
+                      const winnerTicketObj = winnersList[0];
+
+                      return (
+                        <div key={ca.id} className="bg-slate-50 rounded-2xl border border-slate-150 p-5 space-y-4 shadow-xs relative">
+                          <div className="flex justify-between items-start gap-2">
+                            <h4 className="font-bold text-xs text-slate-800 line-clamp-1">{ca.title}</h4>
+                            <span className="bg-emerald-100 text-emerald-800 border border-emerald-150 text-[8.5px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full shrink-0">
+                              Sorteada
+                            </span>
+                          </div>
+
+                          <div className="bg-white rounded-xl p-3 border border-slate-200 text-xs space-y-1.5 font-sans">
+                            <div className="flex justify-between">
+                              <span className="text-slate-400 font-medium">Bilhete Contemplado:</span>
+                              <strong className="font-mono text-indigo-700 font-extrabold">#{ca.winningNumber}</strong>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-400 font-medium">Data / Hora:</span>
+                              <span className="text-slate-650 font-bold">{ca.drawDate || "----"} às {ca.drawHour || "----"}</span>
+                            </div>
+                            <div className="flex justify-between border-t border-slate-100 pt-1.5 mt-1.5">
+                              <span className="text-slate-400 font-medium">Ganhador:</span>
+                              <strong className="text-slate-800 truncate max-w-[120px]">{winnerTicketObj?.buyerName || "Cliente"}</strong>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-400 font-medium">Telefone:</span>
+                              <span className="font-mono text-slate-600 font-semibold">{winnerTicketObj?.buyerPhone ? formatPhone(winnerTicketObj.buyerPhone) : "----"}</span>
+                            </div>
+                          </div>
+
+                          <div className="flex gap-2 text-xs pt-1">
+                            {winnerTicketObj && (
+                              <a
+                                href={`https://wa.me/55${winnerTicketObj.buyerPhone.replace(/\D/g, "")}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="flex-1 text-center flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-[10.5px] shadow-xs transition"
+                              >
+                                <span>Contatar</span>
+                              </a>
+                            )}
+                            <button
+                              onClick={() => handleRevertDraw(ca)}
+                              className="flex-1 text-center flex items-center justify-center gap-1.5 px-3 py-2 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 rounded-xl font-bold text-[10.5px] transition cursor-pointer"
+                              title="Reverter Sorteio"
+                            >
+                              <X className="w-3.5 h-3.5 text-rose-700 shrink-0" />
+                              <span>Reverter</span>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
+
           </div>
         )}
       </div>
