@@ -440,77 +440,6 @@ const UpcomingCampaignCountdown = ({ campaign, onTimeReached }: { campaign: Camp
   );
 };
 
-interface EmptyReservationsStateProps {
-  onExploreClick?: () => void;
-  compact?: boolean;
-}
-
-const EmptyReservationsState: React.FC<EmptyReservationsStateProps> = ({ onExploreClick, compact = false }) => {
-  if (compact) {
-    return (
-      <div id="empty-res-compact" className="text-center p-6 bg-slate-50/60 border border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center space-y-3.5 select-none animate-fadeIn">
-        <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl border border-indigo-100/50 shadow-3xs relative">
-          <TicketIcon className="w-6 h-6 text-indigo-600" />
-          <div className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-amber-450 animate-ping" />
-          <div className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-amber-500" />
-        </div>
-        <div className="space-y-1 max-w-xs">
-          <h4 className="text-slate-800 font-extrabold text-[12px] uppercase tracking-wider">Nenhuma reserva ativa</h4>
-          <p className="text-slate-500 text-[10.5px] leading-relaxed">
-            Você ainda não garantiu suas cotas na campanha atual. Escolha uma rifa e tente a sorte!
-          </p>
-        </div>
-        {onExploreClick && (
-          <button
-            type="button"
-            onClick={onExploreClick}
-            className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black rounded-lg transition-all duration-200 cursor-pointer shadow-sm shadow-indigo-600/15 uppercase tracking-wider flex items-center gap-1 active:scale-95"
-          >
-            <span>Ver Campanhas 🍀</span>
-          </button>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <div id="empty-res-full" className="text-center p-10 md:p-14 bg-gradient-to-b from-white to-slate-50/40 border border-slate-150 rounded-3xl flex flex-col items-center justify-center space-y-5 shadow-2xs select-none animate-fadeIn max-w-2xl mx-auto">
-      {/* Visual illustration of tickets floating */}
-      <div className="relative group">
-        <div className="absolute inset-0 bg-indigo-500/10 rounded-full blur-2xl group-hover:bg-indigo-500/15 transition-all duration-300 pointer-events-none" />
-        <div className="p-5 bg-gradient-to-br from-indigo-50 to-indigo-100/50 text-indigo-600 rounded-3xl border border-indigo-200/40 shadow-xs relative z-10 flex items-center justify-center">
-          <ShoppingBag className="w-9 h-9 text-indigo-650 animate-bounce" />
-          <div className="absolute -top-1.5 -right-1.5 p-1 bg-amber-100 text-amber-600 rounded-lg border border-amber-200/50 shadow-3xs">
-            <Sparkles className="w-3.5 h-3.5 text-amber-600 animate-pulse" />
-          </div>
-        </div>
-      </div>
-
-      <div className="space-y-1.5 max-w-md">
-        <h3 className="text-slate-800 font-black text-sm sm:text-base tracking-tight leading-snug">
-          O seu Painel de Compras está vazio 🛍️
-        </h3>
-        <p className="text-slate-500 text-xs leading-relaxed max-w-xs sm:max-w-sm mx-auto">
-          Você não possui nenhuma cota reservada ou pagamento confirmado neste momento. Apoie a nossa comissão de formatura e concorra a prêmios incríveis!
-        </p>
-      </div>
-
-      <div className="flex flex-col sm:flex-row gap-2.5 items-center w-full max-w-xs justify-center pt-2">
-        {onExploreClick && (
-          <button
-            type="button"
-            onClick={onExploreClick}
-            className="w-full sm:w-auto px-5 py-2.5 bg-indigo-650 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs transition duration-200 cursor-pointer shadow-md shadow-indigo-600/10 tracking-wide flex items-center justify-center gap-1.5 active:scale-[0.98]"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-amber-350" />
-            <span>Explorar Campanhas Ativas</span>
-          </button>
-        )}
-      </div>
-    </div>
-  );
-};
-
 export default function ClientDashboard({ userProfile, onLogout, onPromptLogin }: ClientDashboardProps) {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   
@@ -1756,51 +1685,9 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
             </div>
 
             {loadingCampaigns ? (
-              <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6">
-                {[1, 2, 3, 4, 5, 6].map((i) => (
-                  <div
-                    key={i}
-                    className="bg-white rounded-2xl md:rounded-3xl border border-slate-200 p-3 md:p-5 flex flex-col space-y-3.5 w-full select-none"
-                  >
-                    {/* Thumbnail Skeleton */}
-                    <div className="relative aspect-[4/3] sm:aspect-square w-full overflow-hidden bg-slate-100 rounded-xl md:rounded-2xl border border-slate-100/50 shrink-0 mb-1 flex items-center justify-center animate-pulse">
-                      {/* Floating Price Tag Skeleton */}
-                      <div className="absolute top-1.5 left-1.5 md:top-2.5 md:left-2.5 w-16 md:w-24 h-5 md:h-8 bg-slate-200/80 rounded-lg md:rounded-xl"></div>
-                      {/* Floating Status Badge Skeleton */}
-                      <div className="absolute top-1.5 right-1.5 md:top-2.5 md:right-2.5 w-12 md:w-16 h-5 md:h-6 bg-slate-200/80 rounded-full"></div>
-                      {/* Sub-center icon hint container */}
-                      <TicketIcon className="w-8 h-8 text-slate-200" />
-                    </div>
-
-                    {/* Countdown Skeleton */}
-                    <div className="h-4 bg-slate-100/80 rounded-full w-2/3 mx-auto animate-pulse"></div>
-
-                    {/* Title and Description Skeletons */}
-                    <div className="space-y-2 flex-grow mt-1 select-none animate-pulse">
-                      <div className="h-4.5 bg-slate-200 rounded-md w-full"></div>
-                      <div className="h-3 bg-slate-150 rounded-md w-5/6 hidden md:block"></div>
-                      <div className="h-3 bg-slate-150 rounded-md w-1/2 hidden md:block"></div>
-                    </div>
-
-                    {/* Compact stats for mobile */}
-                    <div className="flex sm:hidden justify-between items-center bg-slate-50 border border-slate-100 rounded-xl px-2 py-2 h-6 animate-pulse w-full"></div>
-
-                    {/* The Trio of Info Boxes Skeletons */}
-                    <div className="hidden sm:grid grid-cols-3 gap-1.5 md:gap-2.5 w-full animate-pulse mt-1">
-                      <div className="bg-slate-50 border border-slate-100 rounded-2xl p-2.5 h-12 flex flex-col gap-1 items-center justify-center">
-                        <div className="h-2.5 bg-slate-200 rounded w-8"></div>
-                        <div className="h-3 bg-slate-200 rounded w-5"></div>
-                      </div>
-                      <div className="bg-slate-50 border border-slate-100 rounded-2xl p-2.5 h-12 flex flex-col gap-1 items-center justify-center">
-                        <div className="h-2.5 bg-slate-200 rounded w-8"></div>
-                        <div className="h-3 bg-slate-200 rounded w-5"></div>
-                      </div>
-                      <div className="bg-slate-50 border border-slate-100 rounded-2xl p-2.5 h-12 flex flex-col gap-1 items-center justify-center">
-                        <div className="h-2.5 bg-slate-200 rounded w-8"></div>
-                        <div className="h-3 bg-slate-200 rounded w-5"></div>
-                      </div>
-                    </div>
-                  </div>
+              <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6">
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className="h-48 bg-slate-100 animate-pulse rounded-2xl border border-slate-150 animate-pulse"></div>
                 ))}
               </div>
             ) : campaigns.length === 0 ? (
@@ -3096,13 +2983,9 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
 
                         if (allBatches.length === 0) {
                           return (
-                            <EmptyReservationsState
-                              compact={true}
-                              onExploreClick={() => {
-                                setActiveTab("rifas");
-                                setSuccessReserved(null);
-                              }}
-                            />
+                            <div className="text-center p-6 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-slate-450 text-xs text-center normal-case">
+                              Você não possui compras ou reservas registradas no momento.
+                            </div>
                           );
                         }
 
@@ -3278,12 +3161,9 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
             })()}
 
             {myTotalTicketsCount === 0 ? (
-              <EmptyReservationsState
-                onExploreClick={() => {
-                  setActiveTab("rifas");
-                  setSuccessReserved(null);
-                }}
-              />
+              <div className="text-center p-6 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-slate-450 text-xs text-center normal-case">
+                Você não possui compras ou reservas registradas no momento.
+              </div>
             ) : (
               <div className="space-y-4">
                 {(() => {
@@ -3308,12 +3188,9 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
 
                   if (allBatches.length === 0) {
                     return (
-                      <EmptyReservationsState
-                        onExploreClick={() => {
-                          setActiveTab("rifas");
-                          setSuccessReserved(null);
-                        }}
-                      />
+                      <div className="text-center p-6 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-slate-450 text-xs text-center normal-case">
+                        Você não possui compras ou reservas registradas no momento.
+                      </div>
                     );
                   }
 
