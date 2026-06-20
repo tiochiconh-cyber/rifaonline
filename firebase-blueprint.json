@@ -210,6 +210,10 @@
         "rulesText": {
           "type": "string"
         },
+        "salesSuspensionBlocked": {
+          "type": "boolean",
+          "description": "Flag to block/disable the automatic sales suspension during drawings"
+        },
         "backgroundAudioUrl": {
           "type": "string",
           "description": "Optional background audio URL for ambience"

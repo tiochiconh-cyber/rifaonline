@@ -80,7 +80,8 @@ service cloud.firestore {
              (s.expirationHours is int || s.expirationHours is float) && s.expirationHours >= 1 && s.expirationHours <= 10000 &&
              s.supportContact is string && s.supportContact.size() <= 100 &&
              s.rulesText is string && s.rulesText.size() <= 100000 &&
-             (!s.keys().hasAny(['backgroundAudioUrl']) || s.backgroundAudioUrl is string);
+             (!s.keys().hasAny(['backgroundAudioUrl']) || s.backgroundAudioUrl is string) &&
+             (!s.keys().hasAny(['salesSuspensionBlocked']) || s.salesSuspensionBlocked is bool);
     }
 
     match /settings/{settingId} {

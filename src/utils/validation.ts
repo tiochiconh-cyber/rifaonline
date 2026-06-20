@@ -115,7 +115,11 @@ export function validatePhone(phoneRaw: string): boolean {
  * Drawings happen on Wednesdays and Saturdays at 19:00 Brasilia Time.
  * Sales must be suspended between 18:45 and 21:00 Brasilia Time on these days.
  */
-export function isLotterySalesSuspended(): { suspended: boolean; reason?: string } {
+export function isLotterySalesSuspended(salesSuspensionBlocked?: boolean): { suspended: boolean; reason?: string } {
+  if (salesSuspensionBlocked) {
+    return { suspended: false };
+  }
+
   // Get current date/time on UTC and apply Brasilia Time offset (UTC-3)
   const now = new Date();
   const utc = now.getTime() + (now.getTimezoneOffset() * 60000);

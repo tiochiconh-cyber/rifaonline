@@ -69,4 +69,5 @@ export interface GlobalSettings {
   backgroundAudioUrl?: string;
   vipAdvanceHours?: number;
   vipDiscountPercentage?: number;
+  salesSuspensionBlocked?: boolean;
 }

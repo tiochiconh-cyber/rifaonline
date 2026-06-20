@@ -5,7 +5,7 @@ import { Campaign, Ticket, UserProfile } from "../types";
 import { isLotterySalesSuspended, getCampaignDrawProjection, maskWinnerName, splitTicketsIntoBatches } from "../utils/validation";
 import RankingView from "./RankingView";
 import CelebrationConfetti from "./CelebrationConfetti";
-import { Ticket as TicketIcon, Search, Landmark, Copy, Check, Calendar, Trophy, AlertCircle, ShoppingBag, User as UserIcon, LogOut, LogIn, ArrowRight, HelpCircle, Sparkles, ShieldCheck, Download, Printer, ArrowLeft, Clock, Smartphone, X, Crown, Medal, Gift } from "lucide-react";
+import { Ticket as TicketIcon, Search, Landmark, Copy, Check, Calendar, Trophy, AlertCircle, ShoppingBag, User as UserIcon, LogOut, LogIn, ArrowRight, HelpCircle, Sparkles, ShieldCheck, Download, Printer, ArrowLeft, Clock, Smartphone, X, Crown, Medal, Gift, BookOpen } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import AppLogo from "./AppLogo";
 
@@ -1122,7 +1122,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
       return;
     }
 
-    const suspension = isLotterySalesSuspended();
+    const suspension = isLotterySalesSuspended(settings.salesSuspensionBlocked);
     if (suspension.suspended) {
       addToast(suspension.reason || "Vendas suspensas temporariamente para o sorteio da Loteria Federal.", "error");
       return;
@@ -1223,7 +1223,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
   };
 
   const handleToggleNumberSelection = (numberStr: string) => {
-    const suspension = isLotterySalesSuspended();
+    const suspension = isLotterySalesSuspended(settings.salesSuspensionBlocked);
     if (suspension.suspended) {
       addToast(suspension.reason || "Vendas suspensas temporariamente para o sorteio da Loteria Federal.", "error");
       return;
@@ -1268,7 +1268,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
   };
 
   const handleQuickSelectRandom = (count: number) => {
-    const suspension = isLotterySalesSuspended();
+    const suspension = isLotterySalesSuspended(settings.salesSuspensionBlocked);
     if (suspension.suspended) {
       addToast(suspension.reason || "Vendas suspensas temporariamente para o sorteio da Loteria Federal.", "error");
       return;
@@ -1432,6 +1432,39 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                     )}
 
                     {/* Option 1: Copy Key */}
+                    <div id="payment-mini-tutorial" className="bg-indigo-50/75 border border-indigo-200/80 p-4.5 rounded-2xl space-y-3 shadow-xs">
+                      <div className="flex items-center gap-2">
+                        <div className="bg-indigo-600 text-white p-1 rounded-lg">
+                          <BookOpen className="w-4 h-4 text-white shrink-0" />
+                        </div>
+                        <h3 className="font-extrabold text-xs text-indigo-950 uppercase tracking-wider">
+                          Guia de Pagamento Rápido (Pix) 📖
+                        </h3>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 font-sans">
+                        <div className="bg-white/80 p-3 rounded-xl border border-indigo-100/60 flex gap-2.5 items-start">
+                          <span className="bg-indigo-100 text-indigo-700 w-5 h-5 rounded-full text-[10px] font-black flex items-center justify-center shrink-0 mt-0.5 select-none">1</span>
+                          <div className="space-y-0.5">
+                            <span className="block text-[10.5px] font-black text-slate-800 uppercase tracking-wide">Copiar Chave CPF 🔑</span>
+                            <p className="text-[10px] text-slate-500 leading-relaxed font-semibold">
+                              Copie a nossa chave de transferência do tipo <strong className="text-indigo-600 font-extrabold underline uppercase">CPF</strong> apresentada logo abaixo.
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="bg-white/80 p-3 rounded-xl border border-indigo-100/60 flex gap-2.5 items-start">
+                          <span className="bg-indigo-100 text-indigo-700 w-5 h-5 rounded-full text-[10px] font-black flex items-center justify-center shrink-0 mt-0.5 select-none">2</span>
+                          <div className="space-y-0.5">
+                            <span className="block text-[10.5px] font-black text-slate-800 uppercase tracking-wide">Transferir Valor Total 💸</span>
+                            <p className="text-[10px] text-slate-500 leading-relaxed font-semibold">
+                              No app do seu banco, faça o Pix do <strong className="text-emerald-700 font-black decoration-double underline">valor total exato</strong> de <strong className="text-slate-900 font-mono font-black">R$ {calc.totalPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
                     <div className="bg-emerald-500/5 border border-emerald-500/15 p-5 rounded-2xl space-y-3.5 relative overflow-hidden shadow-xs">
                       <span className="absolute top-3 right-3 flex h-2 w-2">
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -1650,7 +1683,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
         <div className="space-y-6 md:space-y-8 animate-fadeIn">
           {/* Lottery Draw Sales Suspension Banner */}
           {(() => {
-            const suspension = isLotterySalesSuspended();
+            const suspension = isLotterySalesSuspended(settings.salesSuspensionBlocked);
             if (!suspension.suspended) return null;
             return (
               <div id="lottery-suspended-banner" className="bg-amber-50 border border-amber-200/90 rounded-2xl p-4.5 flex gap-3 text-amber-900 animate-pulse shadow-sm">
@@ -2558,7 +2591,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                       {/* INTERACTIVE GRID SECTION */}
                       <div className="space-y-4">
                         {(() => {
-                          const suspension = isLotterySalesSuspended();
+                          const suspension = isLotterySalesSuspended(settings.salesSuspensionBlocked);
                           if (!suspension.suspended) return null;
                           return (
                             <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl p-4 flex gap-3 text-xs leading-relaxed animate-pulse shadow-sm">

@@ -48,6 +48,7 @@ export default function App() {
     supportContact: "51999999999",
     supportEmail: "contato@rifadochiquinho.com.br",
     rulesText: "Os bilhetes reservados têm prazo de validade. Caso a transferência via PIX não seja comprovada, a cota retornará à disponibilidade geral automaticamente.",
+    salesSuspensionBlocked: false,
   });
 
   // Load dynamically controlled settings
