@@ -5,7 +5,7 @@ import { Campaign, Ticket, UserProfile } from "../types";
 import { isLotterySalesSuspended, getCampaignDrawProjection, maskWinnerName, splitTicketsIntoBatches } from "../utils/validation";
 import RankingView from "./RankingView";
 import CelebrationConfetti from "./CelebrationConfetti";
-import { Ticket as TicketIcon, Search, Landmark, Copy, Check, Calendar, Trophy, AlertCircle, ShoppingBag, User as UserIcon, LogOut, LogIn, ArrowRight, HelpCircle, Sparkles, ShieldCheck, Download, Printer, ArrowLeft, Clock, Smartphone, X, Crown, Medal, Gift, CreditCard } from "lucide-react";
+import { Ticket as TicketIcon, Search, Landmark, Copy, Check, Calendar, Trophy, AlertCircle, ShoppingBag, User as UserIcon, LogOut, LogIn, ArrowRight, HelpCircle, Sparkles, ShieldCheck, Download, Printer, ArrowLeft, Clock, Smartphone, X, Crown, Medal, Gift } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import AppLogo from "./AppLogo";
 
@@ -909,28 +909,6 @@ export default function ClientDashboard({ userProfile, onLogout, onPromptLogin }
     }
   }, [campaigns]);
 
-  // Handle Mercado Pago callback URL parameters
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const mpStatus = params.get("mp_status");
-    const batchId = params.get("batchId");
-    
-    if (mpStatus) {
-      if (mpStatus === "approved") {
-        addToast("🎉 Parabéns! Seu pagamento via Mercado Pago foi aprovado e suas cotas foram homologadas automaticamente!", "success");
-        setActiveTab("compras");
-      } else if (mpStatus === "pending") {
-        addToast("⌛ Seu pagamento via Mercado Pago está em processamento. Suas cotas continuarão garantidas até a confirmação.", "info");
-        setActiveTab("compras");
-      } else if (mpStatus === "rejected") {
-        addToast("❌ O pagamento via Mercado Pago não foi concluído ou foi recusado. Por favor, tente novamente ou fale com o suporte.", "error");
-        setActiveTab("compras");
-      }
-      // Clean query parameters from URL gracefully without reloading
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
-  }, []);
-
   // Load tickets for selected campaign (only updates when actual selectedCampaign identity changes)
   const selectedCampaignId = selectedCampaign?.id || "";
   useEffect(() => {
@@ -1102,56 +1080,6 @@ export default function ClientDashboard({ userProfile, onLogout, onPromptLogin }
   // Exclusive checkout / payment overlay for selected reservation on mobile
   const [exclusiveMobilePayment, setExclusiveMobilePayment] = useState<{ campaign: Campaign; tickets: Ticket[] } | null>(null);
   const [paymentCountdown, setPaymentCountdown] = useState<string>("02:00:00");
-  const [mpLoadingBatchId, setMpLoadingBatchId] = useState<string | null>(null);
-
-  const handlePayWithMercadoPago = async (campaign: Campaign, ticketsList: Ticket[], batchId: string) => {
-    if (!batchId) {
-      addToast("Erro: Identificador do lote de reservas não encontrado.", "error");
-      return;
-    }
-    setMpLoadingBatchId(batchId);
-    try {
-      const calc = getDiscountedPrice(ticketsList.length, campaign.ticketPrice, campaign.progressiveDiscounts, userProfile?.isVip, settings?.vipDiscountPercentage);
-      const totalPrice = calc.totalPrice;
-      const itemPrice = totalPrice / ticketsList.length;
-
-      const response = await fetch("/api/payment/create-preference", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          campaignId: campaign.id,
-          batchId: batchId,
-          title: campaign.title,
-          unitPrice: itemPrice,
-          quantity: ticketsList.length,
-          userName: userProfile?.name,
-          userEmail: userProfile?.email,
-          userPhone: userProfile?.phone
-        })
-      });
-
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({ error: "Erro de rede / servidor" }));
-        throw new Error(err.error || "Erro ao conectar com a API de pagamento.");
-      }
-
-      const data = await response.json();
-      if (data.init_point) {
-        addToast("Redirecionando para o Mercado Pago Checkout Seguro...", "success");
-        // Open the preference link in a new container tab
-        window.open(data.init_point, "_blank");
-      } else {
-        throw new Error("Link do checkout não recebido do servidor Mercado Pago.");
-      }
-    } catch (error: any) {
-      console.error("Erro Mercado Pago Checkout Client:", error);
-      addToast(error.message || "Erro para faturar reserva online no Mercado Pago.", "error");
-    } finally {
-      setMpLoadingBatchId(null);
-    }
-  };
 
   useEffect(() => {
     if (!exclusiveMobilePayment) return;
@@ -1624,38 +1552,6 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                       <p className="text-[10px] text-slate-500 leading-normal font-medium text-center">
                         Toque no botão acima para copiar. Abra o app do seu banco, escolha <strong>Pix Copia e Cola</strong> (or chave de transferência) e cole o código.
                       </p>
-                    </div>
-
-                    {/* Option 2: Mercado Pago Online Credit Card / Pix Integration */}
-                    <div className="bg-indigo-500/5 border border-indigo-500/15 p-5 rounded-2xl space-y-3.5 relative overflow-hidden shadow-xs">
-                      <span className="absolute top-3 right-3 flex h-2 w-2">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
-                      </span>
-
-                      <span className="text-[10px] text-indigo-800 font-extrabold uppercase tracking-widest block leading-none">
-                        ⚡ Opção 2: Pagar Online via Mercado Pago Pro (Aprovação Automática)
-                      </span>
-
-                      <p className="text-[10.5px] text-slate-500 leading-normal font-medium">
-                        Aprovado Instantaneamente! Pague no Pix Automatizado, Cartão de Crédito em até 12x, Saldo do Mercado Pago ou Boleto Bancário com toda a segurança garantida.
-                      </p>
-
-                      <button
-                        type="button"
-                        onClick={() => handlePayWithMercadoPago(camp, list, list[0]?.batchId || "")}
-                        disabled={mpLoadingBatchId === (list[0]?.batchId || "")}
-                        className="w-full py-4 px-6 rounded-2xl bg-indigo-650 hover:bg-indigo-700 disabled:bg-indigo-400 text-white font-extrabold transition-all duration-200 flex items-center justify-center gap-2 text-xs sm:text-sm shadow-md shadow-indigo-600/15 border border-indigo-500/20 uppercase tracking-wider relative overflow-hidden group/mp cursor-pointer active:scale-[0.98] disabled:cursor-not-allowed"
-                      >
-                        {mpLoadingBatchId === (list[0]?.batchId || "") ? (
-                          <span className="w-5 h-5 border-3 border-white border-t-transparent rounded-full animate-spin" />
-                        ) : (
-                          <>
-                            <CreditCard className="w-5 h-5 text-indigo-200 stroke-[2px]" />
-                            <span>Pagar Online via Mercado Pago ✨</span>
-                          </>
-                        )}
-                      </button>
                     </div>
 
                     {/* Recipient breakdown details */}
@@ -3452,33 +3348,20 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                             ? "Compensado e Validado"
                             : "Transferência Pendente",
                         interactive: !isAllConfirmed && (
-                          <div className="flex flex-wrap gap-2.5 mt-3 select-none">
-                            <button
-                              type="button"
-                              onClick={() => handlePayWithMercadoPago(campaign, reservedTickets, firstTicket?.batchId || "")}
-                              disabled={mpLoadingBatchId === (firstTicket?.batchId || "")}
-                              className="bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-black px-4 py-2.5 rounded-xl cursor-pointer transition flex items-center gap-1.5 shadow-md shadow-indigo-500/10 active:scale-95 disabled:bg-indigo-400 disabled:cursor-not-allowed"
-                            >
-                              {mpLoadingBatchId === (firstTicket?.batchId || "") ? (
-                                <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                              ) : (
-                                <CreditCard className="w-3.5 h-3.5 text-indigo-200 stroke-[2.5px]" />
-                              )}
-                              <span>Pagar Online (Cartão/PIX/MP) 💳</span>
-                            </button>
+                          <div className="flex flex-wrap gap-2 mt-3 select-none">
                             <button
                               type="button"
                               onClick={() => setExclusiveMobilePayment({ campaign: campaign, tickets: reservedTickets })}
-                              className="bg-amber-500 hover:bg-amber-600 text-slate-950 text-[10.5px] font-black px-3.5 py-2.5 rounded-xl cursor-pointer transition flex items-center gap-1 shadow-md shadow-amber-500/10 active:scale-95"
+                              className="bg-amber-500 hover:bg-amber-600 text-slate-950 text-[10.5px] font-black px-3.5 py-2 rounded-xl cursor-pointer transition flex items-center gap-1 shadow-md shadow-amber-500/10 active:scale-95"
                             >
                               <span>Visualizar Chave PIX 💳</span>
                             </button>
                             <button
                               type="button"
                               onClick={() => handleWhatsAppRedirect(reservedTickets, campaign)}
-                              className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10.5px] font-bold px-3 py-2.5 rounded-xl cursor-pointer transition flex items-center gap-1 active:scale-95"
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10.5px] font-bold px-3 py-2 rounded-xl cursor-pointer transition flex items-center gap-1 active:scale-95"
                             >
-                              <span>WhatsApp 💬</span>
+                              <span>Enviar Comprovante (WhatsApp) 💬</span>
                             </button>
                           </div>
                         )
