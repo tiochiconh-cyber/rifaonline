@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import * as d3 from "d3";
-import { Campaign, Ticket } from "../types";
+import { Campaign, Ticket, UserProfile } from "../types";
 import { AlertCircle, Coins, CheckCircle2, Percent, Users, TrendingUp, TrendingDown } from "lucide-react";
 import RankingView from "./RankingView";
 import GraduationGoalWidget from "./GraduationGoalWidget";
@@ -10,9 +10,11 @@ interface DashboardOverviewProps {
   campaigns: Campaign[];
   allReservations: { [campaignId: string]: Ticket[] };
   clientsCount: number;
+  clients?: UserProfile[];
+  vipDiscountPct?: number;
 }
 
-export default function DashboardOverview({ campaigns, allReservations, clientsCount }: DashboardOverviewProps) {
+export default function DashboardOverview({ campaigns, allReservations, clientsCount, clients = [], vipDiscountPct }: DashboardOverviewProps) {
   // Stats summary calculation
   const stats = useMemo(() => {
     let totalTickets = 0;
@@ -31,35 +33,69 @@ export default function DashboardOverview({ campaigns, allReservations, clientsC
       const reservedTickets = tickets.filter((t) => t.status === "reserved");
 
       // Group confirmed tickets by buyer contact (CPF or Phone)
-      const confirmedGroups: { [key: string]: number } = {};
+      const confirmedGroups: { [key: string]: { count: number; tickets: Ticket[] } } = {};
       confirmedTickets.forEach((t) => {
         const buyerKey = t.buyerCpf || t.buyerPhone || t.buyerEmail || t.buyerUid || "unknown";
-        confirmedGroups[buyerKey] = (confirmedGroups[buyerKey] || 0) + 1;
+        if (!confirmedGroups[buyerKey]) {
+          confirmedGroups[buyerKey] = { count: 0, tickets: [] };
+        }
+        confirmedGroups[buyerKey].count++;
+        confirmedGroups[buyerKey].tickets.push(t);
       });
 
       let campConfirmedRevenue = 0;
-      Object.entries(confirmedGroups).forEach(([_, count]) => {
+      Object.entries(confirmedGroups).forEach(([_, group]) => {
+        const isVip = clients && group.tickets.length > 0 && clients.some((cl) => {
+          if (!cl.isVip) return false;
+          const cleanClPhone = cl.phone?.replace(/\D/g, "");
+          const cleanTkPhone = group.tickets[0].buyerPhone?.replace(/\D/g, "");
+          const phoneMatch = cleanClPhone && cleanTkPhone && cleanClPhone === cleanTkPhone;
+          const cpfMatch = cl.cpf && group.tickets[0].buyerCpf && cl.cpf.replace(/\D/g, "") === group.tickets[0].buyerCpf.replace(/\D/g, "");
+          const emailMatch = cl.email && group.tickets[0].buyerEmail && cl.email.trim().toLowerCase() === group.tickets[0].buyerEmail.trim().toLowerCase();
+          const uidMatch = cl.uid && group.tickets[0].buyerUid && cl.uid === group.tickets[0].buyerUid;
+          return phoneMatch || cpfMatch || emailMatch || uidMatch;
+        });
+
         const { totalPrice } = getDiscountedPrice(
-          count,
+          group.count,
           camp.ticketPrice,
-          camp.progressiveDiscounts || []
+          camp.progressiveDiscounts || [],
+          isVip,
+          vipDiscountPct
         );
         campConfirmedRevenue += totalPrice;
       });
 
       // Group reserved tickets by buyer contact (CPF or Phone)
-      const reservedGroups: { [key: string]: number } = {};
+      const reservedGroups: { [key: string]: { count: number; tickets: Ticket[] } } = {};
       reservedTickets.forEach((t) => {
         const buyerKey = t.buyerCpf || t.buyerPhone || t.buyerEmail || t.buyerUid || "unknown";
-        reservedGroups[buyerKey] = (reservedGroups[buyerKey] || 0) + 1;
+        if (!reservedGroups[buyerKey]) {
+          reservedGroups[buyerKey] = { count: 0, tickets: [] };
+        }
+        reservedGroups[buyerKey].count++;
+        reservedGroups[buyerKey].tickets.push(t);
       });
 
       let campPendingRevenue = 0;
-      Object.entries(reservedGroups).forEach(([_, count]) => {
+      Object.entries(reservedGroups).forEach(([_, group]) => {
+        const isVip = clients && group.tickets.length > 0 && clients.some((cl) => {
+          if (!cl.isVip) return false;
+          const cleanClPhone = cl.phone?.replace(/\D/g, "");
+          const cleanTkPhone = group.tickets[0].buyerPhone?.replace(/\D/g, "");
+          const phoneMatch = cleanClPhone && cleanTkPhone && cleanClPhone === cleanTkPhone;
+          const cpfMatch = cl.cpf && group.tickets[0].buyerCpf && cl.cpf.replace(/\D/g, "") === group.tickets[0].buyerCpf.replace(/\D/g, "");
+          const emailMatch = cl.email && group.tickets[0].buyerEmail && cl.email.trim().toLowerCase() === group.tickets[0].buyerEmail.trim().toLowerCase();
+          const uidMatch = cl.uid && group.tickets[0].buyerUid && cl.uid === group.tickets[0].buyerUid;
+          return phoneMatch || cpfMatch || emailMatch || uidMatch;
+        });
+
         const { totalPrice } = getDiscountedPrice(
-          count,
+          group.count,
           camp.ticketPrice,
-          camp.progressiveDiscounts || []
+          camp.progressiveDiscounts || [],
+          isVip,
+          vipDiscountPct
         );
         campPendingRevenue += totalPrice;
       });
@@ -87,7 +123,7 @@ export default function DashboardOverview({ campaigns, allReservations, clientsC
       totalExpenses,
       netProfit
     };
-  }, [campaigns, allReservations]);
+  }, [campaigns, allReservations, clients, vipDiscountPct]);
 
   // Transform data for charts
   const donutData = useMemo(() => {
@@ -105,35 +141,69 @@ export default function DashboardOverview({ campaigns, allReservations, clientsC
       const reservedTickets = tickets.filter((t) => t.status === "reserved");
 
       // Group confirmed
-      const confirmedGroups: { [key: string]: number } = {};
+      const confirmedGroups: { [key: string]: { count: number; tickets: Ticket[] } } = {};
       confirmedTickets.forEach((t) => {
         const buyerKey = t.buyerCpf || t.buyerPhone || t.buyerEmail || t.buyerUid || "unknown";
-        confirmedGroups[buyerKey] = (confirmedGroups[buyerKey] || 0) + 1;
+        if (!confirmedGroups[buyerKey]) {
+          confirmedGroups[buyerKey] = { count: 0, tickets: [] };
+        }
+        confirmedGroups[buyerKey].count++;
+        confirmedGroups[buyerKey].tickets.push(t);
       });
 
       let confirmedAmount = 0;
-      Object.entries(confirmedGroups).forEach(([_, count]) => {
+      Object.entries(confirmedGroups).forEach(([_, group]) => {
+        const isVip = clients && group.tickets.length > 0 && clients.some((cl) => {
+          if (!cl.isVip) return false;
+          const cleanClPhone = cl.phone?.replace(/\D/g, "");
+          const cleanTkPhone = group.tickets[0].buyerPhone?.replace(/\D/g, "");
+          const phoneMatch = cleanClPhone && cleanTkPhone && cleanClPhone === cleanTkPhone;
+          const cpfMatch = cl.cpf && group.tickets[0].buyerCpf && cl.cpf.replace(/\D/g, "") === group.tickets[0].buyerCpf.replace(/\D/g, "");
+          const emailMatch = cl.email && group.tickets[0].buyerEmail && cl.email.trim().toLowerCase() === group.tickets[0].buyerEmail.trim().toLowerCase();
+          const uidMatch = cl.uid && group.tickets[0].buyerUid && cl.uid === group.tickets[0].buyerUid;
+          return phoneMatch || cpfMatch || emailMatch || uidMatch;
+        });
+
         const { totalPrice } = getDiscountedPrice(
-          count,
+          group.count,
           camp.ticketPrice,
-          camp.progressiveDiscounts || []
+          camp.progressiveDiscounts || [],
+          isVip,
+          vipDiscountPct
         );
         confirmedAmount += totalPrice;
       });
 
       // Group reserved
-      const reservedGroups: { [key: string]: number } = {};
+      const reservedGroups: { [key: string]: { count: number; tickets: Ticket[] } } = {};
       reservedTickets.forEach((t) => {
         const buyerKey = t.buyerCpf || t.buyerPhone || t.buyerEmail || t.buyerUid || "unknown";
-        reservedGroups[buyerKey] = (reservedGroups[buyerKey] || 0) + 1;
+        if (!reservedGroups[buyerKey]) {
+          reservedGroups[buyerKey] = { count: 0, tickets: [] };
+        }
+        reservedGroups[buyerKey].count++;
+        reservedGroups[buyerKey].tickets.push(t);
       });
 
       let pendingAmount = 0;
-      Object.entries(reservedGroups).forEach(([_, count]) => {
+      Object.entries(reservedGroups).forEach(([_, group]) => {
+        const isVip = clients && group.tickets.length > 0 && clients.some((cl) => {
+          if (!cl.isVip) return false;
+          const cleanClPhone = cl.phone?.replace(/\D/g, "");
+          const cleanTkPhone = group.tickets[0].buyerPhone?.replace(/\D/g, "");
+          const phoneMatch = cleanClPhone && cleanTkPhone && cleanClPhone === cleanTkPhone;
+          const cpfMatch = cl.cpf && group.tickets[0].buyerCpf && cl.cpf.replace(/\D/g, "") === group.tickets[0].buyerCpf.replace(/\D/g, "");
+          const emailMatch = cl.email && group.tickets[0].buyerEmail && cl.email.trim().toLowerCase() === group.tickets[0].buyerEmail.trim().toLowerCase();
+          const uidMatch = cl.uid && group.tickets[0].buyerUid && cl.uid === group.tickets[0].buyerUid;
+          return phoneMatch || cpfMatch || emailMatch || uidMatch;
+        });
+
         const { totalPrice } = getDiscountedPrice(
-          count,
+          group.count,
           camp.ticketPrice,
-          camp.progressiveDiscounts || []
+          camp.progressiveDiscounts || [],
+          isVip,
+          vipDiscountPct
         );
         pendingAmount += totalPrice;
       });
@@ -151,7 +221,7 @@ export default function DashboardOverview({ campaigns, allReservations, clientsC
         totalPotential: camp.totalTickets * camp.ticketPrice,
       };
     });
-  }, [campaigns, allReservations]);
+  }, [campaigns, allReservations, clients, vipDiscountPct]);
 
   return (
     <div className="space-y-8 animate-fadeIn">

@@ -41,14 +41,15 @@ export function getDiscountedPrice(
     }
   }
 
-  if (isVip && vipDiscountPct && vipDiscountPct > 0) {
-    if (vipDiscountPct > baseCalc.discountPercentage) {
-      const vipUnitPrice = ticketPrice * (1 - vipDiscountPct / 100);
+  const finalVipPct = (vipDiscountPct !== undefined && vipDiscountPct !== null && !isNaN(Number(vipDiscountPct))) ? Number(vipDiscountPct) : 10;
+  if (isVip && finalVipPct > 0) {
+    if (finalVipPct >= baseCalc.discountPercentage) {
+      const vipUnitPrice = ticketPrice * (1 - finalVipPct / 100);
       return {
         unitPrice: vipUnitPrice,
         totalPrice: vipUnitPrice * quantity,
         appliedDiscount: true,
-        discountPercentage: vipDiscountPct
+        discountPercentage: finalVipPct
       };
     }
   }
@@ -441,6 +442,25 @@ const UpcomingCampaignCountdown = ({ campaign, onTimeReached }: { campaign: Camp
 };
 
 export default function ClientDashboard({ userProfile, onLogout, onPromptLogin }: ClientDashboardProps) {
+  // Dynamic settings state
+  const [settings, setSettings] = useState({
+    pixKey: "contato@rifadochiquinho.com.br",
+    bankName: "Banco Central",
+    receiverName: "Apoio Rifa do Chiquinho",
+    expirationHours: 24,
+    supportContact: "51999999999",
+    supportEmail: "contato@rifadochiquinho.com.br",
+    rulesText: "Os bilhetes reservados têm prazo de validade. Caso a transferência via PIX não seja comprovada, a cota retornará à disponibilidade geral automaticamente.",
+    backgroundAudioUrl: "",
+    autoWhatsAppRedirect: true,
+    vipAdvanceHours: 24,
+    vipDiscountPercentage: 10,
+    vipWhatsAppUrl: "",
+    vipEnabled: true,
+  });
+
+  const isVipActive = !!userProfile?.isVip && settings?.vipEnabled !== false;
+
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   
   const isCampaignUpcoming = (camp: Campaign): boolean => {
@@ -452,7 +472,7 @@ export default function ClientDashboard({ userProfile, onLogout, onPromptLogin }
         const startMs = Date.parse(startStr);
         if (!isNaN(startMs)) {
           let targetMs = startMs;
-          if (userProfile?.isVip) {
+          if (isVipActive) {
             const advanceHours = settings?.vipAdvanceHours || 24;
             targetMs = startMs - (advanceHours * 60 * 60 * 1000);
           }
@@ -466,6 +486,7 @@ export default function ClientDashboard({ userProfile, onLogout, onPromptLogin }
   };
   
   const isCurrentlyInVipEarlyAccess = (camp: Campaign): boolean => {
+    if (settings?.vipEnabled === false) return false;
     if (camp.status !== "active" || !camp.startDate) return false;
     const startStr = camp.startTime ? `${camp.startDate}T${camp.startTime}` : `${camp.startDate}T00:00:00`;
     try {
@@ -984,26 +1005,10 @@ export default function ClientDashboard({ userProfile, onLogout, onPromptLogin }
     return () => unsubscribes.forEach((unsub) => unsub());
   }, [campaignIds]);
 
-  // Dynamic settings state
-  const [settings, setSettings] = useState({
-    pixKey: "contato@rifadochiquinho.com.br",
-    bankName: "Banco Central",
-    receiverName: "Apoio Rifa do Chiquinho",
-    expirationHours: 24,
-    supportContact: "51999999999",
-    supportEmail: "contato@rifadochiquinho.com.br",
-    rulesText: "Os bilhetes reservados têm prazo de validade. Caso a transferência via PIX não seja comprovada, a cota retornará à disponibilidade geral automaticamente.",
-    backgroundAudioUrl: "",
-    autoWhatsAppRedirect: true,
-    vipAdvanceHours: 24,
-    vipDiscountPercentage: 10,
-    vipWhatsAppUrl: "",
-  });
-
   useEffect(() => {
     const unsub = onSnapshot(doc(db, "settings", "global"), (d) => {
       if (d.exists()) {
-        setSettings(d.data() as any);
+        setSettings((prev) => ({ ...prev, ...d.data() }));
       }
     });
     return () => unsub();
@@ -1066,7 +1071,7 @@ export default function ClientDashboard({ userProfile, onLogout, onPromptLogin }
 
     if (targetTickets && camp) {
       const numbers = targetTickets.map(t => `#${t.number}`).join(", ");
-      const calc = getDiscountedPrice(targetTickets.length, camp.ticketPrice, camp.progressiveDiscounts, userProfile?.isVip, settings?.vipDiscountPercentage);
+      const calc = getDiscountedPrice(targetTickets.length, camp.ticketPrice, camp.progressiveDiscounts, isVipActive, settings?.vipDiscountPercentage);
       totalValue = calc.totalPrice;
       billsText = `📋 *Rifa:* ${camp.title}\n🎫 *Números Reservados:* ${numbers}\n💰 *Valor Total:* R$ ${totalValue.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
     } else {
@@ -1089,7 +1094,7 @@ export default function ClientDashboard({ userProfile, onLogout, onPromptLogin }
       billsText = reservedListByCampaign
         .map(({ campaign, tickets }) => {
           const numbers = tickets.map(t => `#${t.number}`).join(", ");
-          const calc = getDiscountedPrice(tickets.length, campaign.ticketPrice, campaign.progressiveDiscounts, userProfile?.isVip, settings?.vipDiscountPercentage);
+          const calc = getDiscountedPrice(tickets.length, campaign.ticketPrice, campaign.progressiveDiscounts, isVipActive, settings?.vipDiscountPercentage);
           totalValue += calc.totalPrice;
           return `📋 *Rifa:* ${campaign.title}\n🎫 *Números:* ${numbers}\n💰 *Valor:* R$ ${calc.totalPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
         })
@@ -1370,7 +1375,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
       {/* EXCLUSIVE MOBILE PAYMENT OVERLAY */}
       {exclusiveMobilePayment && (() => {
         const { campaign: camp, tickets: list } = exclusiveMobilePayment;
-        const calc = getDiscountedPrice(list.length, camp.ticketPrice, camp.progressiveDiscounts, userProfile?.isVip, settings?.vipDiscountPercentage);
+        const calc = getDiscountedPrice(list.length, camp.ticketPrice, camp.progressiveDiscounts, isVipActive, settings?.vipDiscountPercentage);
         return (
           <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-[99999] overflow-y-auto font-sans flex items-center justify-center p-3 select-text animate-fadeIn">
             {/* Modal Dialog container optimized for neatness and mobile ease of use */}
@@ -1575,6 +1580,53 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
 
 
       {/* Redundant header banners removed by user request to keep UI extremely clean */}
+
+      {/* EXCLUSIVE GOLDEN VIP HEADER STATUS BANNER */}
+      {isVipActive && (
+        <div id="vip-header-banner" className="relative overflow-hidden bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border-2 border-amber-500/50 rounded-3xl p-5 md:p-6 shadow-2xl mb-6 animate-fadeIn">
+          {/* Shimmer background lighting effect */}
+          <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-500 animate-pulse" />
+          <div className="absolute top-0 right-0 w-48 h-48 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute bottom-0 left-0 w-48 h-48 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-5 relative z-10">
+            <div className="flex items-start md:items-center gap-4">
+              <div className="bg-gradient-to-br from-amber-400 to-yellow-500 text-slate-950 p-3 rounded-2xl shadow-lg border border-amber-300 flex items-center justify-center shrink-0 animate-bounce">
+                <Crown className="w-6 h-6 font-black fill-slate-950" />
+              </div>
+              <div className="space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-amber-400 font-mono bg-amber-500/15 border border-amber-500/30 px-3 py-0.5 rounded-full select-none">
+                    MEMBRO ASSOCIADO VIP 👑
+                  </span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                  <span className="text-[9.5px] text-amber-300 font-bold uppercase tracking-wider">Benefícios Exclusivos Ativados</span>
+                </div>
+                <h3 className="text-base md:text-lg font-black text-white tracking-tight">
+                  Parabéns, {userProfile.name}! Seu status VIP está ativo!
+                </h3>
+                <p className="text-slate-300 text-xs md:text-[12px] max-w-2xl leading-relaxed font-medium">
+                  Você é parte do nosso clube de apoiadores de elite da formatura. Suas compras possuem vantagens financeiras automáticas e acesso preferencial garantido.
+                </p>
+              </div>
+            </div>
+
+            {/* Quick status mini bento metrics */}
+            <div className="flex flex-wrap md:flex-nowrap gap-3 shrink-0">
+              <div className="bg-white/5 backdrop-blur-xs border border-white/10 rounded-2xl p-3.5 text-center sm:text-left min-w-[130px] flex-1 md:flex-none">
+                <span className="text-[9px] text-slate-400 font-bold block uppercase tracking-wider">DESCONTO VIP</span>
+                <span className="text-lg font-black text-amber-300 leading-none mt-1 block">-{settings?.vipDiscountPercentage || 10}% OFF</span>
+                <span className="text-[8px] text-slate-400 block mt-1 font-medium">Aplicado diretamente</span>
+              </div>
+              <div className="bg-white/5 backdrop-blur-xs border border-white/10 rounded-2xl p-3.5 text-center sm:text-left min-w-[130px] flex-1 md:flex-none">
+                <span className="text-[9px] text-slate-400 font-bold block uppercase tracking-wider">ANTECIPAÇÃO</span>
+                <span className="text-lg font-black text-indigo-300 leading-none mt-1 block">-{settings?.vipAdvanceHours || 24} Horas</span>
+                <span className="text-[8px] text-slate-400 block mt-1 font-medium">Acesso antecipado</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
 
       {/* Navigation tabs selector - DESKTOP ONLY */}
@@ -2259,6 +2311,15 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                         <span className="bg-indigo-600 text-white font-bold text-[10px] uppercase tracking-wider px-2.5 py-1 rounded-full">
                           R$ {selectedCampaign.ticketPrice.toFixed(2)} / BILHETE
                         </span>
+                        {isVipActive && (
+                          <span className="bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-950 font-black text-[10px] uppercase tracking-wider px-2.5 py-1 rounded-full shadow-md animate-pulse flex items-center gap-1.5 border border-amber-300">
+                            <Crown className="w-3.5 h-3.5 fill-slate-950" />
+                            Preço VIP: R$ {(() => {
+                              const disc = settings?.vipDiscountPercentage || 10;
+                              return (selectedCampaign.ticketPrice * (1 - disc / 100)).toFixed(2);
+                            })()} / Cota (-{settings?.vipDiscountPercentage || 10}%)
+                          </span>
+                        )}
                         {(() => {
                           const selectedCampaignTickets = allReservations[selectedCampaign.id] || [];
                           const selectedCampaignRestantes = Math.max(0, selectedCampaign.totalTickets - selectedCampaignTickets.length);
@@ -2520,8 +2581,8 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                             <div className="space-y-1 z-10">
                               <span className="text-[9px] text-indigo-300 font-black uppercase tracking-widest block leading-none">VALOR TOTAL DO PEDIDO</span>
                               {(() => {
-                                const calc = getDiscountedPrice(selectedNumbers.length, selectedCampaign.ticketPrice, selectedCampaign.progressiveDiscounts, userProfile?.isVip, settings?.vipDiscountPercentage);
-                                const isVipDiscountActive = userProfile?.isVip && calc.discountPercentage === settings?.vipDiscountPercentage;
+                                const calc = getDiscountedPrice(selectedNumbers.length, selectedCampaign.ticketPrice, selectedCampaign.progressiveDiscounts, isVipActive, settings?.vipDiscountPercentage);
+                                const isVipDiscountActive = isVipActive && calc.discountPercentage === (settings?.vipDiscountPercentage || 10);
                                 return (
                                   <div className="space-y-1.5 mt-1">
                                     <strong className="text-3xl md:text-4xl font-extrabold text-white font-sans block leading-none tracking-tight">
@@ -2536,13 +2597,13 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                             </div>
 
                             {(() => {
-                              const calc = getDiscountedPrice(selectedNumbers.length, selectedCampaign.ticketPrice, selectedCampaign.progressiveDiscounts, userProfile?.isVip, settings?.vipDiscountPercentage);
-                              const isVipDiscountActive = userProfile?.isVip && calc.discountPercentage === settings?.vipDiscountPercentage;
+                              const calc = getDiscountedPrice(selectedNumbers.length, selectedCampaign.ticketPrice, selectedCampaign.progressiveDiscounts, isVipActive, settings?.vipDiscountPercentage);
+                              const isVipDiscountActive = isVipActive && calc.discountPercentage === (settings?.vipDiscountPercentage || 10);
                               return (
                                 <div className="flex flex-col items-start sm:items-end gap-1.5 shrink-0 z-10">
                                   {isVipDiscountActive ? (
                                     <span className="text-[9.5px] bg-amber-500 text-slate-950 font-black px-2.5 py-1 rounded-lg uppercase tracking-wider shadow-sm flex items-center gap-1">
-                                      👑 VIP Ativo (-{settings?.vipDiscountPercentage}%)
+                                      👑 VIP Ativo (-{(settings?.vipDiscountPercentage || 10)}%)
                                     </span>
                                   ) : calc.appliedDiscount ? (
                                     <span className="text-[9.5px] bg-emerald-500 text-slate-950 font-black px-2.5 py-1 rounded-lg uppercase tracking-wider shadow-sm flex items-center gap-1 animate-pulse">
@@ -3527,7 +3588,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                     <span className="text-[10px] text-slate-500 font-bold">•</span>
                     <span className="text-sm font-extrabold text-emerald-400 font-mono">
                       R$ {(() => {
-                        const calc = getDiscountedPrice(selectedNumbers.length, selectedCampaign.ticketPrice, selectedCampaign.progressiveDiscounts, userProfile?.isVip, settings?.vipDiscountPercentage);
+                        const calc = getDiscountedPrice(selectedNumbers.length, selectedCampaign.ticketPrice, selectedCampaign.progressiveDiscounts, isVipActive, settings?.vipDiscountPercentage);
                         return calc.totalPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                       })()}
                     </span>
@@ -3774,10 +3835,10 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                     selectedNumbers.length,
                     selectedCampaign.ticketPrice,
                     selectedCampaign.progressiveDiscounts,
-                    userProfile?.isVip,
+                    isVipActive,
                     settings?.vipDiscountPercentage
                   );
-                  const isVipApplied = userProfile?.isVip && calc.discountPercentage === settings?.vipDiscountPercentage;
+                  const isVipApplied = isVipActive && calc.discountPercentage === (settings?.vipDiscountPercentage || 10);
                   return (
                     <div className="bg-emerald-50/40 border-2 border-emerald-500/20 rounded-2xl p-4.5 space-y-2 text-center shadow-3xs">
                       <span className="text-[10px] uppercase font-black text-emerald-850 tracking-wider block leading-none">

@@ -40,33 +40,75 @@ import {
   Zap
 } from "lucide-react";
 
-export function getCampaignRevenueStats(campaign: Campaign, tickets: Ticket[]) {
+export function getCampaignRevenueStats(campaign: Campaign, tickets: Ticket[], clients?: UserProfile[], vipDiscountPct?: number) {
   const confirmedTickets = tickets.filter(t => t.status === "confirmed");
   const reservedTickets = tickets.filter(t => t.status === "reserved");
 
   // Group confirmed
-  const confirmedGroups: { [key: string]: number } = {};
+  const confirmedGroups: { [key: string]: { count: number; tickets: Ticket[] } } = {};
   confirmedTickets.forEach((t) => {
     const key = t.buyerCpf || t.buyerPhone || t.buyerEmail || t.buyerUid || "unknown";
-    confirmedGroups[key] = (confirmedGroups[key] || 0) + 1;
+    if (!confirmedGroups[key]) {
+      confirmedGroups[key] = { count: 0, tickets: [] };
+    }
+    confirmedGroups[key].count++;
+    confirmedGroups[key].tickets.push(t);
   });
 
   let confirmedRevenue = 0;
-  Object.entries(confirmedGroups).forEach(([_, count]) => {
-    const { totalPrice } = getDiscountedPrice(count, campaign.ticketPrice, campaign.progressiveDiscounts || []);
+  Object.entries(confirmedGroups).forEach(([_, group]) => {
+    const isVip = clients && group.tickets.length > 0 && clients.some((cl) => {
+      if (!cl.isVip) return false;
+      const cleanClPhone = cl.phone?.replace(/\D/g, "");
+      const cleanTkPhone = group.tickets[0].buyerPhone?.replace(/\D/g, "");
+      const phoneMatch = cleanClPhone && cleanTkPhone && cleanClPhone === cleanTkPhone;
+      const cpfMatch = cl.cpf && group.tickets[0].buyerCpf && cl.cpf.replace(/\D/g, "") === group.tickets[0].buyerCpf.replace(/\D/g, "");
+      const emailMatch = cl.email && group.tickets[0].buyerEmail && cl.email.trim().toLowerCase() === group.tickets[0].buyerEmail.trim().toLowerCase();
+      const uidMatch = cl.uid && group.tickets[0].buyerUid && cl.uid === group.tickets[0].buyerUid;
+      return phoneMatch || cpfMatch || emailMatch || uidMatch;
+    });
+
+    const { totalPrice } = getDiscountedPrice(
+      group.count,
+      campaign.ticketPrice,
+      campaign.progressiveDiscounts || [],
+      isVip,
+      vipDiscountPct
+    );
     confirmedRevenue += totalPrice;
   });
 
   // Group reserved
-  const reservedGroups: { [key: string]: number } = {};
+  const reservedGroups: { [key: string]: { count: number; tickets: Ticket[] } } = {};
   reservedTickets.forEach((t) => {
     const key = t.buyerCpf || t.buyerPhone || t.buyerEmail || t.buyerUid || "unknown";
-    reservedGroups[key] = (reservedGroups[key] || 0) + 1;
+    if (!reservedGroups[key]) {
+      reservedGroups[key] = { count: 0, tickets: [] };
+    }
+    reservedGroups[key].count++;
+    reservedGroups[key].tickets.push(t);
   });
 
   let reservedRevenue = 0;
-  Object.entries(reservedGroups).forEach(([_, count]) => {
-    const { totalPrice } = getDiscountedPrice(count, campaign.ticketPrice, campaign.progressiveDiscounts || []);
+  Object.entries(reservedGroups).forEach(([_, group]) => {
+    const isVip = clients && group.tickets.length > 0 && clients.some((cl) => {
+      if (!cl.isVip) return false;
+      const cleanClPhone = cl.phone?.replace(/\D/g, "");
+      const cleanTkPhone = group.tickets[0].buyerPhone?.replace(/\D/g, "");
+      const phoneMatch = cleanClPhone && cleanTkPhone && cleanClPhone === cleanTkPhone;
+      const cpfMatch = cl.cpf && group.tickets[0].buyerCpf && cl.cpf.replace(/\D/g, "") === group.tickets[0].buyerCpf.replace(/\D/g, "");
+      const emailMatch = cl.email && group.tickets[0].buyerEmail && cl.email.trim().toLowerCase() === group.tickets[0].buyerEmail.trim().toLowerCase();
+      const uidMatch = cl.uid && group.tickets[0].buyerUid && cl.uid === group.tickets[0].buyerUid;
+      return phoneMatch || cpfMatch || emailMatch || uidMatch;
+    });
+
+    const { totalPrice } = getDiscountedPrice(
+      group.count,
+      campaign.ticketPrice,
+      campaign.progressiveDiscounts || [],
+      isVip,
+      vipDiscountPct
+    );
     reservedRevenue += totalPrice;
   });
 
@@ -112,6 +154,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
     vipAdvanceHours: 24,
     vipDiscountPercentage: 10,
     vipWhatsAppUrl: "",
+    vipEnabled: true,
     salesSuspensionBlocked: false
   });
 
@@ -371,12 +414,25 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
     ctx.fillText(receiptCampaign.title, 35, y);
     
     // Price breakdown
-    let calcPrice = { totalPrice: receiptCampaign.ticketPrice * ticketsCount, unitPrice: receiptCampaign.ticketPrice, appliedDiscount: false };
+    let calcPrice = { totalPrice: receiptCampaign.ticketPrice * ticketsCount, unitPrice: receiptCampaign.ticketPrice, appliedDiscount: false, discountPercentage: 0 };
     try {
+      const isRcvVip = clients.some((cl) => {
+        if (!cl.isVip) return false;
+        const cleanClPhone = cl.phone?.replace(/\D/g, "");
+        const cleanRcvPhone = receiptClientPhone?.replace(/\D/g, "");
+        const phoneMatch = cleanClPhone && cleanRcvPhone && cleanClPhone === cleanRcvPhone;
+        const cpfMatch = cl.cpf && receiptClientCpf && cl.cpf.replace(/\D/g, "") === receiptClientCpf.replace(/\D/g, "");
+        const emailMatch = cl.email && receiptClientEmail && cl.email.trim().toLowerCase() === receiptClientEmail.trim().toLowerCase();
+        const uidMatch = receiptTickets.length > 0 && cl.uid === receiptTickets[0].buyerUid;
+        return phoneMatch || cpfMatch || emailMatch || uidMatch;
+      });
+
       calcPrice = getDiscountedPrice(
         ticketsCount,
         receiptCampaign.ticketPrice,
-        receiptCampaign.progressiveDiscounts
+        receiptCampaign.progressiveDiscounts,
+        isRcvVip,
+        settings.vipDiscountPercentage
       );
     } catch(e) {}
 
@@ -2016,6 +2072,19 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
     ca.title.toLowerCase().includes(campaignSearch.toLowerCase())
   );
 
+  const isBatchVip = (batch: any) => {
+    return clients.some((cl) => {
+      if (!cl.isVip) return false;
+      const cleanClPhone = cl.phone?.replace(/\D/g, "");
+      const cleanTkPhone = batch.buyerPhone?.replace(/\D/g, "");
+      const phoneMatch = cleanClPhone && cleanTkPhone && cleanClPhone === cleanTkPhone;
+      const cpfMatch = cl.cpf && batch.buyerCpf && cl.cpf.replace(/\D/g, "") === batch.buyerCpf.replace(/\D/g, "");
+      const emailMatch = cl.email && batch.buyerEmail && cl.email.trim().toLowerCase() === batch.buyerEmail.trim().toLowerCase();
+      const uidMatch = cl.uid && batch.buyerUid && cl.uid === batch.buyerUid;
+      return phoneMatch || cpfMatch || emailMatch || uidMatch;
+    });
+  };
+
   // Identify VIP eligibility based on cumulative single purchase checks (at least 10 tickets at once)
   const eligibleVipClientsMap = useMemo(() => {
     const map: {
@@ -2236,6 +2305,8 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
             campaigns={campaigns}
             allReservations={allReservations}
             clientsCount={clients.length}
+            clients={clients}
+            vipDiscountPct={settings.vipDiscountPercentage}
           />
         )}
 
@@ -2459,7 +2530,9 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                       const calcPrice = getDiscountedPrice(
                         batch.tickets.length,
                         batch.campaign.ticketPrice,
-                        batch.campaign.progressiveDiscounts
+                        batch.campaign.progressiveDiscounts,
+                        isBatchVip(batch),
+                        settings.vipDiscountPercentage
                       );
 
                       return (
@@ -2731,7 +2804,9 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                     const calcPrice = getDiscountedPrice(
                       batch.tickets.length,
                       batch.campaign.ticketPrice,
-                      batch.campaign.progressiveDiscounts
+                      batch.campaign.progressiveDiscounts,
+                      isBatchVip(batch),
+                      settings.vipDiscountPercentage
                     );
 
                     return (
@@ -3004,17 +3079,37 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                 <h3 className="font-extrabold text-slate-800 text-xs flex items-center gap-1.5 uppercase tracking-wider">
                   <span className="text-amber-600">👑 Programa de Clientes VIP</span>
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-amber-50/20 p-4 rounded-xl border border-amber-100/50">
+
+                <div className="flex items-center gap-3 bg-amber-500/10 border border-amber-300/35 p-3.5 rounded-xl">
+                  <input
+                    type="checkbox"
+                    id="vipEnabled"
+                    checked={settings.vipEnabled !== false}
+                    onChange={(e) => setSettings({ ...settings, vipEnabled: e.target.checked })}
+                    className="w-4 h-4 text-amber-600 border-amber-300 rounded focus:ring-amber-500 cursor-pointer"
+                  />
+                  <div className="flex-1">
+                    <label htmlFor="vipEnabled" className="block font-extrabold text-slate-800 text-xs cursor-pointer select-none">
+                      Habilitar Programa e Bonificações VIP 👑
+                    </label>
+                    <span className="text-[10px] text-slate-500 block leading-normal mt-0.5 font-medium">
+                      Ative para conceder descontos especiais, acesso antecipado e link para grupos de WhatsApp aos portadores do selo VIP. Se desativado, nenhum benefício VIP será aplicado nas compras ou telas de clientes.
+                    </span>
+                  </div>
+                </div>
+
+                <div className={`grid grid-cols-1 md:grid-cols-3 gap-4 bg-amber-50/20 p-4 rounded-xl border border-amber-100/50 transition-opacity duration-200 ${settings.vipEnabled === false ? "opacity-40 pointer-events-none select-none" : ""}`}>
                   <div className="space-y-1.5">
                     <label className="block font-extrabold text-slate-700 text-xs">Tempo de Acesso Antecipado (Horas)</label>
                     <input
                       type="number"
-                      required
+                      required={settings.vipEnabled !== false}
+                      disabled={settings.vipEnabled === false}
                       min={0}
                       max={168}
                       value={settings.vipAdvanceHours || 24}
                       onChange={(e) => setSettings({ ...settings, vipAdvanceHours: Number(e.target.value) })}
-                      className="w-full bg-white p-2.5 border border-slate-300 rounded-lg text-xs font-bold"
+                      className="w-full bg-white p-2.5 border border-slate-300 rounded-lg text-xs font-bold disabled:bg-slate-50"
                       placeholder="Ex: 24"
                     />
                     <span className="text-[10.5px] text-slate-450 block leading-normal">
@@ -3025,12 +3120,13 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                     <label className="block font-extrabold text-slate-700 text-xs">Desconto Especial em Cotas (%)</label>
                     <input
                       type="number"
-                      required
+                      required={settings.vipEnabled !== false}
+                      disabled={settings.vipEnabled === false}
                       min={0}
                       max={100}
                       value={settings.vipDiscountPercentage || 10}
                       onChange={(e) => setSettings({ ...settings, vipDiscountPercentage: Number(e.target.value) })}
-                      className="w-full bg-white p-2.5 border border-slate-300 rounded-lg text-xs font-bold"
+                      className="w-full bg-white p-2.5 border border-slate-300 rounded-lg text-xs font-bold disabled:bg-slate-50"
                       placeholder="Ex: 10"
                     />
                     <span className="text-[10.5px] text-slate-450 block leading-normal">
@@ -3041,9 +3137,10 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                     <label className="block font-extrabold text-slate-700 text-xs text-emerald-700">Link do Grupo VIP no WhatsApp 🟢</label>
                     <input
                       type="text"
+                      disabled={settings.vipEnabled === false}
                       value={settings.vipWhatsAppUrl || ""}
                       onChange={(e) => setSettings({ ...settings, vipWhatsAppUrl: e.target.value })}
-                      className="w-full bg-white p-2.5 border border-emerald-300 focus:border-emerald-500 rounded-lg text-xs font-bold text-emerald-800 placeholder-emerald-350"
+                      className="w-full bg-white p-2.5 border border-emerald-300 focus:border-emerald-500 rounded-lg text-xs font-bold text-emerald-800 placeholder-emerald-350 disabled:bg-slate-50 disabled:border-slate-205"
                       placeholder="https://chat.whatsapp.com/..."
                     />
                     <span className="text-[10.5px] text-slate-450 block leading-normal">
@@ -3804,7 +3901,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                   {filteredCampaigns.map((ca) => {
                     const tRegistered = allReservations[ca.id] || [];
                     const tConfirmed = tRegistered.filter(r => r.status === "confirmed").length;
-                    const revStats = getCampaignRevenueStats(ca, tRegistered);
+                    const revStats = getCampaignRevenueStats(ca, tRegistered, clients, settings.vipEnabled !== false ? settings.vipDiscountPercentage : 0);
 
                     return (
                       <tr key={ca.id} className="border-b border-slate-100 hover:bg-slate-50/50">
@@ -3962,7 +4059,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
               {filteredCampaigns.map((ca) => {
                 const tRegistered = allReservations[ca.id] || [];
                 const tConfirmed = tRegistered.filter(r => r.status === "confirmed").length;
-                const revStats = getCampaignRevenueStats(ca, tRegistered);
+                const revStats = getCampaignRevenueStats(ca, tRegistered, clients, settings.vipEnabled !== false ? settings.vipDiscountPercentage : 0);
                 return (
                   <div key={ca.id} className="bg-slate-50 border border-slate-200/65 rounded-2xl p-4 space-y-3.5 shadow-sm">
                     <div className="flex gap-3 justify-between items-start">
@@ -7359,10 +7456,22 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                       <span className="font-bold">
                         R$ {(() => {
                           try {
+                            const isRcvVip = clients.some((cl) => {
+                              if (!cl.isVip) return false;
+                              const cleanClPhone = cl.phone?.replace(/\D/g, "");
+                              const cleanRcvPhone = receiptClientPhone?.replace(/\D/g, "");
+                              const phoneMatch = cleanClPhone && cleanRcvPhone && cleanClPhone === cleanRcvPhone;
+                              const cpfMatch = cl.cpf && receiptClientCpf && cl.cpf.replace(/\D/g, "") === receiptClientCpf.replace(/\D/g, "");
+                              const emailMatch = cl.email && receiptClientEmail && cl.email.trim().toLowerCase() === receiptClientEmail.trim().toLowerCase();
+                              const uidMatch = receiptTickets.length > 0 && cl.uid === receiptTickets[0].buyerUid;
+                              return phoneMatch || cpfMatch || emailMatch || uidMatch;
+                            });
                             return getDiscountedPrice(
                               receiptTickets.length,
                               receiptCampaign.ticketPrice,
-                              receiptCampaign.progressiveDiscounts
+                              receiptCampaign.progressiveDiscounts,
+                              isRcvVip,
+                              settings.vipDiscountPercentage
                             ).totalPrice.toFixed(2);
                           } catch (e) {
                             return (receiptCampaign.ticketPrice * receiptTickets.length).toFixed(2);
