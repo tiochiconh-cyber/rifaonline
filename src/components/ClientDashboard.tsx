@@ -503,9 +503,12 @@ export default function ClientDashboard({ userProfile, onLogout, onPromptLogin }
   const [selectedNumbers, setSelectedNumbers] = useState<string[]>([]);
   const [reserving, setReserving] = useState(false);
   const [copiedPix, setCopiedPix] = useState(false);
+  const [copiedAmount, setCopiedAmount] = useState(false);
   const [successReserved, setSuccessReserved] = useState<string[] | null>(null);
   const [confettiKey, setConfettiKey] = useState(0);
   const [showRulesModal, setShowRulesModal] = useState(false);
+  const [showConfirmReserveModal, setShowConfirmReserveModal] = useState(false);
+  const [comprasFilter, setComprasFilter] = useState<"all" | "active" | "drawn">("all");
 
   // Responsive mobile states
   const [gridFilter, setGridFilter] = useState<"all" | "available" | "mine" | "selected">("all");
@@ -1043,6 +1046,14 @@ export default function ClientDashboard({ userProfile, onLogout, onPromptLogin }
     setTimeout(() => setCopiedPix(false), 2000);
   };
 
+  const handleCopyAmount = (amount: number) => {
+    const formatted = amount.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    navigator.clipboard.writeText(formatted);
+    setCopiedAmount(true);
+    addToast(`Valor de R$ ${formatted} copiado com sucesso!`, "success");
+    setTimeout(() => setCopiedAmount(false), 2000);
+  };
+
   const handleWhatsAppRedirect = (targetTickets?: Ticket[], camp?: Campaign) => {
     const cleanPhone = settings.supportContact ? settings.supportContact.replace(/\D/g, "") : "";
     if (!cleanPhone) {
@@ -1108,7 +1119,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
     window.open(whatsappUrl, "_blank");
   };
 
-  const handleReserveTickets = async () => {
+  const handleReserveTickets = async (bypassConfirm: boolean = false) => {
     if (!selectedCampaign || selectedNumbers.length === 0) return;
     
     if (!userProfile) {
@@ -1125,6 +1136,12 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
     const suspension = isLotterySalesSuspended(settings.salesSuspensionBlocked);
     if (suspension.suspended) {
       addToast(suspension.reason || "Vendas suspensas temporariamente para o sorteio da Loteria Federal.", "error");
+      return;
+    }
+
+    // Intercept with the confirmation modal unless explicitly bypassed
+    if (!bypassConfirm) {
+      setShowConfirmReserveModal(true);
       return;
     }
 
@@ -1341,12 +1358,9 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
     return indices;
   }, [selectedCampaign, ticketSearch, gridFilter, tickets, selectedNumbers, userProfile?.uid]);
 
-  const paginatedIndices = React.useMemo(() => {
-    const start = ticketPage * TICKETS_PER_PAGE;
-    return filteredIndices.slice(start, start + TICKETS_PER_PAGE);
-  }, [filteredIndices, ticketPage, TICKETS_PER_PAGE]);
+  const paginatedIndices = filteredIndices;
 
-  const totalPages = Math.ceil(filteredIndices.length / TICKETS_PER_PAGE);
+  const totalPages = 1;
 
   // Helper calculating total reserved and confirmed count
   const myTotalTicketsCount = Object.values(myTickets).flat().length;
@@ -1358,244 +1372,197 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
         const { campaign: camp, tickets: list } = exclusiveMobilePayment;
         const calc = getDiscountedPrice(list.length, camp.ticketPrice, camp.progressiveDiscounts, userProfile?.isVip, settings?.vipDiscountPercentage);
         return (
-          <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[99999] overflow-y-auto font-sans flex items-center justify-center p-2 sm:p-4 select-text animate-fadeIn">
-            {/* Modal Dialog container mimicking the screenshot */}
-            <div className="relative w-full max-w-4xl bg-white border border-slate-200 text-slate-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh] sm:max-h-[90vh] animate-fadeIn">
+          <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-[99999] overflow-y-auto font-sans flex items-center justify-center p-3 select-text animate-fadeIn">
+            {/* Modal Dialog container optimized for neatness and mobile ease of use */}
+            <div className="relative w-full max-w-md bg-white border border-slate-200 text-slate-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh] animate-fadeIn">
               
-              {/* Header block with title and total price */}
-              <div className="bg-slate-50 border-b border-slate-200/80 p-4 sm:p-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0 relative">
-                <button
-                  onClick={() => {
-                    setExclusiveMobilePayment(null);
-                    setSuccessReserved(null);
-                  }}
-                  className="absolute top-4 sm:top-5 right-4 sm:right-5 p-1 rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-800 transition-colors cursor-pointer"
-                  title="Fechar"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-
-                <div className="flex items-center gap-2 pr-8 select-none">
-                  <Landmark className="w-5 h-5 text-indigo-600 animate-bounce" />
-                  <span className="text-sm font-extrabold text-slate-800 uppercase tracking-wider">🏦 DADOS DE PAGAMENTO VIA PIX</span>
+              {/* Simplificado Header com Temporizador */}
+              <div className="bg-slate-50 border-b border-slate-150 p-4.5 shrink-0 flex items-center justify-between relative select-none">
+                <div className="flex items-center gap-2">
+                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">Pagar Reserva (Pix) 🏦</span>
                 </div>
+                
+                <div className="flex items-center gap-1.5 bg-amber-400/10 px-2.5 py-1 rounded-xl text-amber-900 border border-amber-300/20">
+                  <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                  <span className="text-xs font-mono font-black">{paymentCountdown}</span>
+                </div>
+              </div>
 
-                <div className="flex flex-wrap items-center gap-3 sm:gap-4 select-text pr-8 sm:pr-0">
-                  <div className="text-left">
-                    <span className="text-[10px] font-bold text-slate-500 block leading-none mb-1">Total a Transferir:</span>
-                    <span className="text-lg sm:text-xl font-black text-emerald-650 font-mono leading-none">
+              {/* Corpo de Passo a Passo Simplificado e Prático */}
+              <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
+                
+                {list.length >= 10 && settings?.vipWhatsAppUrl && (
+                  <div className="bg-gradient-to-r from-amber-500/10 to-emerald-500/5 border border-amber-200/40 p-3 rounded-xl flex items-center justify-between gap-3 shadow-3xs">
+                    <div className="flex items-center gap-2">
+                      <Crown className="w-4 h-4 text-amber-600 fill-amber-500/10 shrink-0" />
+                      <span className="text-[10.5px] text-slate-700 font-extrabold">Você liberou acesso ao Grupo VIP! 👑</span>
+                    </div>
+                    <a
+                      href={settings.vipWhatsAppUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[10px] px-2.5 py-1.5 rounded-lg transition active:scale-95 cursor-pointer uppercase tracking-wider"
+                    >
+                      Acessar
+                    </a>
+                  </div>
+                )}
+
+                {/* Passo 1: Valor Total a Pagar */}
+                <div className="bg-emerald-50/50 border-2 border-emerald-500/40 rounded-2xl p-4 space-y-3 shadow-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[9px] bg-emerald-600 text-white font-black px-2 py-0.5 rounded-md uppercase tracking-wider select-none">Passo 1</span>
+                    <span className="text-[10px] bg-emerald-100 text-emerald-800 font-black px-2 py-0.5 rounded-md uppercase tracking-wider select-none">{list.length} cota{list.length === 1 ? "" : "s"} reservada{list.length === 1 ? "" : "s"}</span>
+                  </div>
+                  
+                  <div className="bg-gradient-to-br from-emerald-650 to-teal-700 text-white p-4.5 rounded-xl border border-emerald-600 shadow-md text-center">
+                    <span className="text-[10px] uppercase font-black text-emerald-200 tracking-wider block mb-1">Valor Exato da Transferência:</span>
+                    <strong className="text-2xl sm:text-3xl font-black font-mono tracking-tight block text-white drop-shadow-xs">
                       R$ {calc.totalPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </strong>
+                    <span className="text-[8.5px] uppercase font-bold text-emerald-100 tracking-wide block mt-2 select-none">
+                      ⚠️ Transfira exatamente este valor para aprovação rápida
                     </span>
                   </div>
-                  
-                  <div className="bg-amber-400/10 border border-amber-300/30 px-2.5 py-1 rounded-lg flex items-center gap-1.5 shrink-0">
-                    <Clock className="w-3.5 h-3.5 text-amber-600 animate-pulse" />
-                    <div className="leading-none">
-                      <span className="text-[7.5px] text-amber-800 font-extrabold uppercase tracking-widest block mb-0.5">Expira em</span>
-                      <span className="text-xs font-mono font-black text-amber-900 leading-none">{paymentCountdown}</span>
+                </div>
+
+                {/* Passo 2: Copiar a Chave Pix CPF */}
+                <div className="bg-red-50/50 border-2 border-red-550/30 rounded-2xl p-4 space-y-3 shadow-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[9px] bg-red-600 text-white font-black px-2 py-0.5 rounded-md uppercase tracking-wider">Passo 2</span>
+                    <span className="text-[11px] bg-red-100 text-red-800 font-extrabold px-2.5 py-0.5 rounded-md uppercase tracking-wider flex items-center gap-1 select-none animate-pulse">
+                      🚨 CHAVE TIPO CPF
+                    </span>
+                  </div>
+
+                  <div className="space-y-2">
+                    {/* Exibição Clara da Chave */}
+                    <div className="bg-white border-2 border-red-500/70 p-3.5 rounded-xl flex items-center justify-between shadow-2xs relative overflow-hidden">
+                      {/* Animated high-fidelity success check overlay */}
+                      <AnimatePresence>
+                        {copiedPix && (
+                          <motion.div 
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            className="absolute inset-0 bg-emerald-600 flex items-center justify-center gap-2 text-white font-black z-10 select-none px-2 text-center"
+                          >
+                            <motion.span
+                              initial={{ scale: 0, rotate: -45 }}
+                              animate={{ scale: [0, 1.25, 1], rotate: 0 }}
+                              transition={{ duration: 0.35, ease: "easeOut" }}
+                              className="bg-white text-emerald-600 p-1.5 rounded-full flex items-center justify-center shadow-md shrink-0"
+                            >
+                              <Check className="w-4 h-4 stroke-[3.5px]" />
+                            </motion.span>
+                            <motion.span 
+                              initial={{ opacity: 0, x: 10 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              transition={{ delay: 0.1, duration: 0.2 }}
+                              className="text-xs sm:text-sm tracking-wider uppercase"
+                            >
+                              Chave Copiada com Sucesso!
+                            </motion.span>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+
+                      <div className="space-y-1 select-all overflow-hidden mr-2">
+                        <span className="text-[9px] uppercase font-black text-red-600 block leading-none tracking-wide">Chave PIX (Apenas CPF) 🔑:</span>
+                        <strong className="text-sm sm:text-base font-mono font-black text-red-950 break-all select-all leading-tight">
+                          {settings.pixKey}
+                        </strong>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleCopyPix}
+                        className={`px-3.5 py-2.5 rounded-xl text-xs font-black transition-all shrink-0 flex items-center gap-1 cursor-pointer select-none active:scale-95 ${
+                          copiedPix
+                            ? "bg-emerald-600 text-white shadow-sm shadow-emerald-500/20"
+                            : "bg-red-600 hover:bg-red-700 text-white shadow-md"
+                        }`}
+                      >
+                        {copiedPix ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 stroke-[3px]" />
+                            Copiado!
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5" />
+                            Copiar Chave
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Dados Básicos de Validação Rápida */}
+                    <div className="bg-red-100/30 border border-red-200/50 rounded-xl p-2.5 space-y-1.5 text-xs text-slate-700 leading-normal">
+                      <div className="flex justify-between items-center text-[10.5px]">
+                        <span className="font-bold text-slate-400 uppercase text-[9px]">Favorecido:</span>
+                        <strong className="font-bold text-slate-900 text-right truncate max-w-[200px] select-all">{settings.receiverName || "N/A"}</strong>
+                      </div>
+                      {settings.bankName && (
+                        <div className="flex justify-between items-center text-[10.5px] border-t border-red-200/40 pt-1.55">
+                          <span className="font-bold text-slate-400 uppercase text-[9px]">Banco:</span>
+                          <strong className="font-bold text-slate-900 text-right">{settings.bankName}</strong>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Scrollable Content (Responsive 2 Columns) */}
-              <div className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
-                  
-                  {/* Left Column (PIX Copy options and recipient details) */}
-                  <div className="md:col-span-7 space-y-4">
-                    
-                    {list.length >= 10 && settings?.vipWhatsAppUrl && (
-                      <div className="bg-gradient-to-r from-amber-500/15 via-emerald-500/10 to-emerald-600/15 border border-amber-300/30 p-4.5 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
-                        <div className="flex items-center gap-3">
-                          <div className="bg-amber-500 text-slate-950 p-2 rounded-xl shadow-md shrink-0">
-                            <Crown className="w-5 h-5 fill-slate-900 text-slate-950" />
-                          </div>
-                          <div>
-                            <h4 className="font-extrabold text-xs text-slate-800 uppercase tracking-wider flex items-center gap-1">
-                              Grupo VIP Liberado! 👑
-                            </h4>
-                            <p className="text-[10.5px] text-slate-500 leading-normal">
-                              Por comprar {list.length} cotas de uma vez, você tem acesso ao nosso grupo exclusivo do WhatsApp!
-                            </p>
-                          </div>
-                        </div>
-                        <a
-                          href={settings.vipWhatsAppUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs px-4 py-2.5 rounded-xl transition flex items-center justify-center gap-1.5 shadow-md shadow-emerald-500/10 whitespace-nowrap active:scale-95 cursor-pointer uppercase tracking-wider"
-                        >
-                          Entrar no Grupo 🟢
-                        </a>
-                      </div>
-                    )}
-
-                    {/* Option 1: Copy Key */}
-                    <div id="payment-mini-tutorial" className="bg-indigo-50/75 border border-indigo-200/80 p-4.5 rounded-2xl space-y-3 shadow-xs">
-                      <div className="flex items-center gap-2">
-                        <div className="bg-indigo-600 text-white p-1 rounded-lg">
-                          <BookOpen className="w-4 h-4 text-white shrink-0" />
-                        </div>
-                        <h3 className="font-extrabold text-xs text-indigo-950 uppercase tracking-wider">
-                          Guia de Pagamento Rápido (Pix) 📖
-                        </h3>
-                      </div>
-                      
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 font-sans">
-                        <div className="bg-white/80 p-3 rounded-xl border border-indigo-100/60 flex gap-2.5 items-start">
-                          <span className="bg-indigo-100 text-indigo-700 w-5 h-5 rounded-full text-[10px] font-black flex items-center justify-center shrink-0 mt-0.5 select-none">1</span>
-                          <div className="space-y-0.5">
-                            <span className="block text-[10.5px] font-black text-slate-800 uppercase tracking-wide">Copiar Chave CPF 🔑</span>
-                            <p className="text-[10px] text-slate-500 leading-relaxed font-semibold">
-                              Copie a nossa chave de transferência do tipo <strong className="text-indigo-600 font-extrabold underline uppercase">CPF</strong> apresentada logo abaixo.
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="bg-white/80 p-3 rounded-xl border border-indigo-100/60 flex gap-2.5 items-start">
-                          <span className="bg-indigo-100 text-indigo-700 w-5 h-5 rounded-full text-[10px] font-black flex items-center justify-center shrink-0 mt-0.5 select-none">2</span>
-                          <div className="space-y-0.5">
-                            <span className="block text-[10.5px] font-black text-slate-800 uppercase tracking-wide">Transferir Valor Total 💸</span>
-                            <p className="text-[10px] text-slate-500 leading-relaxed font-semibold">
-                              No app do seu banco, faça o Pix do <strong className="text-emerald-700 font-black decoration-double underline">valor total exato</strong> de <strong className="text-slate-900 font-mono font-black">R$ {calc.totalPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>.
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="bg-emerald-500/5 border border-emerald-500/15 p-5 rounded-2xl space-y-3.5 relative overflow-hidden shadow-xs">
-                      <span className="absolute top-3 right-3 flex h-2 w-2">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                      </span>
-
-                      <span className="text-[10px] text-emerald-800 font-extrabold uppercase tracking-widest block leading-none">
-                        🚀 Opção 1: Copiar Chave (Pix Copia e Cola)
-                      </span>
-
-                      <div className="space-y-3">
-                        <div className="bg-slate-950 border-2 border-amber-400 p-4 rounded-xl text-center select-all shrink-0 transition-all shadow-md relative overflow-hidden group">
-                          <div className="absolute inset-0 bg-gradient-to-r from-amber-500/10 to-yellow-500/10 opacity-40 pointer-events-none" />
-                          <div className="relative z-10 flex flex-col items-center justify-center space-y-1">
-                            <span className="text-[8px] text-amber-400 font-black tracking-widest uppercase mb-0.5">
-                              ⚡ COPIE ESTA CHAVE EXATA ⚡
-                            </span>
-                            <span className="font-mono font-black text-sm sm:text-base text-yellow-300 break-all block leading-tight tracking-widest select-all">
-                              {settings.pixKey}
-                            </span>
-                          </div>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={handleCopyPix}
-                          className={`w-full py-4 px-6 rounded-2xl font-black cursor-pointer transition-all flex items-center justify-center gap-2 text-xs sm:text-sm shadow-md border-2 uppercase tracking-wider relative overflow-hidden group/btn ${
-                            copiedPix 
-                              ? "bg-gradient-to-r from-emerald-500 to-emerald-700 text-white border-emerald-400 shadow-emerald-500/25 scale-[1.02]" 
-                              : "bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-600 hover:from-amber-600 hover:via-yellow-500 hover:to-amber-700 text-slate-950 border-yellow-300 shadow-amber-500/30 hover:scale-[1.02]"
-                          }`}
-                        >
-                          {copiedPix ? (
-                            <div className="flex items-center gap-2">
-                              <Check className="w-5 h-5 text-white stroke-[3px] animate-bounce" />
-                              <span>CHAVE PIX COPIADA! ✓</span>
-                            </div>
-                          ) : (
-                            <>
-                              <Copy className="w-5 h-5 text-slate-900 stroke-[3px] transition-transform duration-300 group-hover/btn:scale-110" />
-                              <span>CLIQUE PARA COPIAR A CHAVE PIX 📋</span>
-                            </>
-                          )}
-                        </button>
-                      </div>
-
-                      <p className="text-[10px] text-slate-500 leading-normal font-medium text-center">
-                        Toque no botão acima para copiar. Abra o app do seu banco, escolha <strong>Pix Copia e Cola</strong> (or chave de transferência) e cole o código.
-                      </p>
-                    </div>
-
-                    {/* Recipient breakdown details */}
-                    <div className="bg-slate-50 border border-slate-200/80 p-4 rounded-2xl space-y-2.5">
-                      <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest block">Dados do Favorecido</span>
-                      <div className="space-y-2">
-                        {settings.receiverName && (
-                          <div className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-slate-100">
-                            <span className="text-slate-500 font-bold text-[10px] uppercase tracking-wider">Favorecido:</span>
-                            <span className="font-extrabold text-slate-800 text-xs text-right truncate max-w-[205px] select-all">{settings.receiverName}</span>
-                          </div>
-                        )}
-                        {settings.bankName && (
-                          <div className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-slate-100">
-                            <span className="text-slate-500 font-bold text-[10px] uppercase tracking-wider">Banco / Instituição:</span>
-                            <span className="font-extrabold text-slate-800 text-xs text-right select-all">{settings.bankName}</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                {/* Passo 3: Enviar Comprovante */}
+                <div className="bg-slate-50 border border-slate-150 rounded-2xl p-3.5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[9px] bg-emerald-600 text-white font-black px-2 py-0.5 rounded-md uppercase tracking-wider">Passo 3</span>
+                    <span className="text-[10.5px] text-emerald-650 font-extrabold uppercase tracking-wide">Envio Obrigatório 💬</span>
                   </div>
 
-                  {/* Right Column (Steps and Tickets Reservation information list) */}
-                  <div className="md:col-span-5 flex flex-col justify-between space-y-4">
-                    {/* Passos importantes steps element mimicking screenshot exactly */}
-                    <div className="bg-indigo-950 text-indigo-50 p-5 rounded-2xl space-y-3 border border-indigo-900 shadow-sm grow flex flex-col justify-center">
-                      <span className="text-[11px] text-indigo-300 font-black uppercase tracking-wider block">⚠️ PASSOS IMPORTANTES:</span>
-                      <ul className="text-[11px] space-y-2.5 leading-relaxed text-indigo-200">
-                        <li className="flex items-start gap-1.5">
-                          <span className="bg-indigo-800 text-white w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center shrink-0 mt-0.5">1</span>
-                          <span>Realize a transferência no valor exato de <strong>R$ {calc.totalPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>.</span>
-                        </li>
-                        <li className="flex items-start gap-1.5">
-                          <span className="bg-indigo-800 text-white w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center shrink-0 mt-0.5">2</span>
-                          <span>Anote ou tire print do comprovante da transação.</span>
-                        </li>
-                        <li className="flex items-start gap-1.5">
-                          <span className="bg-indigo-800 text-white w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center shrink-0 mt-0.5">3</span>
-                          <span>Clique em <strong>Confirmar no WhatsApp</strong> para enviar o comprovante.</span>
-                        </li>
-                      </ul>
-                    </div>
+                  <p className="text-[10.5px] text-slate-500 leading-relaxed font-semibold">
+                    Faça o Pix pelo seu banco e clique no botão verde abaixo para <strong>enviar o comprovante de pagamento no WhatsApp</strong> e liberar os bilhetes.
+                  </p>
 
-                    {/* Compact reserved list visualizer */}
-                    <div className="bg-slate-50 border border-slate-200/85 p-3.5 rounded-2xl text-xs space-y-2">
-                      <span className="text-[9px] text-slate-450 font-black uppercase tracking-wide block leading-none">Cotas em Processo de Reserva ({list.length})</span>
-                      <div className="flex flex-wrap gap-1 p-2 rounded-xl bg-white border border-slate-150 max-h-[70px] overflow-y-auto">
-                        {list.map(t => (
-                          <span key={t.id} className="font-mono text-xs bg-indigo-50 border border-indigo-100 text-indigo-750 px-1.5 py-0.5 rounded font-extrabold select-all">
-                            #{t.number}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleWhatsAppRedirect(list, camp);
+                      setConfettiKey((prev) => prev + 1);
+                    }}
+                    className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs sm:text-sm rounded-xl cursor-pointer flex items-center justify-center gap-2 transition-all shadow-md shadow-emerald-500/15 border-b-2 border-emerald-700 uppercase tracking-wider active:scale-[0.98]"
+                  >
+                    <svg className="w-4 h-4 shrink-0 fill-current" viewBox="0 0 24 24">
+                      <path d="M12.012 2c-5.506 0-9.989 4.478-9.99 9.984a9.96 9.96 0 0 0 1.335 4.978L2 22l5.133-1.343a9.894 9.894 0 0 0 4.873 1.344h.004c5.507 0 9.99-4.478 9.99-9.984a9.97 9.97 0 0 0-2.926-7.064A9.923 9.923 0 0 0 12.012 2zm5.794 13.978c-.244.685-1.22 1.258-1.685 1.31-.415.048-.954.072-1.554-.12a14.2 14.2 0 0 1-5.323-3.26c-1.423-1.416-2.5-3.155-2.775-3.626-.275-.471-.03-.725.207-.962.214-.213.473-.553.71-.83.235-.276.314-.471.472-.786.158-.314.079-.588-.04-.844-.118-.256-.944-2.274-1.298-3.125-.347-.831-.699-.718-.959-.731-.248-.013-.016-.284 0-.749.106-1.14.53-.393.424-1.5 1.464-1.5 3.568 0 2.102 1.533 4.133 1.747 4.419.215.285 3.018 4.606 7.311 6.467 1.02.443 1.815.707 2.437.904 1.025.326 1.958.28 2.696.17.822-.123 2.533-1.035 2.89-2.035.356-1 .356-1.857.248-2.035-.108-.178-.396-.285-.84-.508z" />
+                    </svg>
+                    <span>Confirmar no WhatsApp</span>
+                  </button>
                 </div>
+
+                {/* Exibição compacta das Cotas Reservadas */}
+                <div className="bg-slate-50 border border-slate-150 p-3 rounded-2xl text-[10.5px] flex flex-col gap-1.5 shadow-3xs">
+                  <span className="text-[9px] text-slate-400 font-extrabold uppercase tracking-wider block">Cotas reservadas nesta compra:</span>
+                  <div className="flex flex-wrap gap-1 p-2 rounded-xl bg-white border border-slate-100 max-h-[50px] overflow-y-auto">
+                    {list.map(t => (
+                      <span key={t.id} className="font-mono text-[10px] bg-slate-50 border border-slate-150 text-slate-800 px-1.5 py-0.5 rounded font-black">
+                        #{t.number}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
               </div>
 
-              {/* Action feet buttons mimicking screenshot exactly */}
-              <div className="bg-slate-50 border-t border-slate-150 p-4 sm:px-6 flex flex-col sm:flex-row justify-end gap-3 shrink-0 select-none">
-                <button
-                  type="button"
-                  onClick={() => {
-                    handleWhatsAppRedirect(list, camp);
-                    setConfettiKey((prev) => prev + 1);
-                  }}
-                  className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs sm:text-sm rounded-xl cursor-pointer flex items-center justify-center gap-2 transition-all shadow-md shadow-emerald-500/10 border border-emerald-500/20 uppercase tracking-wider active:scale-[0.98]"
-                >
-                  <svg className="w-5 h-5 shrink-0 fill-current" viewBox="0 0 24 24">
-                    <path d="M12.012 2c-5.506 0-9.989 4.478-9.99 9.984a9.96 9.96 0 0 0 1.335 4.978L2 22l5.133-1.343a9.894 9.894 0 0 0 4.873 1.344h.004c5.507 0 9.99-4.478 9.99-9.984a9.97 9.97 0 0 0-2.926-7.064A9.923 9.923 0 0 0 12.012 2zm5.794 13.978c-.244.685-1.22 1.258-1.685 1.31-.415.048-.954.072-1.554-.12a14.2 14.2 0 0 1-5.323-3.26c-1.423-1.416-2.5-3.155-2.775-3.626-.275-.471-.03-.725.207-.962.214-.213.473-.553.71-.83.235-.276.314-.471.472-.786.158-.314.079-.588-.04-.844-.118-.256-.944-2.274-1.298-3.125-.347-.831-.699-.718-.959-.731-.248-.013-.016-.284 0-.749.106-1.14.53-.393.424-1.5 1.464-1.5 3.568 0 2.102 1.533 4.133 1.747 4.419.215.285 3.018 4.606 7.311 6.467 1.02.443 1.815.707 2.437.904 1.025.326 1.958.28 2.696.17.822-.123 2.533-1.035 2.89-2.035.356-1 .356-1.857.248-2.035-.108-.178-.396-.285-.84-.508z" />
-                  </svg>
-                  <span>Confirmar no WhatsApp</span>
-                </button>
-
+              {/* Botão Inferior de Fechamento */}
+              <div className="bg-slate-50 border-t border-slate-150 p-4 flex shrink-0 justify-stretch select-none">
                 <button
                   type="button"
                   onClick={() => {
                     setExclusiveMobilePayment(null);
                     setSuccessReserved(null);
                   }}
-                  className="px-6 py-3 bg-slate-900 border border-slate-800 hover:bg-slate-850 hover:text-white text-slate-300 font-extrabold text-xs sm:text-sm rounded-xl transition-all cursor-pointer uppercase tracking-wider text-center"
+                  className="w-full py-3 bg-slate-900 border border-slate-800 hover:bg-slate-850 text-white font-extrabold text-xs rounded-xl transition-all cursor-pointer uppercase tracking-wider text-center"
                 >
                   Concluir e Voltar
                 </button>
@@ -1811,6 +1778,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                             const campTickets = allReservations[camp.id] || [];
                             const vendidas = campTickets.filter(t => t.status === "confirmed").length;
                             const restantes = Math.max(0, camp.totalTickets - campTickets.length);
+                            const occupancyPercentage = camp.totalTickets > 0 ? (campTickets.length / camp.totalTickets) * 100 : 0;
 
                             return (
                               <button
@@ -1860,6 +1828,11 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
 
                                   {/* Floating status badges */}
                                   <div className="absolute top-1.5 right-1.5 md:top-2.5 md:right-2.5 flex items-center gap-1.5 flex-wrap justify-end">
+                                    {occupancyPercentage >= 80 && restantes > 0 && (
+                                      <span className="bg-rose-500 text-white px-1.5 py-0.5 md:px-2 md:py-1 text-[7px] md:text-[9px] font-black rounded-lg flex items-center gap-0.5 border border-rose-300 shadow-md animate-pulse">
+                                        🔥 Últimas Vagas
+                                      </span>
+                                    )}
                                     {isCurrentlyInVipEarlyAccess(camp) && (
                                       <span className="bg-amber-500 text-slate-950 px-1.5 py-0.5 md:px-2 md:py-1 text-[7px] md:text-[9px] font-black rounded-lg flex items-center gap-0.5 border border-amber-300 shadow-md animate-pulse">
                                         <Crown className="w-2.5 h-2.5 fill-slate-900 shrink-0 text-slate-950" />
@@ -2286,6 +2259,18 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                         <span className="bg-indigo-600 text-white font-bold text-[10px] uppercase tracking-wider px-2.5 py-1 rounded-full">
                           R$ {selectedCampaign.ticketPrice.toFixed(2)} / BILHETE
                         </span>
+                        {(() => {
+                          const selectedCampaignTickets = allReservations[selectedCampaign.id] || [];
+                          const selectedCampaignRestantes = Math.max(0, selectedCampaign.totalTickets - selectedCampaignTickets.length);
+                          const occupancy = selectedCampaign.totalTickets > 0
+                            ? (selectedCampaignTickets.length / selectedCampaign.totalTickets) * 100
+                            : 0;
+                          return occupancy >= 80 && selectedCampaignRestantes > 0 ? (
+                            <span className="bg-rose-500 text-white font-extrabold text-[10px] uppercase tracking-wider px-2.5 py-1 rounded-full shadow-md animate-pulse flex items-center gap-1 select-none">
+                              🔥 Últimas Vagas ({occupancy.toFixed(0)}%)
+                            </span>
+                          ) : null;
+                        })()}
                         {selectedCampaign.drawDate && (
                           <span className="bg-slate-200 text-slate-700 text-[10px] font-semibold px-2.5 py-1 rounded-full flex items-center gap-1">
                             <Calendar className="w-3 h-3" />
@@ -2792,10 +2777,6 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                           </div>
                         )}
 
-
-
-
-
                         {loadingTickets ? (
                           <div className={`grid ${mobileColumns === 4 ? "grid-cols-4" : mobileColumns === 6 ? "grid-cols-6" : "grid-cols-5"} sm:grid-cols-10 gap-2`}>
                             {Array.from({ length: 40 }).map((_, idx) => (
@@ -2811,29 +2792,33 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                         ) : (
                           <>
                             {/* Grid drawing loop based on total size limit */}
-                            <div className={`grid ${mobileColumns === 4 ? "grid-cols-4 animate-fadeIn" : mobileColumns === 6 ? "grid-cols-6 animate-fadeIn" : "grid-cols-5"} sm:grid-cols-10 gap-1.5 sm:gap-2 max-h-[450px] overflow-y-auto p-1.5 bg-slate-50 border border-slate-100 rounded-2xl w-full`}>
+                            <div className={`grid ${mobileColumns === 4 ? "grid-cols-4 animate-fadeIn" : mobileColumns === 6 ? "grid-cols-6 animate-fadeIn" : "grid-cols-5"} sm:grid-cols-10 gap-1.5 sm:gap-2 max-h-[550px] overflow-y-auto p-1.5 bg-slate-50 border border-slate-100 rounded-2xl w-full`}>
                             {paginatedIndices.map((idx) => {
                               const numStr = padNumber(idx, selectedCampaign.totalTickets);
                               const tInfo = tickets[numStr];
                               const isCurrentlySelected = selectedNumbers.includes(numStr);
 
-                              // Resolve background style states
+                              // Resolve background style states and indicator colors
                               let bgClass = "bg-white text-slate-700 hover:bg-slate-100 border-slate-200 hover:scale-105 hover:bg-slate-50";
                               let statusLabel = "Livre (Disponível)";
+                              let indicatorColor = "bg-emerald-500 shadow-emerald-500/35";
 
                               if (isCurrentlySelected) {
-                                bgClass = "bg-indigo-600 text-white border-indigo-600 font-bold scale-[1.03] shadow-md hover:bg-indigo-700 ring-2 ring-indigo-500/20";
+                                bgClass = "bg-indigo-650 text-white border-indigo-650 font-bold scale-[1.03] shadow-md hover:bg-indigo-700 ring-2 ring-indigo-500/20";
                                 statusLabel = "Selecionado por você";
+                                indicatorColor = "bg-white animate-pulse";
                               } else if (tInfo) {
                                 if (tInfo.status === "confirmed") {
-                                  bgClass = "bg-indigo-100/70 text-indigo-400 border-indigo-100 cursor-not-allowed pointer-events-none opacity-60";
+                                  bgClass = "bg-indigo-100/70 text-indigo-405 border-indigo-100 cursor-not-allowed pointer-events-none opacity-60";
                                   statusLabel = `Confirmado por ${tInfo.buyerName}`;
+                                  indicatorColor = "bg-slate-400";
                                 } else if (tInfo.status === "reserved") {
                                   const isMine = userProfile && tInfo.buyerUid === userProfile.uid;
                                   bgClass = isMine
                                     ? "bg-amber-400 text-slate-900 border-amber-400 hover:bg-amber-500 font-bold"
                                     : "bg-amber-100 text-amber-800 border-amber-200 cursor-not-allowed pointer-events-none opacity-70";
                                   statusLabel = isMine ? "Sua Reserva" : "Já Reservado";
+                                  indicatorColor = isMine ? "bg-slate-900" : "bg-amber-505 bg-amber-500";
                                 }
                               }
 
@@ -2845,109 +2830,45 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                                     setSuccessReserved(null);
                                     handleToggleNumberSelection(numStr);
                                   }}
-                                  className={`h-11 sm:h-12 border rounded-xl font-mono text-xs sm:text-sm font-semibold transition-all shadow-subtle flex flex-col items-center justify-center cursor-pointer ${bgClass}`}
+                                  className={`h-11 sm:h-12 border rounded-xl font-mono text-xs sm:text-sm font-bold transition-all shadow-subtle flex flex-col items-center justify-center cursor-pointer relative overflow-hidden ${bgClass}`}
                                   title={`Bilhete #${numStr} - ${statusLabel}`}
                                 >
-                                  <span>{numStr}</span>
+                                  <span className="relative z-10">{numStr}</span>
+                                  {/* Dynamic status marker/badge dot */}
+                                  <span className={`absolute top-1 right-1.5 w-1.5 h-1.5 rounded-full border border-white/20 shadow-3xs z-20 ${indicatorColor}`} />
                                 </button>
                               );
                             })}
-                          </div>
-
-                          {/* HIGHER PERFORMANCE RESPONSIVE PAGINATION CONTROLS */}
-                          {totalPages > 1 && (
-                            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-slate-100/80 mt-4 select-none animate-fadeIn bg-slate-50/20 p-3.5 rounded-2xl border border-slate-100/60 shadow-3xs">
-                              <div className="text-[11px] text-slate-500 font-bold">
-                                Mostrando <strong className="text-slate-800 font-extrabold">{paginatedIndices.length}</strong> de <strong className="text-slate-800 font-extrabold">{filteredIndices.length}</strong> cotas (Pág. <strong className="text-indigo-650 font-black">{ticketPage + 1}</strong> de <strong className="text-slate-800 font-extrabold">{totalPages}</strong>)
-                              </div>
-                              <div className="flex items-center gap-1.5 flex-wrap justify-center">
-                                <button
-                                  type="button"
-                                  onClick={() => setTicketPage(0)}
-                                  disabled={ticketPage === 0}
-                                  className="p-2 border border-slate-200 text-slate-600 rounded-xl bg-white hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none transition-all cursor-pointer font-black text-xs min-h-[36px] min-w-[36px] flex items-center justify-center shadow-4xs"
-                                  title="Primeira Página"
-                                >
-                                  «
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setTicketPage(p => Math.max(0, p - 1))}
-                                  disabled={ticketPage === 0}
-                                  className="px-3 py-1.5 border border-slate-200 text-slate-600 rounded-xl bg-white hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none transition-all cursor-pointer font-black text-xs flex items-center gap-1 min-h-[36px] shadow-4xs"
-                                >
-                                  ‹ Anterior
-                                </button>
-
-                                {/* Mobile compact dropdown selector or nearby pages on Desktop */}
-                                <div className="hidden sm:flex items-center gap-1">
-                                  {Array.from({ length: totalPages }).map((_, pIdx) => {
-                                    // Render only first page, last page, and 1 surrounding requested page
-                                    if (pIdx === 0 || pIdx === totalPages - 1 || Math.abs(pIdx - ticketPage) <= 1) {
-                                      const isPageActive = ticketPage === pIdx;
-                                      return (
-                                        <button
-                                          key={pIdx}
-                                          type="button"
-                                          onClick={() => setTicketPage(pIdx)}
-                                          className={`w-9 h-9 text-xs font-extrabold rounded-xl border flex items-center justify-center transition-all cursor-pointer ${
-                                            isPageActive
-                                              ? "bg-indigo-650 border-indigo-650 text-white shadow-sm font-black scale-102"
-                                              : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
-                                          }`}
-                                        >
-                                          {pIdx + 1}
-                                        </button>
-                                      );
-                                    }
-                                    // Ellipses rendering
-                                    if (pIdx === 1 || pIdx === totalPages - 2) {
-                                      return (
-                                        <span key={pIdx} className="text-slate-400 px-0.5 text-[10px] font-black">
-                                          ...
-                                        </span>
-                                      );
-                                    }
-                                    return null;
-                                  })}
-                                </div>
-
-                                <div className="flex sm:hidden">
-                                  <select
-                                    value={ticketPage}
-                                    onChange={(e) => setTicketPage(Number(e.target.value))}
-                                    className="text-xs bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 font-bold text-slate-705 outline-none focus:ring-0 focus:border-indigo-500 h-[36px] shadow-4xs"
-                                  >
-                                    {Array.from({ length: totalPages }).map((_, pIdx) => (
-                                      <option key={pIdx} value={pIdx}>
-                                        Pág. {pIdx + 1}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </div>
-
-                                <button
-                                  type="button"
-                                  onClick={() => setTicketPage(p => Math.min(totalPages - 1, p + 1))}
-                                  disabled={ticketPage === totalPages - 1}
-                                  className="px-3 py-1.5 border border-slate-200 text-slate-600 rounded-xl bg-white hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none transition-all cursor-pointer font-black text-xs flex items-center gap-1 min-h-[36px] shadow-4xs"
-                                >
-                                  Próxima ›
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setTicketPage(totalPages - 1)}
-                                  disabled={ticketPage === totalPages - 1}
-                                  className="p-2 border border-slate-200 text-slate-600 rounded-xl bg-white hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none transition-all cursor-pointer font-black text-xs min-h-[36px] min-w-[36px] flex items-center justify-center shadow-4xs"
-                                  title="Última Página"
-                                >
-                                  »
-                                </button>
-                              </div>
                             </div>
-                          )}
+
+
                           </>
                         )}
+
+                        {/* Status Legend Bar */}
+                        <div className="flex flex-wrap items-center justify-center sm:justify-start gap-x-3 gap-y-1.5 bg-slate-50 border border-slate-200/80 p-3 rounded-2xl text-[10px] font-bold text-slate-650 shadow-3xs select-none animate-fadeIn my-2 mt-4.5">
+                          <span className="text-[9px] text-slate-400 uppercase tracking-wider font-extrabold mr-1">Legenda:</span>
+                          <div className="flex items-center gap-1 bg-white px-2 py-0.5 rounded-lg border border-slate-100 shadow-4xs">
+                            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 border border-white shadow-3xs" />
+                            <span className="text-slate-700">Disponível</span>
+                          </div>
+                          <div className="flex items-center gap-1 bg-white px-2 py-0.5 rounded-lg border border-slate-100 shadow-4xs">
+                            <span className="w-2.5 h-2.5 rounded-full bg-indigo-650 border border-white shadow-3xs" />
+                            <span className="text-slate-700">Selecionado</span>
+                          </div>
+                          <div className="flex items-center gap-1 bg-white px-2 py-0.5 rounded-lg border border-slate-100 shadow-4xs">
+                            <span className="w-2.5 h-2.5 rounded-full bg-amber-400 border border-white shadow-3xs" />
+                            <span className="text-slate-700">Sua Reserva</span>
+                          </div>
+                          <div className="flex items-center gap-1 bg-white px-2 py-0.5 rounded-lg border border-slate-100 shadow-4xs">
+                            <span className="w-2.5 h-2.5 rounded-full bg-amber-500 border border-white shadow-3xs" />
+                            <span className="text-slate-700">Reservado</span>
+                          </div>
+                          <div className="flex items-center gap-1 bg-white px-2 py-0.5 rounded-lg border border-slate-100 shadow-4xs">
+                            <span className="w-2.5 h-2.5 rounded-full bg-slate-400 border border-white shadow-3xs" />
+                            <span className="text-slate-700">Pago / Confirmado</span>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -2962,11 +2883,6 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                       </p>
                     </div>
                   )}
-                </div>
-
-                {/* Mobile Only: Top 5 Maiores Apoiadores of the active campaign */}
-                <div className="block lg:hidden mt-6">
-                  {renderTopSupportersWidget(false)}
                 </div>
               </div>
 
@@ -3119,7 +3035,6 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                     </div>
                   )}
                 </div>
-                {renderTopSupportersWidget(true)}
               </div>
 
             </div>
@@ -3198,7 +3113,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                 Você não possui compras ou reservas registradas no momento.
               </div>
             ) : (
-              <div className="space-y-4">
+              <>
                 {(() => {
                   const entries = Object.entries(myTickets) as [string, Ticket[]][];
                   const allBatches: { campaign: Campaign; tickets: Ticket[]; key: string }[] = [];
@@ -3227,12 +3142,73 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                     );
                   }
 
-                  return allBatches.map(({ campaign, tickets, key }) => {
-                    const confirmedTickets = tickets.filter(item => item.status === "confirmed");
-                    const reservedTickets = tickets.filter(item => item.status === "reserved");
-                    const isAllConfirmed = reservedTickets.length === 0;
-                    const firstTicket = tickets[0] as Ticket | undefined;
-                    const totalVal = tickets.length * campaign.ticketPrice;
+                  const filteredBatches = allBatches.filter(b => {
+                    if (comprasFilter === "active") return b.campaign.status !== "drawn";
+                    if (comprasFilter === "drawn") return b.campaign.status === "drawn";
+                    return true;
+                  });
+
+                  return (
+                    <div className="space-y-6">
+                      {/* Interactive Tab/Filter Selector for Raffle and Draw History */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 border border-slate-200/80 p-2.5 rounded-2xl select-none shadow-4xs">
+                        <div className="flex bg-slate-200/60 p-1 rounded-xl w-full sm:max-w-md">
+                          <button
+                            type="button"
+                            onClick={() => setComprasFilter("all")}
+                            className={`flex-1 py-1.5 px-3 text-xs font-black rounded-lg transition-all cursor-pointer text-center ${
+                              comprasFilter === "all"
+                                ? "bg-white text-indigo-950 shadow-xs"
+                                : "text-slate-500 hover:text-slate-800 font-bold"
+                            }`}
+                          >
+                            Todos ({allBatches.length})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setComprasFilter("active")}
+                            className={`flex-1 py-1.5 px-3 text-xs font-black rounded-lg transition-all cursor-pointer text-center ${
+                              comprasFilter === "active"
+                                ? "bg-white text-indigo-950 shadow-xs"
+                                : "text-slate-500 hover:text-slate-800 font-bold"
+                            }`}
+                          >
+                            Rifas Ativas ({allBatches.filter(b => b.campaign.status !== "drawn").length})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setComprasFilter("drawn")}
+                            className={`flex-1 py-1.5 px-3 text-xs font-black rounded-lg transition-all cursor-pointer text-center ${
+                              comprasFilter === "drawn"
+                                ? "bg-white text-indigo-950 shadow-xs"
+                                : "text-slate-500 hover:text-slate-800 font-bold"
+                            }`}
+                          >
+                            Sorteios Realizados ({allBatches.filter(b => b.campaign.status === "drawn").length || 0})
+                          </button>
+                        </div>
+
+                        <span className="text-[10.5px] text-slate-450 font-black uppercase tracking-widest px-1">
+                          Mostrando: {filteredBatches.length} de {allBatches.length}
+                        </span>
+                      </div>
+
+                      {filteredBatches.length === 0 ? (
+                        <div className="text-center p-12 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-slate-450 text-xs normal-case shadow-3xs flex flex-col items-center justify-center gap-2 animate-fadeIn">
+                          <span className="text-2xl">🔮</span>
+                          <span className="font-extrabold text-slate-600 text-sm">Nenhum bilhete encontrado nesta categoria.</span>
+                          <p className="text-[11px] text-slate-400 font-semibold max-w-xs leading-normal">
+                            Campanhas encerradas e sorteios passados completos serão mostrados aqui de forma transparente assim que o sorteio oficial for realizado.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          {filteredBatches.map(({ campaign, tickets, key }) => {
+                            const confirmedTickets = tickets.filter(item => item.status === "confirmed");
+                            const reservedTickets = tickets.filter(item => item.status === "reserved");
+                            const isAllConfirmed = reservedTickets.length === 0;
+                            const firstTicket = tickets[0] as Ticket | undefined;
+                            const totalVal = tickets.length * campaign.ticketPrice;
 
                     // Compute dynamic tracking steps
                     const steps = [
@@ -3517,9 +3493,13 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                         )}
                       </div>
                     );
-                  });
+                  })}
+                        </div>
+                      )}
+                    </div>
+                  );
                 })()}
-              </div>
+              </>
             )}
 
             {/* Quick Copy PIX helper inside reservations list for mobile */}
@@ -3704,6 +3684,144 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                   className="bg-indigo-600 hover:bg-indigo-750 text-white font-bold text-xs px-6 py-2.5 rounded-xl transition cursor-pointer shadow-xs"
                 >
                   Entendi, Fechar
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* RESERVATION CONFIRMATION MODAL */}
+      <AnimatePresence>
+        {showConfirmReserveModal && selectedCampaign && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/45 backdrop-blur-xs select-none"
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 15, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.95, y: 15, opacity: 0 }}
+              transition={{ type: "spring", duration: 0.3 }}
+              className="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col max-h-[85vh] border border-slate-150"
+            >
+              {/* Header */}
+              <div className="bg-gradient-to-r from-emerald-600 to-teal-700 px-6 py-5 text-white flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-1.5 rounded-xl bg-white/10 flex items-center justify-center">
+                    <TicketIcon className="w-5 h-5 text-emerald-300" />
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-base tracking-tight text-white leading-tight">Confirmar Escolha de Cotas</h3>
+                    <span className="text-[10px] text-emerald-100 block font-bold uppercase tracking-wide leading-none mt-1">
+                      REVISE SEUS NÚMEROS ANTES DE CONTINUAR
+                    </span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowConfirmReserveModal(false)}
+                  className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 transition flex items-center justify-center text-white text-sm font-extrabold cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Content body */}
+              <div className="p-6 overflow-y-auto flex-1 select-text space-y-5">
+                
+                {/* Visual Campaign Info */}
+                <div className="bg-slate-50 border border-slate-150 p-3.5 rounded-2xl flex items-center gap-3">
+                  {selectedCampaign.imageUrl && (
+                    <img 
+                      src={selectedCampaign.imageUrl} 
+                      alt={selectedCampaign.name}
+                      referrerPolicy="no-referrer"
+                      className="w-12 h-12 rounded-xl object-cover border border-slate-200"
+                    />
+                  )}
+                  <div>
+                    <h4 className="font-black text-slate-800 text-sm leading-tight">{selectedCampaign.name}</h4>
+                    <span className="text-[9px] bg-slate-200 text-slate-700 font-extrabold px-1.5 py-0.5 rounded-md uppercase tracking-wider inline-block mt-1">
+                      Rifa Ativa
+                    </span>
+                  </div>
+                </div>
+
+                {/* Selected Numbers Grid */}
+                <div className="space-y-2">
+                  <span className="text-[10.5px] text-slate-450 font-bold uppercase tracking-wider block">
+                    Cotas Selecionadas ({selectedNumbers.length}):
+                  </span>
+                  <div className="bg-slate-50 border border-slate-150 rounded-2xl p-3.5 max-h-[140px] overflow-y-auto flex flex-wrap gap-1.5 justify-center sm:justify-start">
+                    {[...selectedNumbers]
+                      .sort((a, b) => Number(a) - Number(b))
+                      .map((num) => (
+                        <span 
+                          key={num} 
+                          className="bg-indigo-50 border border-indigo-200/50 text-indigo-700 font-mono font-black text-xs px-2.5 py-1 rounded-xl shadow-4xs"
+                        >
+                          {num}
+                        </span>
+                      ))}
+                  </div>
+                </div>
+
+                {/* Pricing / Checkout visual representation */}
+                {(() => {
+                  const calc = getDiscountedPrice(
+                    selectedNumbers.length,
+                    selectedCampaign.ticketPrice,
+                    selectedCampaign.progressiveDiscounts,
+                    userProfile?.isVip,
+                    settings?.vipDiscountPercentage
+                  );
+                  const isVipApplied = userProfile?.isVip && calc.discountPercentage === settings?.vipDiscountPercentage;
+                  return (
+                    <div className="bg-emerald-50/40 border-2 border-emerald-500/20 rounded-2xl p-4.5 space-y-2 text-center shadow-3xs">
+                      <span className="text-[10px] uppercase font-black text-emerald-850 tracking-wider block leading-none">
+                        VALOR TOTAL A PAGAR:
+                      </span>
+                      <strong className="text-3xl sm:text-4xl font-extrabold text-emerald-600 font-sans block tracking-tight leading-none">
+                        R$ {calc.totalPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </strong>
+                      <span className="text-[11px] text-slate-500 font-semibold block">
+                        {selectedNumbers.length} {selectedNumbers.length === 1 ? "cota" : "cotas"} • R$ {calc.unitPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} cada
+                        {isVipApplied ? " (👑 Desconto VIP)" : calc.appliedDiscount ? " (🏷️ Desconto Rifa)" : ""}
+                      </span>
+                    </div>
+                  );
+                })()}
+
+                {/* Friendly Guidance/Disclaimer */}
+                <div className="flex gap-2.5 bg-amber-50/50 border border-amber-200/45 p-3 rounded-2xl text-[11px] text-amber-900 leading-relaxed font-semibold">
+                  <AlertCircle className="w-4.5 h-4.5 text-amber-500 shrink-0 mt-0.5" />
+                  <span>
+                    Após confirmar, suas cotas ficarão reservadas sob o seu perfil. Transfira o valor exato via PIX na próxima tela para garantir a validação rápida!
+                  </span>
+                </div>
+
+              </div>
+
+              {/* Footer buttons */}
+              <div className="bg-slate-50 border-t border-slate-150 p-4.5 flex gap-3 justify-end items-center">
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmReserveModal(false)}
+                  className="px-5 py-2.5 bg-white border border-slate-200 text-slate-600 font-bold text-xs rounded-xl hover:bg-slate-50 transition cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowConfirmReserveModal(false);
+                    handleReserveTickets(true);
+                  }}
+                  className="px-7 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl transition cursor-pointer shadow-md shadow-emerald-500/15 uppercase tracking-wider flex items-center gap-1.5"
+                >
+                  <span>Confirmar e Reservar 💳</span>
                 </button>
               </div>
             </motion.div>
