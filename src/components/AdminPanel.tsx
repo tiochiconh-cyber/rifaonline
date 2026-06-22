@@ -1034,6 +1034,14 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
       setEditClientError("A cidade é obrigatória.");
       return;
     }
+    if (!editClientEmail.trim()) {
+      setEditClientError("O e-mail é obrigatório.");
+      return;
+    }
+    if (!editClientEmail.includes("@")) {
+      setEditClientError("Por favor, digite um e-mail válido.");
+      return;
+    }
 
     try {
       // Check for duplicate CPF or Phone (excluding editingClient)
@@ -1061,6 +1069,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
       const ref = doc(db, "users", editingClient.uid);
       await updateDoc(ref, {
         name: editClientName,
+        email: editClientEmail.trim().toLowerCase(),
         cpf: cleanCpf,
         phone: cleanPhone,
         city: editClientCity,
@@ -6794,12 +6803,13 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                 </div>
 
                 <div>
-                  <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">E-mail (Inalterável)</label>
+                  <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">E-mail</label>
                   <input
                     type="email"
                     value={editClientEmail}
-                    disabled
-                    className="w-full px-3.5 py-4 border border-slate-200 rounded-2xl font-mono text-xs bg-slate-105 text-slate-400 cursor-not-allowed"
+                    onChange={(e) => setEditClientEmail(e.target.value)}
+                    className="w-full px-3.5 py-4 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-sans text-xs bg-slate-50"
+                    placeholder="E-mail de autenticação e contato"
                   />
                 </div>
 
