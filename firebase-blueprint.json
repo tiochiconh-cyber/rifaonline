@@ -38,6 +38,14 @@
           "type": "string",
           "format": "date-time",
           "description": "Timestamp when user was created"
+        },
+        "isBlocked": {
+          "type": "boolean",
+          "description": "Whether user is suspended/blocked from transactions"
+        },
+        "isVip": {
+          "type": "boolean",
+          "description": "Whether user has early-access and discount benefits from VIP program"
         }
       },
       "required": ["uid", "name", "email", "cpf", "city", "phone", "role"]
@@ -217,6 +225,22 @@
         "backgroundAudioUrl": {
           "type": "string",
           "description": "Optional background audio URL for ambience"
+        },
+        "vipAdvanceHours": {
+          "type": "number",
+          "description": "Hours of early access for VIP members"
+        },
+        "vipDiscountPercentage": {
+          "type": "number",
+          "description": "Discount percentage applied to VIP members"
+        },
+        "vipWhatsAppUrl": {
+          "type": "string",
+          "description": "Invite link to the exclusive VIP WhatsApp group"
+        },
+        "vipEnabled": {
+          "type": "boolean",
+          "description": "Whether the VIP program and its benefits are active"
         }
       },
       "required": ["pixKey", "bankName", "receiverName", "expirationHours", "supportContact", "rulesText"]

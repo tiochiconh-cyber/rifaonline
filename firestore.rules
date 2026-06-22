@@ -46,7 +46,8 @@ service cloud.firestore {
              u.city is string && u.city.size() > 0 && u.city.size() <= 100 &&
              u.phone is string && u.phone.size() > 0 && u.phone.size() <= 30 &&
              u.role in ['client', 'admin'] &&
-             (!u.keys().hasAny(['isBlocked']) || u.isBlocked is bool);
+             (!u.keys().hasAny(['isBlocked']) || u.isBlocked is bool) &&
+             (!u.keys().hasAny(['isVip']) || u.isVip is bool);
     }
 
     match /users/{userId} {
@@ -81,7 +82,11 @@ service cloud.firestore {
              s.supportContact is string && s.supportContact.size() <= 100 &&
              s.rulesText is string && s.rulesText.size() <= 100000 &&
              (!s.keys().hasAny(['backgroundAudioUrl']) || s.backgroundAudioUrl is string) &&
-             (!s.keys().hasAny(['salesSuspensionBlocked']) || s.salesSuspensionBlocked is bool);
+             (!s.keys().hasAny(['salesSuspensionBlocked']) || s.salesSuspensionBlocked is bool) &&
+             (!s.keys().hasAny(['vipEnabled']) || s.vipEnabled is bool) &&
+             (!s.keys().hasAny(['vipAdvanceHours']) || (s.vipAdvanceHours is int || s.vipAdvanceHours is float)) &&
+             (!s.keys().hasAny(['vipDiscountPercentage']) || (s.vipDiscountPercentage is int || s.vipDiscountPercentage is float)) &&
+             (!s.keys().hasAny(['vipWhatsAppUrl']) || s.vipWhatsAppUrl is string);
     }
 
     match /settings/{settingId} {
