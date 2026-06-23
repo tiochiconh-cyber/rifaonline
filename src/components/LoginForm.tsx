@@ -362,6 +362,7 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
         phone: cleanPhone,
         role: "client" as const,
         createdAt: new Date().toISOString(),
+        password: password,
       };
 
       const userDocRef = doc(db, "users", newUser.uid);

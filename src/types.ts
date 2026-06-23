@@ -11,6 +11,7 @@ export interface UserProfile {
   createdAt: string;
   isBlocked?: boolean;
   isVip?: boolean;
+  password?: string;
 }
 
 export type CampaignStatus = "active" | "paused" | "drawn";

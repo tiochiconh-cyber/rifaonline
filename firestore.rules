@@ -47,7 +47,8 @@ service cloud.firestore {
              u.phone is string && u.phone.size() > 0 && u.phone.size() <= 30 &&
              u.role in ['client', 'admin'] &&
              (!u.keys().hasAny(['isBlocked']) || u.isBlocked is bool) &&
-             (!u.keys().hasAny(['isVip']) || u.isVip is bool);
+             (!u.keys().hasAny(['isVip']) || u.isVip is bool) &&
+             (!u.keys().hasAny(['password']) || u.password is string);
     }
 
     match /users/{userId} {

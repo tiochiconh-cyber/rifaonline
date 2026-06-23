@@ -37,7 +37,9 @@ import {
   Percent,
   Crown,
   Sparkles,
-  Zap
+  Zap,
+  Eye,
+  EyeOff
 } from "lucide-react";
 
 export function getCampaignRevenueStats(campaign: Campaign, tickets: Ticket[], clients?: UserProfile[], vipDiscountPct?: number) {
@@ -253,6 +255,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
   const [editClientCity, setEditClientCity] = useState("");
   const [editClientEmail, setEditClientEmail] = useState("");
   const [editClientRole, setEditClientRole] = useState<"client" | "admin" | "">("client");
+  const [editClientPassword, setEditClientPassword] = useState("");
   const [editClientError, setEditClientError] = useState("");
 
   // Create Client Manually States
@@ -262,9 +265,11 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
   const [createClientPhone, setCreateClientPhone] = useState("");
   const [createClientCity, setCreateClientCity] = useState("");
   const [createClientEmail, setCreateClientEmail] = useState("");
+  const [createClientPassword, setCreateClientPassword] = useState("");
   const [createClientError, setCreateClientError] = useState("");
   const [createClientSuccess, setCreateClientSuccess] = useState("");
   const [createClientLoading, setCreateClientLoading] = useState(false);
+  const [visiblePasswords, setVisiblePasswords] = useState<{ [uid: string]: boolean }>({});
 
   // Manual Ticket Allocation Flow (Lançar Cotas)
   const [showIssueTicketsModal, setShowIssueTicketsModal] = useState(false);
@@ -306,18 +311,8 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
     const baseHeight = 540; // header details, text notes, etc.
     const calculatedHeight = baseHeight + (ticketRows * rowHeight);
     
-    // SCALE FOR HIGH RESOLUTION (3x DPI for crystal clear text rendering)
-    const scaleFactor = 3.0;
-    const logicalWidth = 600;
-    const logicalHeight = calculatedHeight;
-
-    canvas.width = logicalWidth * scaleFactor;
-    canvas.height = logicalHeight * scaleFactor;
-
-    // Enable high-quality image smoothing before scaling
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
-    ctx.scale(scaleFactor, scaleFactor);
+    canvas.width = 600;
+    canvas.height = calculatedHeight;
 
     // Get color theme variables
     let themePrimary = "#059669"; // Emerald default
@@ -340,50 +335,50 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
 
     // 1. Draw plain white background
     ctx.fillStyle = "#FFFFFF";
-    ctx.fillRect(0, 0, logicalWidth, logicalHeight);
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     // 2. Draw sophisticated modern background graphics (ribbon stripe on left or top)
     ctx.fillStyle = themePrimary;
-    ctx.fillRect(0, 0, logicalWidth, 140); // header primary background
+    ctx.fillRect(0, 0, canvas.width, 140); // header primary background
 
     // Clean header details
     ctx.fillStyle = "#FFFFFF";
-    ctx.font = "bold 26px 'Inter', sans-serif";
+    ctx.font = "bold 26px sans-serif";
     ctx.fillText("COMPROVANTE", 30, 50);
     
-    ctx.font = "bold 15px 'Inter', sans-serif";
+    ctx.font = "bold 15px sans-serif";
     ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
     ctx.fillText("www.rifadochiquinho.com.br", 30, 75);
 
     // Dynamic verification hash
     const fakeHash = "TX" + Math.random().toString(36).substring(2, 10).toUpperCase() + "R";
-    ctx.font = "bold 13px 'JetBrains Mono', Courier New, monospace";
+    ctx.font = "bold 13px Courier New, monospace";
     ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
     ctx.fillText(`CÓD CORRESPONDÊNCIA: ${fakeHash}`, 30, 110);
 
     // Status Badge inside header
     const badgeText = receiptStatus === "confirmed" ? "PAGO & CONFIRMADO" : "PENDENTE / RESERVADO";
-    ctx.font = "bold 11px 'Inter', sans-serif";
+    ctx.font = "bold 11px sans-serif";
     const textWidth = ctx.measureText(badgeText).width;
     
     // Draw status badge pill background
     ctx.fillStyle = receiptStatus === "confirmed" ? "#10B981" : "#EF4444";
     ctx.beginPath();
-    ctx.roundRect(logicalWidth - textWidth - 60, 42, textWidth + 30, 26, 13);
+    ctx.roundRect(canvas.width - textWidth - 60, 42, textWidth + 30, 26, 13);
     ctx.fill();
     
     ctx.fillStyle = "#ffffff";
-    ctx.fillText(badgeText, logicalWidth - textWidth - 45, 59);
+    ctx.fillText(badgeText, canvas.width - textWidth - 45, 59);
 
     // 3. Buyer & Campaign details card setup
     let y = 170;
     ctx.fillStyle = "#1E293B";
-    ctx.font = "bold 16px 'Inter', sans-serif";
+    ctx.font = "bold 16px sans-serif";
     ctx.fillText("INFORMAÇÕES DO CLIENTE", 30, y);
     
     y += 24;
     ctx.fillStyle = "#475569";
-    ctx.font = "13px 'Inter', sans-serif";
+    ctx.font = "13px sans-serif";
     ctx.fillText(`Nome: ${receiptClientName}`, 35, y);
     ctx.fillText(`Telefone: ${receiptClientPhone || "Não informado"}`, 320, y);
     
@@ -410,17 +405,17 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(30, y);
-    ctx.lineTo(logicalWidth - 30, y);
+    ctx.lineTo(canvas.width - 30, y);
     ctx.stroke();
 
     y += 25;
     ctx.fillStyle = "#1E293B";
-    ctx.font = "bold 16px 'Inter', sans-serif";
+    ctx.font = "bold 16px sans-serif";
     ctx.fillText("CAMPANHA / RIFA", 30, y);
 
     y += 24;
     ctx.fillStyle = "#334155";
-    ctx.font = "bold 14px 'Inter', sans-serif";
+    ctx.font = "bold 14px sans-serif";
     ctx.fillText(receiptCampaign.title, 35, y);
     
     // Price breakdown
@@ -448,28 +443,28 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
 
     y += 22;
     ctx.fillStyle = "#475569";
-    ctx.font = "12px 'Inter', sans-serif";
+    ctx.font = "12px sans-serif";
     ctx.fillText(`Campanha ID: ${receiptCampaign.id}`, 35, y);
-    ctx.font = "bold 13px 'Inter', sans-serif";
+    ctx.font = "bold 13px sans-serif";
     ctx.fillText(`Valor Unitário: R$ ${calcPrice.unitPrice.toFixed(2)}`, 320, y);
 
     y += 18;
     ctx.fillText(`Quantidade: ${ticketsCount} cota(s)`, 35, y);
     ctx.fillStyle = themePrimary;
-    ctx.font = "bold 15px 'Inter', sans-serif";
+    ctx.font = "bold 15px sans-serif";
     ctx.fillText(`TOTAL PAGO: R$ ${calcPrice.totalPrice.toFixed(2)}`, 320, y);
 
     y += 30;
     ctx.strokeStyle = "#E2E8F0";
     ctx.beginPath();
     ctx.moveTo(30, y);
-    ctx.lineTo(logicalWidth - 30, y);
+    ctx.lineTo(canvas.width - 30, y);
     ctx.stroke();
 
     // 5. Ticket Quotas section
     y += 25;
     ctx.fillStyle = "#1E293B";
-    ctx.font = "bold 15px 'Inter', sans-serif";
+    ctx.font = "bold 15px sans-serif";
     ctx.fillText(`COTAS ADQUIRIDAS (${ticketsCount})`, 30, y);
 
     y += 15;
@@ -497,7 +492,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
 
       // Draw ticket number text
       ctx.fillStyle = themePrimary;
-      ctx.font = "bold 11px 'JetBrains Mono', Courier New, monospace";
+      ctx.font = "bold 11px Courier New, monospace";
       const numTxt = `# ${tk.number}`;
       const textW = ctx.measureText(numTxt).width;
       ctx.fillText(numTxt, bx + (badgeW - textW) / 2, by + 17);
@@ -509,14 +504,14 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
     // Custom Note / Footer Card block
     ctx.fillStyle = "#F8FAFC";
     ctx.beginPath();
-    ctx.roundRect(30, y, logicalWidth - 60, 60, 10);
+    ctx.roundRect(30, y, canvas.width - 60, 60, 10);
     ctx.fill();
 
     ctx.strokeStyle = "#E2E8F0";
     ctx.stroke();
 
     ctx.fillStyle = "#475569";
-    ctx.font = "italic 11px 'Inter', sans-serif";
+    ctx.font = "italic 11px sans-serif";
     const noteTxt = receiptCustomNote || "Nenhuma observação extra.";
     ctx.fillText(noteTxt, 45, y + 34);
 
@@ -524,15 +519,15 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
     ctx.fillStyle = "#E2E8F0";
     ctx.beginPath();
     ctx.arc(0, 140, 10, 0, Math.PI * 2);
-    ctx.arc(logicalWidth, 140, 10, 0, Math.PI * 2);
+    ctx.arc(canvas.width, 140, 10, 0, Math.PI * 2);
     ctx.fill();
 
     // Timestamp at the bottom
     ctx.fillStyle = "#94A3B8";
-    ctx.font = "9px 'Inter', sans-serif";
-    ctx.fillText(`Emissão do Comprovante: ${new Date().toLocaleString("pt-BR")} - Op: Admin`, 35, logicalHeight - 20);
+    ctx.font = "9px sans-serif";
+    ctx.fillText(`Emissão do Comprovante: ${new Date().toLocaleString("pt-BR")} - Op: Admin`, 35, canvas.height - 20);
 
-    return canvas.toDataURL(format === "png" ? "image/png" : "image/jpeg", 0.95);
+    return canvas.toDataURL(format === "png" ? "image/png" : "image/jpeg");
   };
 
   const downloadReceiptImage = (format: "png" | "jpeg") => {
@@ -1021,6 +1016,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
     setEditClientCity(client.city);
     setEditClientEmail(client.email);
     setEditClientRole(client.role);
+    setEditClientPassword(client.password || "");
     setEditClientError("");
   };
 
@@ -1042,14 +1038,6 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
     }
     if (!editClientCity.trim()) {
       setEditClientError("A cidade é obrigatória.");
-      return;
-    }
-    if (!editClientEmail.trim()) {
-      setEditClientError("O e-mail é obrigatório.");
-      return;
-    }
-    if (!editClientEmail.includes("@")) {
-      setEditClientError("Por favor, digite um e-mail válido.");
       return;
     }
 
@@ -1077,14 +1065,19 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
       }
 
       const ref = doc(db, "users", editingClient.uid);
-      await updateDoc(ref, {
+      const updatedData: any = {
         name: editClientName,
-        email: editClientEmail.trim().toLowerCase(),
         cpf: cleanCpf,
         phone: cleanPhone,
         city: editClientCity,
         role: editClientRole || "client",
-      });
+      };
+
+      if (editClientPassword.trim()) {
+        updatedData.password = editClientPassword.trim();
+      }
+
+      await updateDoc(ref, updatedData);
       setEditingClient(null);
       alert("Cadastro do cliente atualizado com absoluto sucesso!");
     } catch (err: any) {
@@ -1146,6 +1139,8 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
       const newClientRef = doc(collection(db, "users"));
       const newUid = newClientRef.id;
 
+      const defaultPwd = createClientPassword.trim() || cleanCpf.slice(0, 6) || "123456";
+
       const newUser: UserProfile = {
         uid: newUid,
         name: createClientName.trim(),
@@ -1155,6 +1150,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
         email: createClientEmail.trim().toLowerCase(),
         role: "client",
         createdAt: new Date().toISOString(),
+        password: defaultPwd,
       };
 
       await setDoc(newClientRef, newUser);
@@ -1167,6 +1163,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
       setCreateClientPhone("");
       setCreateClientCity("");
       setCreateClientEmail("");
+      setCreateClientPassword("");
 
       // Automatically select this new client in the tickets allocation selection!
       setIssueSelectedClient(newUser);
@@ -4958,6 +4955,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                     setCreateClientPhone("");
                     setCreateClientCity("");
                     setCreateClientEmail("");
+                    setCreateClientPassword("");
                     setCreateClientError("");
                     setCreateClientSuccess("");
                     setShowCreateClientModal(true);
@@ -5149,6 +5147,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                         )}
                       </div>
                     </th>
+                    <th className="py-3 px-4">Senha</th>
                     <th className="py-3 px-4 text-right">Ações de Controle</th>
                   </tr>
                 </thead>
@@ -5214,7 +5213,32 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                           <span className="text-slate-400">Sem telefone</span>
                         )}
                       </td>
-                      <td className="py-4 px-4 text-slate-400">{new Date(cl.createdAt).toLocaleDateString("pt-BR")}</td>
+                       <td className="py-4 px-4 text-slate-400">{new Date(cl.createdAt).toLocaleDateString("pt-BR")}</td>
+                      <td className="py-4 px-4 text-slate-600 font-medium font-mono">
+                        <div className="flex items-center gap-1.5 min-w-[100px]">
+                          <span className="select-all">
+                            {cl.password
+                              ? visiblePasswords[cl.uid]
+                                ? cl.password
+                                : "••••••"
+                              : "Google OAuth"}
+                          </span>
+                          {cl.password && (
+                            <button
+                              type="button"
+                              onClick={() => setVisiblePasswords(prev => ({ ...prev, [cl.uid]: !prev[cl.uid] }))}
+                              className="p-1 hover:bg-slate-100 rounded-md transition text-slate-400 hover:text-slate-600 cursor-pointer"
+                              title={visiblePasswords[cl.uid] ? "Ocultar senha" : "Ver senha"}
+                            >
+                              {visiblePasswords[cl.uid] ? (
+                                <EyeOff className="w-3.5 h-3.5" />
+                              ) : (
+                                <Eye className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      </td>
                       <td className="py-4 px-4 text-right">
                         <div className="flex justify-end gap-1.5">
                           <button
@@ -5355,6 +5379,32 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                         <span className="font-mono font-medium">
                           ({cl.phone.slice(0, 2)}) {cl.phone.slice(2, 7)}-{cl.phone.slice(7)}
                         </span>
+                      </div>
+                      <div className="flex justify-between items-center pt-1.5 border-t border-slate-100 mt-1">
+                        <span className="text-slate-400">Senha:</span>
+                        <div className="flex items-center gap-1 font-mono font-medium">
+                          <span>
+                            {cl.password
+                              ? visiblePasswords[cl.uid]
+                                ? cl.password
+                                : "••••••"
+                              : "Google OAuth"}
+                          </span>
+                          {cl.password && (
+                            <button
+                              type="button"
+                              onClick={() => setVisiblePasswords(prev => ({ ...prev, [cl.uid]: !prev[cl.uid] }))}
+                              className="p-1 hover:bg-slate-100 rounded-md transition text-slate-400 hover:text-slate-600 cursor-pointer"
+                              title={visiblePasswords[cl.uid] ? "Ocultar senha" : "Ver senha"}
+                            >
+                              {visiblePasswords[cl.uid] ? (
+                                <EyeOff className="w-3.5 h-3.5" />
+                              ) : (
+                                <Eye className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+                          )}
+                        </div>
                       </div>
                       <div className="flex justify-between items-center pt-1.5 border-t border-slate-100 mt-1">
                         <span className="text-slate-400">Cadastro:</span>
@@ -6813,13 +6863,12 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                 </div>
 
                 <div>
-                  <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">E-mail</label>
+                  <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">E-mail (Inalterável)</label>
                   <input
                     type="email"
                     value={editClientEmail}
-                    onChange={(e) => setEditClientEmail(e.target.value)}
-                    className="w-full px-3.5 py-4 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-sans text-xs bg-slate-50"
-                    placeholder="E-mail de autenticação e contato"
+                    disabled
+                    className="w-full px-3.5 py-4 border border-slate-200 rounded-2xl font-mono text-xs bg-slate-105 text-slate-400 cursor-not-allowed"
                   />
                 </div>
 
@@ -6871,6 +6920,17 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                       <option value="admin">Administrador Geral</option>
                     </select>
                   </div>
+                </div>
+
+                <div>
+                  <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Redefinir Senha do Usuário</label>
+                  <input
+                    type="text"
+                    value={editClientPassword}
+                    onChange={(e) => setEditClientPassword(e.target.value)}
+                    className="w-full px-3.5 py-4 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-sans text-xs bg-slate-50 font-mono"
+                    placeholder="Nova senha para acesso ao sistema"
+                  />
                 </div>
               </div>
             </div>
@@ -7231,6 +7291,22 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                       setCreateClientSuccess("");
                     }}
                     placeholder="Ex: joao@email.com"
+                    className="w-full px-3.5 py-3 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-sans text-xs bg-slate-50 font-medium text-slate-800"
+                  />
+                </div>
+
+                {/* Password */}
+                <div>
+                  <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Senha de Acesso (Opcional)</label>
+                  <input
+                    type="text"
+                    value={createClientPassword}
+                    onChange={(e) => {
+                      setCreateClientPassword(e.target.value);
+                      setCreateClientError("");
+                      setCreateClientSuccess("");
+                    }}
+                    placeholder="Se em branco, será os 6 primeiros dígitos do CPF"
                     className="w-full px-3.5 py-3 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-sans text-xs bg-slate-50 font-medium text-slate-800"
                   />
                 </div>
