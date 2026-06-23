@@ -5,7 +5,8 @@ import {
   signOut, 
   User,
   signInWithEmailAndPassword,
-  createUserWithEmailAndPassword
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail
 } from "firebase/auth";
 import { doc, getDoc, setDoc, collection, getDocs, query, where, limit, onSnapshot } from "firebase/firestore";
 import { auth, db, handleFirestoreError, OperationType } from "../firebase";
@@ -57,6 +58,7 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
   const [city, setCity] = useState("");
   const [phone, setPhone] = useState("");
   const [formError, setFormError] = useState("");
+  const [forgotPasswordSuccess, setForgotPasswordSuccess] = useState("");
 
   // Real-time evaluation of validations
   const cleanCpfDigits = cpf.replace(/\D/g, "");
@@ -248,6 +250,29 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
     }
   };
 
+  const handleForgotPassword = async () => {
+    setFormError("");
+    setForgotPasswordSuccess("");
+    if (!email.trim()) {
+      setFormError("Digite seu e-mail no campo acima e depois clique em 'Esqueci minha senha'.");
+      return;
+    }
+    setLoading(true);
+    try {
+      await sendPasswordResetEmail(auth, email.trim());
+      setForgotPasswordSuccess("E-mail de redefinição de senha enviado com sucesso! Verifique sua caixa de entrada.");
+    } catch (err: any) {
+      console.error("Password reset failed:", err);
+      if (err.code === "auth/user-not-found" || err.code === "auth/invalid-email") {
+        setFormError("E-mail não encontrado ou inválido. Por favor, verifique.");
+      } else {
+        setFormError("Erro ao enviar e-mail de redefinição. Tente novamente.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError("");
@@ -263,15 +288,44 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
       const result = await signInWithEmailAndPassword(auth, email.trim(), password);
       onLoginSuccess(result.user);
     } catch (err: any) {
-      console.error("Email login failed:", err);
-      if (err.code === "auth/operation-not-allowed") {
-        setFormError("O provedor de E-mail e Senha não está ativado no seu projeto Firebase. Por favor, clique abaixo em 'Entrar rapidamente com o Google' ou ative o provedor de E-mail/Senha no Console do Firebase.");
-      } else if (
+      console.error("Email login failed, trying fallback check:", err);
+      
+      if (
         err.code === "auth/invalid-credential" || 
         err.code === "auth/wrong-password" || 
         err.code === "auth/user-not-found"
       ) {
+        try {
+          // Check if user was registered/updated manually by Admin in Firestore
+          const usersRef = collection(db, "users");
+          const emailQuery = query(usersRef, where("email", "==", email.trim().toLowerCase()), limit(1));
+          const qSnap = await getDocs(emailQuery);
+          
+          if (!qSnap.empty) {
+            const userData = qSnap.docs[0].data();
+            if (userData.password === password) {
+              // Password matches Firestore! Let's try to register them in Firebase Auth
+              try {
+                const registerResult = await createUserWithEmailAndPassword(auth, email.trim(), password);
+                onLoginSuccess(registerResult.user);
+                return;
+              } catch (regErr: any) {
+                if (regErr.code === "auth/email-already-in-use") {
+                  setFormError("Sua senha foi redefinida pelo administrador. Clique em 'Esqueci minha senha' abaixo para criar uma nova senha de acesso.");
+                } else {
+                  setFormError("Não foi possível concluir o login seguro. Entre em contato com o administrador.");
+                }
+                return;
+              }
+            }
+          }
+        } catch (dbErr) {
+          console.error("Firestore user verification failed:", dbErr);
+        }
+        
         setFormError("E-mail ou senha incorretos.");
+      } else if (err.code === "auth/operation-not-allowed") {
+        setFormError("O provedor de E-mail e Senha não está ativado no seu projeto Firebase. Por favor, clique abaixo em 'Entrar rapidamente com o Google' ou ative o provedor de E-mail/Senha no Console do Firebase.");
       } else if (err.code === "auth/invalid-email") {
         setFormError("O formato do e-mail é inválido.");
       } else {
@@ -724,6 +778,7 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
                   onClick={() => {
                     setActiveTab("login");
                     setFormError("");
+                    setForgotPasswordSuccess("");
                   }}
                   className={`flex-1 text-center py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition ${
                     activeTab === "login"
@@ -738,6 +793,7 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
                   onClick={() => {
                     setActiveTab("register");
                     setFormError("");
+                    setForgotPasswordSuccess("");
                   }}
                   className={`flex-1 text-center py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition ${
                     activeTab === "register"
@@ -752,6 +808,12 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
               {formError && (
                 <div className="p-3.5 bg-red-50 text-red-700 rounded-xl border border-red-100 text-xs leading-relaxed font-semibold whitespace-pre-line">
                   {formError}
+                </div>
+              )}
+
+              {forgotPasswordSuccess && (
+                <div className="p-3.5 bg-emerald-50 text-emerald-700 rounded-xl border border-emerald-100 text-xs leading-relaxed font-semibold whitespace-pre-line">
+                  {forgotPasswordSuccess}
                 </div>
               )}
 
@@ -802,6 +864,15 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
                       className="pl-9 w-full px-4 py-2.5 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm placeholder-slate-400 bg-white shadow-sm"
                       placeholder="••••••••"
                     />
+                  </div>
+                  <div className="flex justify-end mt-1.5">
+                    <button
+                      type="button"
+                      onClick={handleForgotPassword}
+                      className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 hover:underline transition cursor-pointer"
+                    >
+                      Esqueceu sua senha?
+                    </button>
                   </div>
                 </div>
 

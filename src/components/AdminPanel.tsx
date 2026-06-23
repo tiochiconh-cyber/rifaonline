@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, query, where, getDocs } from "firebase/firestore";
-import { db, handleFirestoreError, OperationType } from "../firebase";
+import { db, auth, handleFirestoreError, OperationType } from "../firebase";
 import { Campaign, Ticket, UserProfile, TicketStatus } from "../types";
 import { validateCPF, formatCPF, formatPhone, validatePhone, getCampaignDrawProjection, splitTicketsIntoBatches } from "../utils/validation";
 import RichTextEditor from "./RichTextEditor";
@@ -1075,6 +1075,26 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
 
       if (editClientPassword.trim()) {
         updatedData.password = editClientPassword.trim();
+        const idToken = await auth.currentUser?.getIdToken();
+        if (idToken) {
+          const res = await fetch("/api/admin/update-user-password", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${idToken}`,
+            },
+            body: JSON.stringify({
+              uid: editingClient.uid,
+              newPassword: editClientPassword.trim(),
+              email: editingClient.email,
+            }),
+          });
+          if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            setEditClientError(errData.error || "Erro ao atualizar a senha do participante via servidor.");
+            return;
+          }
+        }
       }
 
       await updateDoc(ref, updatedData);
@@ -1154,6 +1174,23 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
       };
 
       await setDoc(newClientRef, newUser);
+
+      // Sync to Firebase Auth as well so they can log in immediately with the specified password
+      const idToken = await auth.currentUser?.getIdToken();
+      if (idToken) {
+        await fetch("/api/admin/update-user-password", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${idToken}`,
+          },
+          body: JSON.stringify({
+            uid: newUid,
+            newPassword: defaultPwd,
+            email: newUser.email,
+          }),
+        }).catch((err) => console.error("Error syncing manual user to Firebase Auth:", err));
+      }
       
       setCreateClientSuccess("Participante cadastrado com sucesso!");
       
