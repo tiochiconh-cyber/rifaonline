@@ -306,8 +306,18 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
     const baseHeight = 540; // header details, text notes, etc.
     const calculatedHeight = baseHeight + (ticketRows * rowHeight);
     
-    canvas.width = 600;
-    canvas.height = calculatedHeight;
+    // SCALE FOR HIGH RESOLUTION (3x DPI for crystal clear text rendering)
+    const scaleFactor = 3.0;
+    const logicalWidth = 600;
+    const logicalHeight = calculatedHeight;
+
+    canvas.width = logicalWidth * scaleFactor;
+    canvas.height = logicalHeight * scaleFactor;
+
+    // Enable high-quality image smoothing before scaling
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.scale(scaleFactor, scaleFactor);
 
     // Get color theme variables
     let themePrimary = "#059669"; // Emerald default
@@ -330,50 +340,50 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
 
     // 1. Draw plain white background
     ctx.fillStyle = "#FFFFFF";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, logicalWidth, logicalHeight);
 
     // 2. Draw sophisticated modern background graphics (ribbon stripe on left or top)
     ctx.fillStyle = themePrimary;
-    ctx.fillRect(0, 0, canvas.width, 140); // header primary background
+    ctx.fillRect(0, 0, logicalWidth, 140); // header primary background
 
     // Clean header details
     ctx.fillStyle = "#FFFFFF";
-    ctx.font = "bold 26px sans-serif";
+    ctx.font = "bold 26px 'Inter', sans-serif";
     ctx.fillText("COMPROVANTE", 30, 50);
     
-    ctx.font = "bold 15px sans-serif";
+    ctx.font = "bold 15px 'Inter', sans-serif";
     ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
     ctx.fillText("www.rifadochiquinho.com.br", 30, 75);
 
     // Dynamic verification hash
     const fakeHash = "TX" + Math.random().toString(36).substring(2, 10).toUpperCase() + "R";
-    ctx.font = "bold 13px Courier New, monospace";
+    ctx.font = "bold 13px 'JetBrains Mono', Courier New, monospace";
     ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
     ctx.fillText(`CÓD CORRESPONDÊNCIA: ${fakeHash}`, 30, 110);
 
     // Status Badge inside header
     const badgeText = receiptStatus === "confirmed" ? "PAGO & CONFIRMADO" : "PENDENTE / RESERVADO";
-    ctx.font = "bold 11px sans-serif";
+    ctx.font = "bold 11px 'Inter', sans-serif";
     const textWidth = ctx.measureText(badgeText).width;
     
     // Draw status badge pill background
     ctx.fillStyle = receiptStatus === "confirmed" ? "#10B981" : "#EF4444";
     ctx.beginPath();
-    ctx.roundRect(canvas.width - textWidth - 60, 42, textWidth + 30, 26, 13);
+    ctx.roundRect(logicalWidth - textWidth - 60, 42, textWidth + 30, 26, 13);
     ctx.fill();
     
     ctx.fillStyle = "#ffffff";
-    ctx.fillText(badgeText, canvas.width - textWidth - 45, 59);
+    ctx.fillText(badgeText, logicalWidth - textWidth - 45, 59);
 
     // 3. Buyer & Campaign details card setup
     let y = 170;
     ctx.fillStyle = "#1E293B";
-    ctx.font = "bold 16px sans-serif";
+    ctx.font = "bold 16px 'Inter', sans-serif";
     ctx.fillText("INFORMAÇÕES DO CLIENTE", 30, y);
     
     y += 24;
     ctx.fillStyle = "#475569";
-    ctx.font = "13px sans-serif";
+    ctx.font = "13px 'Inter', sans-serif";
     ctx.fillText(`Nome: ${receiptClientName}`, 35, y);
     ctx.fillText(`Telefone: ${receiptClientPhone || "Não informado"}`, 320, y);
     
@@ -400,17 +410,17 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(30, y);
-    ctx.lineTo(canvas.width - 30, y);
+    ctx.lineTo(logicalWidth - 30, y);
     ctx.stroke();
 
     y += 25;
     ctx.fillStyle = "#1E293B";
-    ctx.font = "bold 16px sans-serif";
+    ctx.font = "bold 16px 'Inter', sans-serif";
     ctx.fillText("CAMPANHA / RIFA", 30, y);
 
     y += 24;
     ctx.fillStyle = "#334155";
-    ctx.font = "bold 14px sans-serif";
+    ctx.font = "bold 14px 'Inter', sans-serif";
     ctx.fillText(receiptCampaign.title, 35, y);
     
     // Price breakdown
@@ -438,28 +448,28 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
 
     y += 22;
     ctx.fillStyle = "#475569";
-    ctx.font = "12px sans-serif";
+    ctx.font = "12px 'Inter', sans-serif";
     ctx.fillText(`Campanha ID: ${receiptCampaign.id}`, 35, y);
-    ctx.font = "bold 13px sans-serif";
+    ctx.font = "bold 13px 'Inter', sans-serif";
     ctx.fillText(`Valor Unitário: R$ ${calcPrice.unitPrice.toFixed(2)}`, 320, y);
 
     y += 18;
     ctx.fillText(`Quantidade: ${ticketsCount} cota(s)`, 35, y);
     ctx.fillStyle = themePrimary;
-    ctx.font = "bold 15px sans-serif";
+    ctx.font = "bold 15px 'Inter', sans-serif";
     ctx.fillText(`TOTAL PAGO: R$ ${calcPrice.totalPrice.toFixed(2)}`, 320, y);
 
     y += 30;
     ctx.strokeStyle = "#E2E8F0";
     ctx.beginPath();
     ctx.moveTo(30, y);
-    ctx.lineTo(canvas.width - 30, y);
+    ctx.lineTo(logicalWidth - 30, y);
     ctx.stroke();
 
     // 5. Ticket Quotas section
     y += 25;
     ctx.fillStyle = "#1E293B";
-    ctx.font = "bold 15px sans-serif";
+    ctx.font = "bold 15px 'Inter', sans-serif";
     ctx.fillText(`COTAS ADQUIRIDAS (${ticketsCount})`, 30, y);
 
     y += 15;
@@ -487,7 +497,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
 
       // Draw ticket number text
       ctx.fillStyle = themePrimary;
-      ctx.font = "bold 11px Courier New, monospace";
+      ctx.font = "bold 11px 'JetBrains Mono', Courier New, monospace";
       const numTxt = `# ${tk.number}`;
       const textW = ctx.measureText(numTxt).width;
       ctx.fillText(numTxt, bx + (badgeW - textW) / 2, by + 17);
@@ -499,14 +509,14 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
     // Custom Note / Footer Card block
     ctx.fillStyle = "#F8FAFC";
     ctx.beginPath();
-    ctx.roundRect(30, y, canvas.width - 60, 60, 10);
+    ctx.roundRect(30, y, logicalWidth - 60, 60, 10);
     ctx.fill();
 
     ctx.strokeStyle = "#E2E8F0";
     ctx.stroke();
 
     ctx.fillStyle = "#475569";
-    ctx.font = "italic 11px sans-serif";
+    ctx.font = "italic 11px 'Inter', sans-serif";
     const noteTxt = receiptCustomNote || "Nenhuma observação extra.";
     ctx.fillText(noteTxt, 45, y + 34);
 
@@ -514,15 +524,15 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
     ctx.fillStyle = "#E2E8F0";
     ctx.beginPath();
     ctx.arc(0, 140, 10, 0, Math.PI * 2);
-    ctx.arc(canvas.width, 140, 10, 0, Math.PI * 2);
+    ctx.arc(logicalWidth, 140, 10, 0, Math.PI * 2);
     ctx.fill();
 
     // Timestamp at the bottom
     ctx.fillStyle = "#94A3B8";
-    ctx.font = "9px sans-serif";
-    ctx.fillText(`Emissão do Comprovante: ${new Date().toLocaleString("pt-BR")} - Op: Admin`, 35, canvas.height - 20);
+    ctx.font = "9px 'Inter', sans-serif";
+    ctx.fillText(`Emissão do Comprovante: ${new Date().toLocaleString("pt-BR")} - Op: Admin`, 35, logicalHeight - 20);
 
-    return canvas.toDataURL(format === "png" ? "image/png" : "image/jpeg");
+    return canvas.toDataURL(format === "png" ? "image/png" : "image/jpeg", 0.95);
   };
 
   const downloadReceiptImage = (format: "png" | "jpeg") => {
