@@ -32,6 +32,23 @@ service cloud.firestore {
              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isBlocked == true;
     }
 
+    // Helper: Is the ticket owned by the current user (by UID or by CPF)?
+    function isTicketOwner(ticketData) {
+      return isSignedIn() && (
+        (ticketData.buyerUid == request.auth.uid) || 
+        (
+          exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          ('cpf' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data) &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.cpf != null &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.cpf != "" &&
+          ('buyerCpf' in ticketData) &&
+          ticketData.buyerCpf != null &&
+          ticketData.buyerCpf != "" &&
+          ticketData.buyerCpf == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.cpf
+        )
+      );
+    }
+
     // Default Lockout rule
     match /{document=**} {
       allow read, write: if false;
@@ -47,8 +64,7 @@ service cloud.firestore {
              u.phone is string && u.phone.size() > 0 && u.phone.size() <= 30 &&
              u.role in ['client', 'admin'] &&
              (!u.keys().hasAny(['isBlocked']) || u.isBlocked is bool) &&
-             (!u.keys().hasAny(['isVip']) || u.isVip is bool) &&
-             (!u.keys().hasAny(['password']) || u.password is string);
+             (!u.keys().hasAny(['isVip']) || u.isVip is bool);
     }
 
     match /users/{userId} {
@@ -171,7 +187,7 @@ service cloud.firestore {
           isSignedIn() && 
           !isBlocked() &&
           isValidTicket(request.resource.data) && 
-          resource.data.buyerUid == request.auth.uid &&
+          isTicketOwner(resource.data) &&
           (
             // Release/cancel reservation
             (request.resource.data.status == 'available' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'buyerUid', 'buyerName', 'buyerPhone', 'buyerCpf', 'buyerEmail'])) ||
@@ -181,7 +197,7 @@ service cloud.firestore {
         )
       );
 
-      allow delete: if (isSignedIn() && isAdmin()) || (isSignedIn() && !isBlocked() && resource.data.buyerUid == request.auth.uid && resource.data.status == 'reserved');
+      allow delete: if (isSignedIn() && isAdmin()) || (isSignedIn() && !isBlocked() && isTicketOwner(resource.data) && resource.data.status == 'reserved');
     }
   }
 }

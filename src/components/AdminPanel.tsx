@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, query, where, getDocs } from "firebase/firestore";
-import { db, auth, handleFirestoreError, OperationType } from "../firebase";
+import { db, handleFirestoreError, OperationType } from "../firebase";
 import { Campaign, Ticket, UserProfile, TicketStatus } from "../types";
 import { validateCPF, formatCPF, formatPhone, validatePhone, getCampaignDrawProjection, splitTicketsIntoBatches } from "../utils/validation";
 import RichTextEditor from "./RichTextEditor";
@@ -37,9 +37,7 @@ import {
   Percent,
   Crown,
   Sparkles,
-  Zap,
-  Eye,
-  EyeOff
+  Zap
 } from "lucide-react";
 
 export function getCampaignRevenueStats(campaign: Campaign, tickets: Ticket[], clients?: UserProfile[], vipDiscountPct?: number) {
@@ -255,7 +253,6 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
   const [editClientCity, setEditClientCity] = useState("");
   const [editClientEmail, setEditClientEmail] = useState("");
   const [editClientRole, setEditClientRole] = useState<"client" | "admin" | "">("client");
-  const [editClientPassword, setEditClientPassword] = useState("");
   const [editClientError, setEditClientError] = useState("");
 
   // Create Client Manually States
@@ -265,11 +262,9 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
   const [createClientPhone, setCreateClientPhone] = useState("");
   const [createClientCity, setCreateClientCity] = useState("");
   const [createClientEmail, setCreateClientEmail] = useState("");
-  const [createClientPassword, setCreateClientPassword] = useState("");
   const [createClientError, setCreateClientError] = useState("");
   const [createClientSuccess, setCreateClientSuccess] = useState("");
   const [createClientLoading, setCreateClientLoading] = useState(false);
-  const [visiblePasswords, setVisiblePasswords] = useState<{ [uid: string]: boolean }>({});
 
   // Manual Ticket Allocation Flow (Lançar Cotas)
   const [showIssueTicketsModal, setShowIssueTicketsModal] = useState(false);
@@ -1016,7 +1011,6 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
     setEditClientCity(client.city);
     setEditClientEmail(client.email);
     setEditClientRole(client.role);
-    setEditClientPassword(client.password || "");
     setEditClientError("");
   };
 
@@ -1065,39 +1059,13 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
       }
 
       const ref = doc(db, "users", editingClient.uid);
-      const updatedData: any = {
+      await updateDoc(ref, {
         name: editClientName,
         cpf: cleanCpf,
         phone: cleanPhone,
         city: editClientCity,
         role: editClientRole || "client",
-      };
-
-      if (editClientPassword.trim()) {
-        updatedData.password = editClientPassword.trim();
-        const idToken = await auth.currentUser?.getIdToken();
-        if (idToken) {
-          const res = await fetch("/api/admin/update-user-password", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${idToken}`,
-            },
-            body: JSON.stringify({
-              uid: editingClient.uid,
-              newPassword: editClientPassword.trim(),
-              email: editingClient.email,
-            }),
-          });
-          if (!res.ok) {
-            const errData = await res.json().catch(() => ({}));
-            setEditClientError(errData.error || "Erro ao atualizar a senha do participante via servidor.");
-            return;
-          }
-        }
-      }
-
-      await updateDoc(ref, updatedData);
+      });
       setEditingClient(null);
       alert("Cadastro do cliente atualizado com absoluto sucesso!");
     } catch (err: any) {
@@ -1159,8 +1127,6 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
       const newClientRef = doc(collection(db, "users"));
       const newUid = newClientRef.id;
 
-      const defaultPwd = createClientPassword.trim() || cleanCpf.slice(0, 6) || "123456";
-
       const newUser: UserProfile = {
         uid: newUid,
         name: createClientName.trim(),
@@ -1170,27 +1136,9 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
         email: createClientEmail.trim().toLowerCase(),
         role: "client",
         createdAt: new Date().toISOString(),
-        password: defaultPwd,
       };
 
       await setDoc(newClientRef, newUser);
-
-      // Sync to Firebase Auth as well so they can log in immediately with the specified password
-      const idToken = await auth.currentUser?.getIdToken();
-      if (idToken) {
-        await fetch("/api/admin/update-user-password", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${idToken}`,
-          },
-          body: JSON.stringify({
-            uid: newUid,
-            newPassword: defaultPwd,
-            email: newUser.email,
-          }),
-        }).catch((err) => console.error("Error syncing manual user to Firebase Auth:", err));
-      }
       
       setCreateClientSuccess("Participante cadastrado com sucesso!");
       
@@ -1200,7 +1148,6 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
       setCreateClientPhone("");
       setCreateClientCity("");
       setCreateClientEmail("");
-      setCreateClientPassword("");
 
       // Automatically select this new client in the tickets allocation selection!
       setIssueSelectedClient(newUser);
@@ -4992,7 +4939,6 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                     setCreateClientPhone("");
                     setCreateClientCity("");
                     setCreateClientEmail("");
-                    setCreateClientPassword("");
                     setCreateClientError("");
                     setCreateClientSuccess("");
                     setShowCreateClientModal(true);
@@ -5184,7 +5130,6 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                         )}
                       </div>
                     </th>
-                    <th className="py-3 px-4">Senha</th>
                     <th className="py-3 px-4 text-right">Ações de Controle</th>
                   </tr>
                 </thead>
@@ -5250,32 +5195,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                           <span className="text-slate-400">Sem telefone</span>
                         )}
                       </td>
-                       <td className="py-4 px-4 text-slate-400">{new Date(cl.createdAt).toLocaleDateString("pt-BR")}</td>
-                      <td className="py-4 px-4 text-slate-600 font-medium font-mono">
-                        <div className="flex items-center gap-1.5 min-w-[100px]">
-                          <span className="select-all">
-                            {cl.password
-                              ? visiblePasswords[cl.uid]
-                                ? cl.password
-                                : "••••••"
-                              : "Google OAuth"}
-                          </span>
-                          {cl.password && (
-                            <button
-                              type="button"
-                              onClick={() => setVisiblePasswords(prev => ({ ...prev, [cl.uid]: !prev[cl.uid] }))}
-                              className="p-1 hover:bg-slate-100 rounded-md transition text-slate-400 hover:text-slate-600 cursor-pointer"
-                              title={visiblePasswords[cl.uid] ? "Ocultar senha" : "Ver senha"}
-                            >
-                              {visiblePasswords[cl.uid] ? (
-                                <EyeOff className="w-3.5 h-3.5" />
-                              ) : (
-                                <Eye className="w-3.5 h-3.5" />
-                              )}
-                            </button>
-                          )}
-                        </div>
-                      </td>
+                      <td className="py-4 px-4 text-slate-400">{new Date(cl.createdAt).toLocaleDateString("pt-BR")}</td>
                       <td className="py-4 px-4 text-right">
                         <div className="flex justify-end gap-1.5">
                           <button
@@ -5416,32 +5336,6 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                         <span className="font-mono font-medium">
                           ({cl.phone.slice(0, 2)}) {cl.phone.slice(2, 7)}-{cl.phone.slice(7)}
                         </span>
-                      </div>
-                      <div className="flex justify-between items-center pt-1.5 border-t border-slate-100 mt-1">
-                        <span className="text-slate-400">Senha:</span>
-                        <div className="flex items-center gap-1 font-mono font-medium">
-                          <span>
-                            {cl.password
-                              ? visiblePasswords[cl.uid]
-                                ? cl.password
-                                : "••••••"
-                              : "Google OAuth"}
-                          </span>
-                          {cl.password && (
-                            <button
-                              type="button"
-                              onClick={() => setVisiblePasswords(prev => ({ ...prev, [cl.uid]: !prev[cl.uid] }))}
-                              className="p-1 hover:bg-slate-100 rounded-md transition text-slate-400 hover:text-slate-600 cursor-pointer"
-                              title={visiblePasswords[cl.uid] ? "Ocultar senha" : "Ver senha"}
-                            >
-                              {visiblePasswords[cl.uid] ? (
-                                <EyeOff className="w-3.5 h-3.5" />
-                              ) : (
-                                <Eye className="w-3.5 h-3.5" />
-                              )}
-                            </button>
-                          )}
-                        </div>
                       </div>
                       <div className="flex justify-between items-center pt-1.5 border-t border-slate-100 mt-1">
                         <span className="text-slate-400">Cadastro:</span>
@@ -6958,17 +6852,6 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                     </select>
                   </div>
                 </div>
-
-                <div>
-                  <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Redefinir Senha do Usuário</label>
-                  <input
-                    type="text"
-                    value={editClientPassword}
-                    onChange={(e) => setEditClientPassword(e.target.value)}
-                    className="w-full px-3.5 py-4 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-sans text-xs bg-slate-50 font-mono"
-                    placeholder="Nova senha para acesso ao sistema"
-                  />
-                </div>
               </div>
             </div>
 
@@ -7328,22 +7211,6 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                       setCreateClientSuccess("");
                     }}
                     placeholder="Ex: joao@email.com"
-                    className="w-full px-3.5 py-3 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-sans text-xs bg-slate-50 font-medium text-slate-800"
-                  />
-                </div>
-
-                {/* Password */}
-                <div>
-                  <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Senha de Acesso (Opcional)</label>
-                  <input
-                    type="text"
-                    value={createClientPassword}
-                    onChange={(e) => {
-                      setCreateClientPassword(e.target.value);
-                      setCreateClientError("");
-                      setCreateClientSuccess("");
-                    }}
-                    placeholder="Se em branco, será os 6 primeiros dígitos do CPF"
                     className="w-full px-3.5 py-3 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-sans text-xs bg-slate-50 font-medium text-slate-800"
                   />
                 </div>

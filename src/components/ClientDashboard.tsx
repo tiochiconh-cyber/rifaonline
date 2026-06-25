@@ -900,7 +900,11 @@ export default function ClientDashboard({ userProfile, onLogout, onPromptLogin }
 
     const occupiedSelected = selectedNumbers.filter((numStr) => {
       const ticketInfo = tickets[numStr];
-      return ticketInfo && ticketInfo.status !== "available" && ticketInfo.buyerUid !== userProfile?.uid;
+      const isOwnedByMe = userProfile && ticketInfo && (
+        ticketInfo.buyerUid === userProfile.uid || 
+        (userProfile.cpf && ticketInfo.buyerCpf === userProfile.cpf)
+      );
+      return ticketInfo && ticketInfo.status !== "available" && !isOwnedByMe;
     });
 
     if (occupiedSelected.length > 0) {
@@ -941,7 +945,9 @@ export default function ClientDashboard({ userProfile, onLogout, onPromptLogin }
     const idsList = campaignIds.split(",").filter(Boolean);
     const unsubscribes = idsList.map((id) => {
       const ticketsRef = collection(db, "campaigns", id, "tickets");
-      const userTicketsQuery = query(ticketsRef, where("buyerUid", "==", userProfile.uid));
+      const userTicketsQuery = userProfile.cpf
+        ? query(ticketsRef, where("buyerCpf", "==", userProfile.cpf))
+        : query(ticketsRef, where("buyerUid", "==", userProfile.uid));
 
       return onSnapshot(userTicketsQuery, (snapshot) => {
         const userTicketList: Ticket[] = [];
@@ -1170,9 +1176,11 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
         );
 
         // Filter out any tickets that are already reserved/confirmed by another user
-        const occupied = ticketReads.filter(
-          (t) => t.exists && t.data && t.data.status !== "available" && t.data.buyerUid !== userProfile.uid
-        );
+        const occupied = ticketReads.filter((t) => {
+          if (!t.exists || !t.data || t.data.status === "available") return false;
+          const isOwnedByMe = t.data.buyerUid === userProfile.uid || (userProfile.cpf && t.data.buyerCpf === userProfile.cpf);
+          return !isOwnedByMe;
+        });
 
         if (occupied.length > 0) {
           const occupiedNumStr = occupied.map((o) => o.numberStr).join(", ");
@@ -1253,7 +1261,11 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
 
     // Prevention of duplicate selection: check if this cota was recently booked in memory state
     const tInfo = tickets[numberStr];
-    if (tInfo && tInfo.status !== "available" && tInfo.buyerUid !== userProfile?.uid) {
+    const isOwnedByMe = userProfile && tInfo && (
+      tInfo.buyerUid === userProfile.uid || 
+      (userProfile.cpf && tInfo.buyerCpf === userProfile.cpf)
+    );
+    if (tInfo && tInfo.status !== "available" && !isOwnedByMe) {
       addToast(`A cota #${numberStr} acabou de ser reservada por outro participante!`, "error");
       return;
     }
@@ -1347,7 +1359,11 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
       if (gridFilter === "available") {
         if (tickets[numStr]) continue;
       } else if (gridFilter === "mine") {
-        if (tickets[numStr]?.buyerUid !== userProfile?.uid) continue;
+        const isMine = userProfile && tickets[numStr] && (
+          tickets[numStr].buyerUid === userProfile.uid || 
+          (userProfile.cpf && tickets[numStr].buyerCpf === userProfile.cpf)
+        );
+        if (!isMine) continue;
       } else if (gridFilter === "selected") {
         if (!hasSelectedNumbers || !selectedNumbers.includes(numStr)) continue;
       }
@@ -1361,7 +1377,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
     }
 
     return indices;
-  }, [selectedCampaign, ticketSearch, gridFilter, tickets, selectedNumbers, userProfile?.uid]);
+  }, [selectedCampaign, ticketSearch, gridFilter, tickets, selectedNumbers, userProfile?.uid, userProfile?.cpf]);
 
   const paginatedIndices = filteredIndices;
 
@@ -1949,7 +1965,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                                       <div className="mb-4 bg-indigo-50/50 border border-indigo-100/60 rounded-2xl p-2.5 flex flex-col justify-center space-y-1 w-full text-left">
                                         <div className="flex justify-between items-center text-[10px]">
                                           <span className="text-indigo-950 font-extrabold uppercase tracking-wider flex items-center gap-1 font-semibold">
-                                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-650 animate-pulse" />
+                                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 animate-pulse" />
                                             Sorteio Provável
                                           </span>
                                           <span className={`font-extrabold text-[9px] px-1.5 py-0.2 rounded-md ${
@@ -2698,7 +2714,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                                   }}
                                   className={`px-3.5 py-1.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all duration-150 border cursor-pointer select-none ${
                                     isActive
-                                      ? "bg-indigo-650 border-indigo-650 text-white shadow-sm scale-102"
+                                      ? "bg-indigo-600 border-indigo-600 text-white shadow-sm scale-102"
                                       : "bg-white border-slate-200 text-slate-550 hover:text-slate-850 hover:bg-slate-100"
                                   }`}
                                 >
@@ -2864,29 +2880,33 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                               let statusLabel = "Livre (Disponível)";
                               let indicatorColor = "bg-emerald-500 shadow-emerald-500/35";
 
+                              const isMine = !!(userProfile && tInfo && (
+                                tInfo.buyerUid === userProfile.uid || 
+                                (userProfile.cpf && tInfo.buyerCpf === userProfile.cpf)
+                              ));
+
                               if (isCurrentlySelected) {
-                                bgClass = "bg-indigo-650 text-white border-indigo-650 font-bold scale-[1.03] shadow-md hover:bg-indigo-700 ring-2 ring-indigo-500/20";
+                                bgClass = "bg-sky-400 text-slate-900 border-sky-500 font-black scale-[1.03] shadow-md hover:bg-sky-500 ring-2 ring-sky-400/25";
                                 statusLabel = "Selecionado por você";
-                                indicatorColor = "bg-white animate-pulse";
+                                indicatorColor = "bg-slate-900 animate-pulse";
                               } else if (tInfo) {
                                 if (tInfo.status === "confirmed") {
-                                  bgClass = "bg-indigo-100/70 text-indigo-405 border-indigo-100 cursor-not-allowed pointer-events-none opacity-60";
+                                  bgClass = "bg-indigo-100/70 text-indigo-500 border-indigo-100 cursor-not-allowed pointer-events-none opacity-60";
                                   statusLabel = `Confirmado por ${tInfo.buyerName}`;
                                   indicatorColor = "bg-slate-400";
                                 } else if (tInfo.status === "reserved") {
-                                  const isMine = userProfile && tInfo.buyerUid === userProfile.uid;
                                   bgClass = isMine
                                     ? "bg-amber-400 text-slate-900 border-amber-400 hover:bg-amber-500 font-bold"
                                     : "bg-amber-100 text-amber-800 border-amber-200 cursor-not-allowed pointer-events-none opacity-70";
                                   statusLabel = isMine ? "Sua Reserva" : "Já Reservado";
-                                  indicatorColor = isMine ? "bg-slate-900" : "bg-amber-505 bg-amber-500";
+                                  indicatorColor = isMine ? "bg-slate-900" : "bg-amber-500";
                                 }
                               }
 
                               return (
                                 <button
                                   key={numStr}
-                                  disabled={tInfo?.status === "confirmed" || (tInfo?.status === "reserved" && (!userProfile || tInfo.buyerUid !== userProfile.uid))}
+                                  disabled={tInfo?.status === "confirmed" || (tInfo?.status === "reserved" && !isMine)}
                                   onClick={() => {
                                     setSuccessReserved(null);
                                     handleToggleNumberSelection(numStr);
@@ -2914,7 +2934,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                             <span className="text-slate-700">Disponível</span>
                           </div>
                           <div className="flex items-center gap-1 bg-white px-2 py-0.5 rounded-lg border border-slate-100 shadow-4xs">
-                            <span className="w-2.5 h-2.5 rounded-full bg-indigo-650 border border-white shadow-3xs" />
+                            <span className="w-2.5 h-2.5 rounded-full bg-sky-400 border border-white shadow-3xs" />
                             <span className="text-slate-700">Selecionado</span>
                           </div>
                           <div className="flex items-center gap-1 bg-white px-2 py-0.5 rounded-lg border border-slate-100 shadow-4xs">
@@ -2951,7 +2971,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
               <div className="hidden lg:block lg:col-span-4 space-y-6">
                 <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 space-y-4 font-normal text-slate-705">
                   <h2 className="font-extrabold text-slate-800 text-sm uppercase tracking-wider flex items-center gap-2">
-                    <ShoppingBag className="w-4 h-4 text-indigo-650 shrink-0" />
+                    <ShoppingBag className="w-4 h-4 text-indigo-600 shrink-0" />
                     Minhas Compras & Bilhetes 🛍️
                   </h2>
                   <p className="text-slate-505 text-xs font-normal">
@@ -2966,7 +2986,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                       }}
                       className="w-full bg-gradient-to-r from-indigo-55 to-indigo-100 hover:from-indigo-100 hover:to-indigo-150 text-indigo-900 text-[11px] font-black py-2.5 px-3 rounded-xl cursor-pointer transition flex items-center justify-center gap-1.5 border border-indigo-200/50 shadow-2xs active:scale-95"
                     >
-                      <Sparkles className="w-3.5 h-3.5 text-indigo-650 animate-pulse" />
+                      <Sparkles className="w-3.5 h-3.5 text-indigo-600 animate-pulse" />
                       <span>Ver Acompanhamento Passo a Passo 📈</span>
                     </button>
                   )}
@@ -3110,7 +3130,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-100 pb-5">
               <div>
                 <h2 className="font-extrabold text-slate-900 text-lg flex items-center gap-2">
-                  <ShoppingBag className="w-5 h-5 text-indigo-650 shrink-0 uppercase tracking-wide animate-bounce" />
+                  <ShoppingBag className="w-5 h-5 text-indigo-600 shrink-0 uppercase tracking-wide animate-bounce" />
                   Painel de Minhas Compras 🛍️
                 </h2>
                 <p className="text-slate-500 text-xs mt-1">
@@ -3361,7 +3381,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-200/50 pb-4 select-text">
                           <div className="space-y-1">
                             <h3 className="font-extrabold text-slate-800 text-sm sm:text-base flex items-center gap-2">
-                              <TicketIcon className="w-5 h-5 text-indigo-650 shrink-0" />
+                              <TicketIcon className="w-5 h-5 text-indigo-600 shrink-0" />
                               {campaign.title}
                             </h3>
                             <div className="flex items-center gap-2 flex-wrap text-slate-400 text-[10px] font-bold uppercase tracking-wider">
@@ -3459,7 +3479,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
 
                         {/* Elegant Stepper Tracker Timeline */}
                         <div className="border-t border-slate-150 pt-5 space-y-4">
-                          <span className="block text-[9.5px] uppercase tracking-wider font-extrabold text-indigo-650 flex items-center gap-1">
+                          <span className="block text-[9.5px] uppercase tracking-wider font-extrabold text-indigo-600 flex items-center gap-1">
                             <span>📈 Linha do Tempo e Acompanhamento Passo a Passo</span>
                           </span>
 
@@ -3642,7 +3662,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                   setSuccessReserved(null);
                 }}
                 className={`flex flex-col items-center justify-center py-1 px-4 rounded-xl transition-all cursor-pointer ${
-                  activeTab === "rifas" ? "text-indigo-650 font-black scale-105" : "text-slate-450 hover:text-slate-755"
+                  activeTab === "rifas" ? "text-indigo-600 font-black scale-105" : "text-slate-450 hover:text-slate-755"
                 }`}
               >
                 <TicketIcon className={`w-4.5 h-4.5 mb-1 ${activeTab === "rifas" ? "text-indigo-600 animate-pulse" : "text-slate-400"}`} />
@@ -3655,13 +3675,13 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                   setSuccessReserved(null);
                 }}
                 className={`flex flex-col items-center justify-center py-1 px-4 rounded-xl transition-all cursor-pointer relative ${
-                  activeTab === "compras" ? "text-indigo-650 font-black scale-105" : "text-slate-450 hover:text-slate-755"
+                  activeTab === "compras" ? "text-indigo-600 font-black scale-105" : "text-slate-450 hover:text-slate-755"
                 }`}
               >
                 <ShoppingBag className={`w-4.5 h-4.5 mb-1 ${activeTab === "compras" ? "text-indigo-600" : "text-slate-400"}`} />
                 <span className="text-[9.5px]">Minhas Compras</span>
                 {myTotalTicketsCount > 0 && (
-                  <span className="absolute top-1 right-2.5 bg-indigo-650 border border-white text-white font-extrabold text-[8.5px] min-w-[14px] h-[14px] rounded-full flex items-center justify-center px-0.5 shadow-sm">
+                  <span className="absolute top-1 right-2.5 bg-indigo-600 border border-white text-white font-extrabold text-[8.5px] min-w-[14px] h-[14px] rounded-full flex items-center justify-center px-0.5 shadow-sm">
                     {myTotalTicketsCount}
                   </span>
                 )}
@@ -3673,7 +3693,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                   setSuccessReserved(null);
                 }}
                 className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all cursor-pointer ${
-                  activeTab === "ranking" ? "text-indigo-650 font-black scale-105" : "text-slate-450 hover:text-slate-755"
+                  activeTab === "ranking" ? "text-indigo-600 font-black scale-105" : "text-slate-450 hover:text-slate-755"
                 }`}
               >
                 <Trophy className={`w-4.5 h-4.5 mb-1 ${activeTab === "ranking" ? "text-amber-500" : "text-slate-400"}`} />
@@ -3686,7 +3706,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                   setSuccessReserved(null);
                 }}
                 className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all cursor-pointer ${
-                  activeTab === "ganhadores" ? "text-indigo-650 font-black scale-105" : "text-slate-450 hover:text-slate-755"
+                  activeTab === "ganhadores" ? "text-indigo-600 font-black scale-105" : "text-slate-450 hover:text-slate-755"
                 }`}
               >
                 <Crown className={`w-4.5 h-4.5 mb-1 ${activeTab === "ganhadores" ? "text-amber-500" : "text-slate-400"}`} />
@@ -4303,7 +4323,7 @@ Acompanhe os resultados no link de nossa plataforma.
                     </div>
                     <button
                       onClick={() => setActiveTab("rifas")}
-                      className="px-5 py-2.5 bg-indigo-650 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer shadow-sm active:scale-95 flex items-center gap-1.5 mx-auto"
+                      className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer shadow-sm active:scale-95 flex items-center gap-1.5 mx-auto"
                     >
                       <TicketIcon className="w-4 h-4 text-white" />
                       <span>Ver Campanhas Ativas</span>
@@ -4424,11 +4444,11 @@ Acompanhe os resultados no link de nossa plataforma.
                             </div>
                             <span className="text-slate-200">|</span>
                             <div>
-                              <span>Vendidas: <strong className="text-indigo-650 font-black">{vendidosCount}</strong></span>
+                              <span>Vendidas: <strong className="text-indigo-600 font-black">{vendidosCount}</strong></span>
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-1 text-[10px] font-black text-indigo-705">
+                          <div className="flex items-center gap-1 text-[10px] font-black text-indigo-700">
                             {camp.drawMode === "express" ? (
                               <span className="inline-flex items-center gap-1.5 bg-purple-100/70 text-purple-800 border border-purple-200/50 px-2.5 py-1 rounded-full text-[9px] uppercase tracking-wide font-sans cursor-help" title="O sorteio ocorre instantaneamente no momento em que todas as cotas forem cheias e confirmadas pelo administrador.">
                                 <span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse" />

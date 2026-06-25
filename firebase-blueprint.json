@@ -46,10 +46,6 @@
         "isVip": {
           "type": "boolean",
           "description": "Whether user has early-access and discount benefits from VIP program"
-        },
-        "password": {
-          "type": "string",
-          "description": "User password for account login"
         }
       },
       "required": ["uid", "name", "email", "cpf", "city", "phone", "role"]
