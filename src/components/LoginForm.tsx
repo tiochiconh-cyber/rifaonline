@@ -38,7 +38,6 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import AppLogo from "./AppLogo";
-import Turnstile from "./Turnstile";
 
 interface LoginFormProps {
   onLoginSuccess: (user: User) => void;
@@ -59,7 +58,6 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
   // Authentication & Profile states
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [turnstileToken, setTurnstileToken] = useState("");
   const [name, setName] = useState(initialUser?.displayName || "");
   const [cpf, setCpf] = useState("");
   const [city, setCity] = useState("");
@@ -92,11 +90,6 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
   const [lgpdAgree, setLgpdAgree] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
-
-  // Reset Turnstile token on view transition to prevent stale/expired token usage
-  React.useEffect(() => {
-    setTurnstileToken("");
-  }, [activeTab, loginMethod, quickRegisterMode, showForgotPassword]);
 
   // Dynamic slideshow states & effects
   const [slides, setSlides] = useState<any[]>([]);
@@ -287,19 +280,12 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
       return;
     }
 
-    if (!turnstileToken) {
-      setFormError("Por favor, conclua o desafio de segurança (CAPTCHA) para continuar.");
-      return;
-    }
-
     setLoading(true);
 
     try {
       await sendPasswordResetEmail(auth, email.trim());
       setResetSuccessMessage("✓ Link de redefinição enviado com sucesso! Verifique sua caixa de entrada e de spam.");
-      setTurnstileToken("");
     } catch (err: any) {
-      setTurnstileToken("");
       console.error("Password reset failed:", err);
       if (err.code === "auth/user-not-found") {
         setFormError("Nenhum usuário cadastrado com este e-mail.");
@@ -326,11 +312,6 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
     const cleanPhone = quickPhone.replace(/\D/g, "");
     if (!validatePhone(quickPhone)) {
       setFormError("WhatsApp/Celular inválido. Digite um número celular válido com DDD.");
-      return;
-    }
-
-    if (!turnstileToken) {
-      setFormError("Por favor, conclua o desafio de segurança (CAPTCHA) para continuar.");
       return;
     }
 
@@ -418,14 +399,11 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
         }
 
         onLoginSuccess(authResult.user);
-        setTurnstileToken("");
       } catch (authErr: any) {
-        setTurnstileToken("");
         console.error("Quick Auth login failed:", authErr);
         setFormError("Erro de autenticação. Por favor, verifique seus dados ou tente novamente.");
       }
     } catch (err: any) {
-      setTurnstileToken("");
       console.error("Quick login failed:", err);
       setFormError("Erro ao processar login rápido. Verifique sua conexão.");
     } finally {
@@ -449,11 +427,6 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
 
     if (!quickCity.trim()) {
       setFormError("A cidade é obrigatória.");
-      return;
-    }
-
-    if (!turnstileToken) {
-      setFormError("Por favor, conclua o desafio de segurança (CAPTCHA) para continuar.");
       return;
     }
 
@@ -494,9 +467,7 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
       await setDoc(userDocRef, userData);
 
       onLoginSuccess(newUser);
-      setTurnstileToken("");
     } catch (err: any) {
-      setTurnstileToken("");
       console.error("Quick registration failed:", err);
       if (err.code === "auth/email-already-in-use") {
         setFormError("Este CPF já possui uma conta de login rápido ativa.");
@@ -521,19 +492,12 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
       return;
     }
 
-    if (!turnstileToken) {
-      setFormError("Por favor, conclua o desafio de segurança (CAPTCHA) para continuar.");
-      return;
-    }
-
     setLoading(true);
 
     try {
       const result = await signInWithEmailAndPassword(auth, email.trim(), password);
       onLoginSuccess(result.user);
-      setTurnstileToken("");
     } catch (err: any) {
-      setTurnstileToken("");
       console.error("Email login failed:", err);
       if (err.code === "auth/operation-not-allowed") {
         setFormError("O provedor de E-mail e Senha não está ativado no seu projeto Firebase. Por favor, clique abaixo em 'Entrar rapidamente com o Google' ou ative o provedor de E-mail/Senha no Console do Firebase.");
@@ -574,11 +538,6 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
 
     if (!name.trim()) {
       setFormError("O nome completo é obrigatório.");
-      return;
-    }
-
-    if (!turnstileToken) {
-      setFormError("Por favor, conclua o desafio de segurança (CAPTCHA) para continuar.");
       return;
     }
 
@@ -644,9 +603,7 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
       await setDoc(userDocRef, userData);
 
       onLoginSuccess(newUser);
-      setTurnstileToken("");
     } catch (err: any) {
-      setTurnstileToken("");
       console.error("Email registration failed:", err);
       if (err.code === "auth/operation-not-allowed") {
         setFormError("O provedor de E-mail e Senha não está ativado no seu projeto Firebase. Por favor, faça login utilizando o botão 'Entrar rapidamente com o Google' ou ative o provedor de E-mail e Senha no painel do Firebase.");
@@ -1100,13 +1057,6 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
                         </div>
                       </div>
 
-                      <Turnstile
-                        onVerify={setTurnstileToken}
-                        onExpire={() => setTurnstileToken("")}
-                        onError={() => setTurnstileToken("")}
-                        resetKey="forgot"
-                      />
-
                       <div className="flex flex-col gap-2 pt-2">
                         <button
                           type="submit"
@@ -1212,13 +1162,6 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
                               </div>
                             </div>
 
-                            <Turnstile
-                              onVerify={setTurnstileToken}
-                              onExpire={() => setTurnstileToken("")}
-                              onError={() => setTurnstileToken("")}
-                              resetKey="quick-login"
-                            />
-
                             <button
                               type="submit"
                               disabled={loading}
@@ -1307,13 +1250,6 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
                                 </button>.
                               </label>
                             </div>
-
-                            <Turnstile
-                              onVerify={setTurnstileToken}
-                              onExpire={() => setTurnstileToken("")}
-                              onError={() => setTurnstileToken("")}
-                              resetKey="quick-register"
-                            />
 
                             <button
                               type="submit"
@@ -1422,13 +1358,6 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
                             </button>
                           </div>
                         </div>
-
-                        <Turnstile
-                          onVerify={setTurnstileToken}
-                          onExpire={() => setTurnstileToken("")}
-                          onError={() => setTurnstileToken("")}
-                          resetKey="traditional-login"
-                        />
 
                         <button
                           type="submit"
@@ -1628,13 +1557,6 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
                     em total conformidade com a LGPD.
                   </label>
                 </div>
-
-                <Turnstile
-                  onVerify={setTurnstileToken}
-                  onExpire={() => setTurnstileToken("")}
-                  onError={() => setTurnstileToken("")}
-                  resetKey="traditional-register"
-                />
 
                 <button
                   type="submit"
