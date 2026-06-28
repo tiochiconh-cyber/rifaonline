@@ -5,7 +5,7 @@ import { Campaign, Ticket, UserProfile } from "../types";
 import { isLotterySalesSuspended, getCampaignDrawProjection, maskWinnerName, splitTicketsIntoBatches } from "../utils/validation";
 import RankingView from "./RankingView";
 import CelebrationConfetti from "./CelebrationConfetti";
-import { Ticket as TicketIcon, Search, Landmark, Copy, Check, Calendar, Trophy, AlertCircle, ShoppingBag, User as UserIcon, LogOut, LogIn, ArrowRight, HelpCircle, Sparkles, ShieldCheck, Download, Printer, ArrowLeft, Clock, Smartphone, X, Crown, Medal, Gift, BookOpen } from "lucide-react";
+import { Ticket as TicketIcon, Search, Landmark, Copy, Check, Calendar, Trophy, AlertCircle, ShoppingBag, User as UserIcon, LogOut, LogIn, ArrowRight, HelpCircle, Sparkles, ShieldCheck, Download, Printer, ArrowLeft, Clock, Smartphone, X, Crown, Medal, Gift, BookOpen, Trash2 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import AppLogo from "./AppLogo";
 
@@ -2642,13 +2642,60 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                             <button
                               onClick={handleReserveTickets}
                               disabled={reserving}
-                              className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-xl shadow-lg shadow-emerald-500/15 cursor-pointer text-center flex items-center gap-1.5 transition-all active:scale-95 disabled:opacity-50 uppercase tracking-wider"
+                              className="hidden sm:flex px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-xl shadow-lg shadow-emerald-500/15 cursor-pointer text-center items-center gap-1.5 transition-all active:scale-95 disabled:opacity-50 uppercase tracking-wider"
                             >
                               {reserving ? "Reservando..." : `Confirmar Reserva 💳`}
                             </button>
                           </div>
                         </div>
                       )}
+
+                      {/* MOBILE FLOATING CONFIRMATION BAR */}
+                      <AnimatePresence>
+                        {selectedNumbers.length > 0 && (
+                          <div id="mobile-floating-reserve-bar" className="sm:hidden fixed bottom-6 left-4 right-4 z-[999] pointer-events-none">
+                            <motion.div
+                              initial={{ opacity: 0, y: 80, scale: 0.95 }}
+                              animate={{ opacity: 1, y: 0, scale: 1 }}
+                              exit={{ opacity: 0, y: 80, scale: 0.95 }}
+                              transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                              className="w-full bg-slate-900/95 backdrop-blur-md border border-slate-800 text-white p-4 rounded-2xl shadow-2xl flex items-center justify-between gap-3 pointer-events-auto"
+                            >
+                              <div className="space-y-0.5">
+                                <span className="text-[10px] text-indigo-300 font-extrabold uppercase tracking-wider block">
+                                  {selectedNumbers.length} {selectedNumbers.length === 1 ? "COTA" : "COTAS"}
+                                </span>
+                                {(() => {
+                                  const calc = getDiscountedPrice(selectedNumbers.length, selectedCampaign.ticketPrice, selectedCampaign.progressiveDiscounts, isVipActive, settings?.vipDiscountPercentage);
+                                  return (
+                                    <strong className="text-lg font-black text-white font-sans block leading-none tracking-tight">
+                                      R$ {calc.totalPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </strong>
+                                  );
+                                })()}
+                              </div>
+                              
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => setSelectedNumbers([])}
+                                  disabled={reserving}
+                                  className="p-2.5 bg-slate-800/80 text-slate-300 hover:text-white rounded-xl transition active:scale-95 disabled:opacity-50 border border-slate-700/50 flex items-center justify-center"
+                                  title="Limpar seleção"
+                                >
+                                  <Trash2 className="w-4 h-4 text-rose-450" />
+                                </button>
+                                <button
+                                  onClick={handleReserveTickets}
+                                  disabled={reserving}
+                                  className="px-5 py-3 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 active:scale-95 text-white font-black text-xs rounded-xl transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50 uppercase tracking-widest flex items-center gap-1.5 shrink-0"
+                                >
+                                  {reserving ? "Reservando..." : "Confirmar 💳"}
+                                </button>
+                              </div>
+                            </motion.div>
+                          </div>
+                        )}
+                      </AnimatePresence>
 
                       {/* INTERACTIVE GRID SECTION */}
                       <div className="space-y-4">
