@@ -457,9 +457,15 @@ export default function ClientDashboard({ userProfile, onLogout, onPromptLogin }
     vipDiscountPercentage: 10,
     vipWhatsAppUrl: "https://chat.whatsapp.com/Fc7S4ayw2KrAGru9t76eH8",
     vipEnabled: true,
+    vipAdvanceEnabled: true,
+    vipDiscountEnabled: true,
+    vipWhatsAppEnabled: true,
   });
 
   const isVipActive = !!userProfile?.isVip && settings?.vipEnabled !== false;
+  const isVipDiscountActive = isVipActive && settings?.vipDiscountEnabled !== false;
+  const isVipAdvanceActive = isVipActive && settings?.vipAdvanceEnabled !== false;
+  const isVipWhatsAppActive = isVipActive && settings?.vipWhatsAppEnabled !== false;
 
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   
@@ -472,7 +478,7 @@ export default function ClientDashboard({ userProfile, onLogout, onPromptLogin }
         const startMs = Date.parse(startStr);
         if (!isNaN(startMs)) {
           let targetMs = startMs;
-          if (isVipActive) {
+          if (isVipAdvanceActive) {
             const advanceHours = settings?.vipAdvanceHours || 24;
             targetMs = startMs - (advanceHours * 60 * 60 * 1000);
           }
@@ -486,7 +492,7 @@ export default function ClientDashboard({ userProfile, onLogout, onPromptLogin }
   };
   
   const isCurrentlyInVipEarlyAccess = (camp: Campaign): boolean => {
-    if (settings?.vipEnabled === false) return false;
+    if (settings?.vipEnabled === false || settings?.vipAdvanceEnabled === false) return false;
     if (camp.status !== "active" || !camp.startDate) return false;
     const startStr = camp.startTime ? `${camp.startDate}T${camp.startTime}` : `${camp.startDate}T00:00:00`;
     try {
@@ -1018,7 +1024,10 @@ export default function ClientDashboard({ userProfile, onLogout, onPromptLogin }
         setSettings((prev) => ({
           ...prev,
           ...data,
-          vipWhatsAppUrl: data.vipWhatsAppUrl || "https://chat.whatsapp.com/Fc7S4ayw2KrAGru9t76eH8"
+          vipWhatsAppUrl: data.vipWhatsAppUrl || "https://chat.whatsapp.com/Fc7S4ayw2KrAGru9t76eH8",
+          vipAdvanceEnabled: data.vipAdvanceEnabled !== false,
+          vipDiscountEnabled: data.vipDiscountEnabled !== false,
+          vipWhatsAppEnabled: data.vipWhatsAppEnabled !== false,
         }));
       }
     });
@@ -1082,7 +1091,7 @@ export default function ClientDashboard({ userProfile, onLogout, onPromptLogin }
 
     if (targetTickets && camp) {
       const numbers = targetTickets.map(t => `#${t.number}`).join(", ");
-      const calc = getDiscountedPrice(targetTickets.length, camp.ticketPrice, camp.progressiveDiscounts, isVipActive, settings?.vipDiscountPercentage);
+      const calc = getDiscountedPrice(targetTickets.length, camp.ticketPrice, camp.progressiveDiscounts, isVipDiscountActive, settings?.vipDiscountPercentage);
       totalValue = calc.totalPrice;
       billsText = `📋 *Rifa:* ${camp.title}\n🎫 *Números Reservados:* ${numbers}\n💰 *Valor Total:* R$ ${totalValue.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
     } else {
@@ -1105,7 +1114,7 @@ export default function ClientDashboard({ userProfile, onLogout, onPromptLogin }
       billsText = reservedListByCampaign
         .map(({ campaign, tickets }) => {
           const numbers = tickets.map(t => `#${t.number}`).join(", ");
-          const calc = getDiscountedPrice(tickets.length, campaign.ticketPrice, campaign.progressiveDiscounts, isVipActive, settings?.vipDiscountPercentage);
+          const calc = getDiscountedPrice(tickets.length, campaign.ticketPrice, campaign.progressiveDiscounts, isVipDiscountActive, settings?.vipDiscountPercentage);
           totalValue += calc.totalPrice;
           return `📋 *Rifa:* ${campaign.title}\n🎫 *Números:* ${numbers}\n💰 *Valor:* R$ ${calc.totalPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
         })
@@ -1396,7 +1405,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
       {/* EXCLUSIVE MOBILE PAYMENT OVERLAY */}
       {exclusiveMobilePayment && (() => {
         const { campaign: camp, tickets: list } = exclusiveMobilePayment;
-        const calc = getDiscountedPrice(list.length, camp.ticketPrice, camp.progressiveDiscounts, isVipActive, settings?.vipDiscountPercentage);
+        const calc = getDiscountedPrice(list.length, camp.ticketPrice, camp.progressiveDiscounts, isVipDiscountActive, settings?.vipDiscountPercentage);
         return (
           <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-[99999] overflow-y-auto font-sans flex items-center justify-center p-3 select-text animate-fadeIn">
             {/* Modal Dialog container optimized for neatness and mobile ease of use */}
@@ -1418,7 +1427,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
               {/* Corpo de Passo a Passo Simplificado e Prático */}
               <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
                 
-                {list.length >= 10 && settings?.vipWhatsAppUrl && (
+                {list.length >= 10 && settings?.vipWhatsAppUrl && settings?.vipWhatsAppEnabled !== false && (
                   <div className="bg-gradient-to-r from-amber-500/10 to-emerald-500/5 border border-amber-200/40 p-3 rounded-xl flex items-center justify-between gap-3 shadow-3xs">
                     <div className="flex items-center gap-2">
                       <Crown className="w-4 h-4 text-amber-600 fill-amber-500/10 shrink-0" />
@@ -1634,16 +1643,27 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
 
             {/* Quick status mini bento metrics */}
             <div className="flex flex-wrap md:flex-nowrap gap-3 shrink-0">
-              <div className="bg-white/5 backdrop-blur-xs border border-white/10 rounded-2xl p-3.5 text-center sm:text-left min-w-[130px] flex-1 md:flex-none">
-                <span className="text-[9px] text-slate-400 font-bold block uppercase tracking-wider">DESCONTO VIP</span>
-                <span className="text-lg font-black text-amber-300 leading-none mt-1 block">-{settings?.vipDiscountPercentage || 10}% OFF</span>
-                <span className="text-[8px] text-slate-400 block mt-1 font-medium">Aplicado diretamente</span>
-              </div>
-              <div className="bg-white/5 backdrop-blur-xs border border-white/10 rounded-2xl p-3.5 text-center sm:text-left min-w-[130px] flex-1 md:flex-none">
-                <span className="text-[9px] text-slate-400 font-bold block uppercase tracking-wider">ANTECIPAÇÃO</span>
-                <span className="text-lg font-black text-indigo-300 leading-none mt-1 block">-{settings?.vipAdvanceHours || 24} Horas</span>
-                <span className="text-[8px] text-slate-400 block mt-1 font-medium">Acesso antecipado</span>
-              </div>
+              {settings?.vipDiscountEnabled !== false && (
+                <div className="bg-white/5 backdrop-blur-xs border border-white/10 rounded-2xl p-3.5 text-center sm:text-left min-w-[130px] flex-1 md:flex-none">
+                  <span className="text-[9px] text-slate-400 font-bold block uppercase tracking-wider">DESCONTO VIP</span>
+                  <span className="text-lg font-black text-amber-300 leading-none mt-1 block">-{settings?.vipDiscountPercentage || 10}% OFF</span>
+                  <span className="text-[8px] text-slate-400 block mt-1 font-medium">Aplicado diretamente</span>
+                </div>
+              )}
+              {settings?.vipAdvanceEnabled !== false && (
+                <div className="bg-white/5 backdrop-blur-xs border border-white/10 rounded-2xl p-3.5 text-center sm:text-left min-w-[130px] flex-1 md:flex-none">
+                  <span className="text-[9px] text-slate-400 font-bold block uppercase tracking-wider">ANTECIPAÇÃO</span>
+                  <span className="text-lg font-black text-indigo-300 leading-none mt-1 block">-{settings?.vipAdvanceHours || 24} Horas</span>
+                  <span className="text-[8px] text-slate-400 block mt-1 font-medium">Acesso antecipado</span>
+                </div>
+              )}
+              {settings?.vipWhatsAppEnabled !== false && settings?.vipWhatsAppUrl && (
+                <div className="bg-emerald-500/10 backdrop-blur-xs border border-emerald-500/25 rounded-2xl p-3.5 text-center sm:text-left min-w-[130px] flex-1 md:flex-none">
+                  <span className="text-[9px] text-emerald-400 font-bold block uppercase tracking-wider">GRUPO VIP</span>
+                  <a href={settings.vipWhatsAppUrl} target="_blank" rel="noreferrer" className="text-xs font-black text-emerald-300 leading-none mt-2.5 block hover:underline">Entrar no Grupo 🟢</a>
+                  <span className="text-[8px] text-slate-400 block mt-1 font-medium">Link do WhatsApp</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -2224,9 +2244,11 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                                       <Clock className="w-2 h-2 text-amber-450 animate-pulse" />
                                       Em Breve
                                     </span>
-                                    <span className="bg-amber-500/90 text-[7px] text-slate-950 font-black px-1.5 py-0.5 rounded-md flex items-center gap-0.5 shadow-sm border border-amber-300">
-                                      <Crown className="w-2 h-2 fill-slate-900" /> VIP -{settings?.vipAdvanceHours || 24}h
-                                    </span>
+                                    {settings?.vipAdvanceEnabled !== false && (
+                                      <span className="bg-amber-500/90 text-[7px] text-slate-950 font-black px-1.5 py-0.5 rounded-md flex items-center gap-0.5 shadow-sm border border-amber-300">
+                                        <Crown className="w-2 h-2 fill-slate-900" /> VIP -{settings?.vipAdvanceHours || 24}h
+                                      </span>
+                                    )}
                                   </div>
                                 </div>
 
@@ -2332,7 +2354,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                         <span className="bg-indigo-600 text-white font-bold text-[10px] uppercase tracking-wider px-2.5 py-1 rounded-full">
                           R$ {selectedCampaign.ticketPrice.toFixed(2)} / BILHETE
                         </span>
-                        {isVipActive && (
+                        {isVipDiscountActive && (
                           <span className="bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-950 font-black text-[10px] uppercase tracking-wider px-2.5 py-1 rounded-full shadow-md animate-pulse flex items-center gap-1.5 border border-amber-300">
                             <Crown className="w-3.5 h-3.5 fill-slate-950" />
                             Preço VIP: R$ {(() => {
@@ -2558,7 +2580,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                           </div>
 
                           {/* VIP WHATSAPP GROUP CONVITE / UPSELL INCENTIVE */}
-                          {settings?.vipWhatsAppUrl && (
+                          {settings?.vipWhatsAppUrl && settings?.vipWhatsAppEnabled !== false && (
                             selectedNumbers.length >= 10 ? (
                               <div className="bg-gradient-to-r from-amber-500/15 via-emerald-500/10 to-emerald-600/15 border border-amber-300/30 p-4 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-3.5 shadow-xs animate-pulse">
                                 <div className="flex items-center gap-2.5">
@@ -2602,15 +2624,15 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                             <div className="space-y-1 z-10">
                               <span className="text-[9px] text-indigo-300 font-black uppercase tracking-widest block leading-none">VALOR TOTAL DO PEDIDO</span>
                               {(() => {
-                                const calc = getDiscountedPrice(selectedNumbers.length, selectedCampaign.ticketPrice, selectedCampaign.progressiveDiscounts, isVipActive, settings?.vipDiscountPercentage);
-                                const isVipDiscountActive = isVipActive && calc.discountPercentage === (settings?.vipDiscountPercentage || 10);
+                                const calc = getDiscountedPrice(selectedNumbers.length, selectedCampaign.ticketPrice, selectedCampaign.progressiveDiscounts, isVipDiscountActive, settings?.vipDiscountPercentage);
+                                const isVipDiscountActiveTag = isVipDiscountActive && calc.discountPercentage === (settings?.vipDiscountPercentage || 10);
                                 return (
                                   <div className="space-y-1.5 mt-1">
                                     <strong className="text-3xl md:text-4xl font-extrabold text-white font-sans block leading-none tracking-tight">
                                       R$ {calc.totalPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                     </strong>
                                     <span className="text-[11px] text-indigo-200 font-bold block leading-none">
-                                      {selectedNumbers.length} cota(s) • R$ {calc.unitPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} cada {isVipDiscountActive ? "👑" : calc.appliedDiscount ? "🏷️" : ""}
+                                      {selectedNumbers.length} cota(s) • R$ {calc.unitPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} cada {isVipDiscountActiveTag ? "👑" : calc.appliedDiscount ? "🏷️" : ""}
                                     </span>
                                   </div>
                                 );
@@ -2618,11 +2640,11 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                             </div>
 
                             {(() => {
-                              const calc = getDiscountedPrice(selectedNumbers.length, selectedCampaign.ticketPrice, selectedCampaign.progressiveDiscounts, isVipActive, settings?.vipDiscountPercentage);
-                              const isVipDiscountActive = isVipActive && calc.discountPercentage === (settings?.vipDiscountPercentage || 10);
+                              const calc = getDiscountedPrice(selectedNumbers.length, selectedCampaign.ticketPrice, selectedCampaign.progressiveDiscounts, isVipDiscountActive, settings?.vipDiscountPercentage);
+                              const isVipDiscountActiveTag = isVipDiscountActive && calc.discountPercentage === (settings?.vipDiscountPercentage || 10);
                               return (
                                 <div className="flex flex-col items-start sm:items-end gap-1.5 shrink-0 z-10">
-                                  {isVipDiscountActive ? (
+                                  {isVipDiscountActiveTag ? (
                                     <span className="text-[9.5px] bg-amber-500 text-slate-950 font-black px-2.5 py-1 rounded-lg uppercase tracking-wider shadow-sm flex items-center gap-1">
                                       👑 VIP Ativo (-{(settings?.vipDiscountPercentage || 10)}%)
                                     </span>
@@ -3459,7 +3481,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                         </div>
 
                         {/* WhatsApp VIP Group access banner if tickets.length >= 10 and links exists */}
-                        {tickets.length >= 10 && settings?.vipWhatsAppUrl && (
+                        {tickets.length >= 10 && settings?.vipWhatsAppUrl && settings?.vipWhatsAppEnabled !== false && (
                           <div className="bg-gradient-to-r from-amber-500/10 to-emerald-500/10 border border-amber-500/20 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-3xs">
                             <div className="flex items-center gap-3">
                               <div className="bg-amber-500 text-slate-900 p-2 rounded-xl shadow-md">
@@ -3660,7 +3682,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                     <span className="text-[10px] text-slate-500 font-bold">•</span>
                     <span className="text-sm font-extrabold text-emerald-400 font-mono">
                       R$ {(() => {
-                        const calc = getDiscountedPrice(selectedNumbers.length, selectedCampaign.ticketPrice, selectedCampaign.progressiveDiscounts, isVipActive, settings?.vipDiscountPercentage);
+                        const calc = getDiscountedPrice(selectedNumbers.length, selectedCampaign.ticketPrice, selectedCampaign.progressiveDiscounts, isVipDiscountActive, settings?.vipDiscountPercentage);
                         return calc.totalPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                       })()}
                     </span>

@@ -70,6 +70,9 @@ export interface GlobalSettings {
   vipAdvanceHours?: number;
   vipDiscountPercentage?: number;
   vipEnabled?: boolean;
+  vipAdvanceEnabled?: boolean;
+  vipDiscountEnabled?: boolean;
+  vipWhatsAppEnabled?: boolean;
   salesSuspensionBlocked?: boolean;
   vipWhatsAppUrl?: string;
   vipInvitationMessage?: string;

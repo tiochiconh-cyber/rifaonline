@@ -170,6 +170,9 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
     vipWhatsAppUrl: "https://chat.whatsapp.com/Fc7S4ayw2KrAGru9t76eH8",
     vipInvitationMessage: "",
     vipEnabled: true,
+    vipAdvanceEnabled: true,
+    vipDiscountEnabled: true,
+    vipWhatsAppEnabled: true,
     salesSuspensionBlocked: false
   });
 
@@ -308,6 +311,49 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
   const [receiptStatus, setReceiptStatus] = useState<TicketStatus>("confirmed");
   const [receiptTheme, setReceiptTheme] = useState<"emerald" | "indigo" | "amber" | "slate">("emerald");
   const [receiptCustomNote, setReceiptCustomNote] = useState("Obrigado pela preferência e muita boa sorte!");
+
+  const [whatsappToast, setWhatsappToast] = useState<{show: boolean, name: string} | null>(null);
+
+  const handleSendVipInvitation = (clientName: string, clientPhone: string) => {
+    const message = getVipInvitationMessage(clientName, settings.vipWhatsAppUrl || "", settings.vipInvitationMessage);
+    const cleanPhone = clientPhone.replace(/\D/g, "");
+    
+    // Copy to clipboard
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(message)
+        .then(() => {
+          setWhatsappToast({ show: true, name: clientName });
+          setTimeout(() => {
+            setWhatsappToast(prev => prev && prev.name === clientName ? null : prev);
+          }, 8500);
+        })
+        .catch((err) => {
+          console.error("Erro ao copiar para clipboard: ", err);
+        });
+    } else {
+      // Fallback
+      try {
+        const textarea = document.createElement("textarea");
+        textarea.value = message;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+        setWhatsappToast({ show: true, name: clientName });
+        setTimeout(() => {
+          setWhatsappToast(prev => prev && prev.name === clientName ? null : prev);
+        }, 8500);
+      } catch (e) {
+        console.error("Erro no fallback de copiar: ", e);
+      }
+    }
+
+    // Open WhatsApp
+    const waUrl = `https://api.whatsapp.com/send?phone=55${cleanPhone}&text=${encodeURIComponent(message)}`;
+    window.open(waUrl, "_blank");
+  };
 
   const generateReceiptCanvas = (format: "png" | "jpeg"): string | null => {
     if (!receiptCampaign) return null;
@@ -1337,7 +1383,10 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
           ...prev,
           ...data,
           vipWhatsAppUrl: data.vipWhatsAppUrl || "https://chat.whatsapp.com/Fc7S4ayw2KrAGru9t76eH8",
-          vipInvitationMessage: data.vipInvitationMessage || ""
+          vipInvitationMessage: data.vipInvitationMessage || "",
+          vipAdvanceEnabled: data.vipAdvanceEnabled !== false,
+          vipDiscountEnabled: data.vipDiscountEnabled !== false,
+          vipWhatsAppEnabled: data.vipWhatsAppEnabled !== false
         }));
       }
     });
@@ -3188,68 +3237,129 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                 </div>
 
                 <div className={`grid grid-cols-1 md:grid-cols-3 gap-4 bg-amber-50/20 p-4 rounded-xl border border-amber-100/50 transition-opacity duration-200 ${settings.vipEnabled === false ? "opacity-40 pointer-events-none select-none" : ""}`}>
-                  <div className="space-y-1.5">
-                    <label className="block font-extrabold text-slate-700 text-xs">Tempo de Acesso Antecipado (Horas)</label>
-                    <input
-                      type="number"
-                      required={settings.vipEnabled !== false}
-                      disabled={settings.vipEnabled === false}
-                      min={0}
-                      max={168}
-                      value={settings.vipAdvanceHours || 24}
-                      onChange={(e) => setSettings({ ...settings, vipAdvanceHours: Number(e.target.value) })}
-                      className="w-full bg-white p-2.5 border border-slate-300 rounded-lg text-xs font-bold disabled:bg-slate-50"
-                      placeholder="Ex: 24"
-                    />
-                    <span className="text-[10.5px] text-slate-450 block leading-normal">
-                      Prazo de antecedência em horas que o cliente VIP poderá visualizar e comprar cotas de campanhas com início agendado (data/hora de início futuro).
-                    </span>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="block font-extrabold text-slate-700 text-xs">Desconto Especial em Cotas (%)</label>
-                    <input
-                      type="number"
-                      required={settings.vipEnabled !== false}
-                      disabled={settings.vipEnabled === false}
-                      min={0}
-                      max={100}
-                      value={settings.vipDiscountPercentage || 10}
-                      onChange={(e) => setSettings({ ...settings, vipDiscountPercentage: Number(e.target.value) })}
-                      className="w-full bg-white p-2.5 border border-slate-300 rounded-lg text-xs font-bold disabled:bg-slate-50"
-                      placeholder="Ex: 10"
-                    />
-                    <span className="text-[10.5px] text-slate-450 block leading-normal">
-                      Percentual de desconto que será aplicado automaticamente ao valor total de todas as cotas reservadas e pagas por um portador do selo VIP.
-                    </span>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="block font-extrabold text-slate-700 text-xs text-emerald-700">Link do Grupo VIP no WhatsApp 🟢</label>
-                    <input
-                      type="text"
-                      disabled={settings.vipEnabled === false}
-                      value={settings.vipWhatsAppUrl || ""}
-                      onChange={(e) => setSettings({ ...settings, vipWhatsAppUrl: e.target.value })}
-                      className="w-full bg-white p-2.5 border border-emerald-300 focus:border-emerald-500 rounded-lg text-xs font-bold text-emerald-800 placeholder-emerald-350 disabled:bg-slate-50 disabled:border-slate-205"
-                      placeholder="https://chat.whatsapp.com/..."
-                    />
-                    <span className="text-[10.5px] text-slate-450 block leading-normal">
-                      Link de convite do WhatsApp liberado automaticamente para quem reservar/comprar 10 ou mais cotas de uma única vez.
-                    </span>
+                  {/* Benefício 1: Acesso Antecipado */}
+                  <div className="space-y-2 bg-slate-50/60 p-3.5 rounded-xl border border-slate-150 flex flex-col justify-between">
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-2 mb-1 border-b border-slate-200 pb-1.5">
+                        <input
+                          type="checkbox"
+                          id="vipAdvanceEnabled"
+                          disabled={settings.vipEnabled === false}
+                          checked={settings.vipAdvanceEnabled !== false}
+                          onChange={(e) => setSettings({ ...settings, vipAdvanceEnabled: e.target.checked })}
+                          className="w-4 h-4 text-amber-600 border-slate-300 rounded focus:ring-amber-500 cursor-pointer disabled:opacity-50"
+                        />
+                        <label htmlFor="vipAdvanceEnabled" className="block font-black text-slate-800 text-xs cursor-pointer select-none">
+                          Acesso Antecipado Ativo ⚡
+                        </label>
+                      </div>
+                      
+                      <div className={`space-y-1.5 transition-opacity duration-150 ${settings.vipAdvanceEnabled === false ? "opacity-35 pointer-events-none select-none" : ""}`}>
+                        <label className="block font-extrabold text-slate-700 text-[11px]">Tempo de Acesso (Horas)</label>
+                        <input
+                          type="number"
+                          required={settings.vipEnabled !== false && settings.vipAdvanceEnabled !== false}
+                          disabled={settings.vipEnabled === false || settings.vipAdvanceEnabled === false}
+                          min={0}
+                          max={168}
+                          value={settings.vipAdvanceHours || 24}
+                          onChange={(e) => setSettings({ ...settings, vipAdvanceHours: Number(e.target.value) })}
+                          className="w-full bg-white p-2 border border-slate-300 rounded-lg text-xs font-bold disabled:bg-slate-50"
+                          placeholder="Ex: 24"
+                        />
+                        <span className="text-[10px] text-slate-450 block leading-normal font-medium">
+                          Prazo de antecedência em horas que o cliente VIP poderá visualizar e comprar cotas de campanhas com início agendado (data/hora de início futuro).
+                        </span>
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="space-y-1.5 md:col-span-3 border-t border-slate-100 pt-3 mt-1">
+                  {/* Benefício 2: Desconto Especial */}
+                  <div className="space-y-2 bg-slate-50/60 p-3.5 rounded-xl border border-slate-150 flex flex-col justify-between">
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-2 mb-1 border-b border-slate-200 pb-1.5">
+                        <input
+                          type="checkbox"
+                          id="vipDiscountEnabled"
+                          disabled={settings.vipEnabled === false}
+                          checked={settings.vipDiscountEnabled !== false}
+                          onChange={(e) => setSettings({ ...settings, vipDiscountEnabled: e.target.checked })}
+                          className="w-4 h-4 text-amber-600 border-slate-300 rounded focus:ring-amber-500 cursor-pointer disabled:opacity-50"
+                        />
+                        <label htmlFor="vipDiscountEnabled" className="block font-black text-slate-800 text-xs cursor-pointer select-none">
+                          Desconto Especial Ativo 💰
+                        </label>
+                      </div>
+                      
+                      <div className={`space-y-1.5 transition-opacity duration-150 ${settings.vipDiscountEnabled === false ? "opacity-35 pointer-events-none select-none" : ""}`}>
+                        <label className="block font-extrabold text-slate-700 text-[11px]">Desconto em Cotas (%)</label>
+                        <input
+                          type="number"
+                          required={settings.vipEnabled !== false && settings.vipDiscountEnabled !== false}
+                          disabled={settings.vipEnabled === false || settings.vipDiscountEnabled === false}
+                          min={0}
+                          max={100}
+                          value={settings.vipDiscountPercentage || 10}
+                          onChange={(e) => setSettings({ ...settings, vipDiscountPercentage: Number(e.target.value) })}
+                          className="w-full bg-white p-2 border border-slate-300 rounded-lg text-xs font-bold disabled:bg-slate-50"
+                          placeholder="Ex: 10"
+                        />
+                        <span className="text-[10px] text-slate-450 block leading-normal font-medium">
+                          Percentual de desconto que será aplicado automaticamente ao valor total de todas as cotas reservadas e pagas por um portador do selo VIP.
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Benefício 3: Grupo VIP de WhatsApp */}
+                  <div className="space-y-2 bg-slate-50/60 p-3.5 rounded-xl border border-slate-150 flex flex-col justify-between">
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-2 mb-1 border-b border-slate-200 pb-1.5">
+                        <input
+                          type="checkbox"
+                          id="vipWhatsAppEnabled"
+                          disabled={settings.vipEnabled === false}
+                          checked={settings.vipWhatsAppEnabled !== false}
+                          onChange={(e) => setSettings({ ...settings, vipWhatsAppEnabled: e.target.checked })}
+                          className="w-4 h-4 text-amber-600 border-slate-300 rounded focus:ring-amber-500 cursor-pointer disabled:opacity-50"
+                        />
+                        <label htmlFor="vipWhatsAppEnabled" className="block font-black text-slate-800 text-xs cursor-pointer select-none">
+                          Grupo VIP no WhatsApp 🟢
+                        </label>
+                      </div>
+                      
+                      <div className={`space-y-1.5 transition-opacity duration-150 ${settings.vipWhatsAppEnabled === false ? "opacity-35 pointer-events-none select-none" : ""}`}>
+                        <label className="block font-extrabold text-slate-700 text-[11px] text-emerald-700">Link de Convite do Grupo</label>
+                        <input
+                          type="text"
+                          disabled={settings.vipEnabled === false || settings.vipWhatsAppEnabled === false}
+                          value={settings.vipWhatsAppUrl || ""}
+                          onChange={(e) => setSettings({ ...settings, vipWhatsAppUrl: e.target.value })}
+                          className="w-full bg-white p-2 border border-emerald-300 focus:border-emerald-500 rounded-lg text-xs font-bold text-emerald-800 placeholder-emerald-350 disabled:bg-slate-50"
+                          placeholder="https://chat.whatsapp.com/..."
+                        />
+                        <span className="text-[10px] text-slate-450 block leading-normal font-medium">
+                          Link de convite do WhatsApp liberado automaticamente para quem reservar/comprar 10 ou mais cotas de uma única vez.
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Configuração da Mensagem de Convite */}
+                  <div className={`space-y-1.5 md:col-span-3 border-t border-slate-100 pt-3 mt-1 transition-opacity duration-150 ${settings.vipWhatsAppEnabled === false ? "opacity-35 pointer-events-none select-none" : ""}`}>
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-1">
                       <label className="block font-extrabold text-slate-700 text-xs text-emerald-700">Mensagem de Convite VIP no WhatsApp 🟢💬</label>
                       <button
                         type="button"
+                        disabled={settings.vipEnabled === false || settings.vipWhatsAppEnabled === false}
                         onClick={() => setShowVipPreviewModal(true)}
-                        className="self-start sm:self-auto px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 hover:text-emerald-850 rounded-lg text-[10px] font-black uppercase tracking-wider border border-emerald-200 transition flex items-center gap-1.5 shadow-sm"
+                        className="self-start sm:self-auto px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 hover:text-emerald-850 rounded-lg text-[10px] font-black uppercase tracking-wider border border-emerald-200 transition flex items-center gap-1.5 shadow-sm disabled:opacity-50"
                       >
                         <span>Pré-visualizar Mensagem 👁️</span>
                       </button>
                     </div>
                     <textarea
-                      disabled={settings.vipEnabled === false}
+                      disabled={settings.vipEnabled === false || settings.vipWhatsAppEnabled === false}
                       rows={5}
                       value={settings.vipInvitationMessage || ""}
                       onChange={(e) => setSettings({ ...settings, vipInvitationMessage: e.target.value })}
@@ -4015,7 +4125,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                   {filteredCampaigns.map((ca) => {
                     const tRegistered = allReservations[ca.id] || [];
                     const tConfirmed = tRegistered.filter(r => r.status === "confirmed").length;
-                    const revStats = getCampaignRevenueStats(ca, tRegistered, clients, settings.vipEnabled !== false ? settings.vipDiscountPercentage : 0);
+                    const revStats = getCampaignRevenueStats(ca, tRegistered, clients, (settings.vipEnabled !== false && settings.vipDiscountEnabled !== false) ? settings.vipDiscountPercentage : 0);
 
                     return (
                       <tr key={ca.id} className="border-b border-slate-100 hover:bg-slate-50/50">
@@ -4173,7 +4283,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
               {filteredCampaigns.map((ca) => {
                 const tRegistered = allReservations[ca.id] || [];
                 const tConfirmed = tRegistered.filter(r => r.status === "confirmed").length;
-                const revStats = getCampaignRevenueStats(ca, tRegistered, clients, settings.vipEnabled !== false ? settings.vipDiscountPercentage : 0);
+                const revStats = getCampaignRevenueStats(ca, tRegistered, clients, (settings.vipEnabled !== false && settings.vipDiscountEnabled !== false) ? settings.vipDiscountPercentage : 0);
                 return (
                   <div key={ca.id} className="bg-slate-50 border border-slate-200/65 rounded-2xl p-4 space-y-3.5 shadow-sm">
                     <div className="flex gap-3 justify-between items-start">
@@ -5313,21 +5423,18 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                       <td className="py-4 px-4 text-right">
                         <div className="flex justify-end gap-1.5">
                           {cl.phone && (
-                            <a
-                              href={`https://wa.me/55${cl.phone.replace(/\D/g, "")}?text=${encodeURIComponent(
-                                getVipInvitationMessage(cl.name, settings.vipWhatsAppUrl || "", settings.vipInvitationMessage)
-                              )}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className={`p-1.5 rounded-lg transition flex items-center justify-center ${
+                            <button
+                              type="button"
+                              onClick={() => handleSendVipInvitation(cl.name, cl.phone)}
+                              className={`p-1.5 rounded-lg transition flex items-center justify-center cursor-pointer ${
                                 !cl.isVip && eligibleVipClientsMap[cl.uid]?.qualifyingBatches.length > 0
                                   ? "text-indigo-600 hover:text-indigo-850 hover:bg-indigo-50 bg-indigo-50/70 animate-pulse border border-indigo-200"
                                   : "text-slate-400 hover:text-indigo-650 hover:bg-slate-100"
                               }`}
-                              title="Convidar para o Grupo VIP via WhatsApp"
+                              title="Convidar para o Grupo VIP via WhatsApp (Copia automaticamente o texto formatado com emojis perfeitos!)"
                             >
                               <Sparkles className="w-4 h-4" />
-                            </a>
+                            </button>
                           )}
                           <button
                             type="button"
@@ -5488,21 +5595,19 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                         <span>WhatsApp Quick Chat</span>
                       </a>
                       {cl.phone && (
-                        <a
-                          href={`https://wa.me/55${cl.phone.replace(/\D/g, "")}?text=${encodeURIComponent(
-                            getVipInvitationMessage(cl.name, settings.vipWhatsAppUrl || "", settings.vipInvitationMessage)
-                          )}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className={`w-full text-center flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs shadow-sm transition ${
+                        <button
+                          type="button"
+                          onClick={() => handleSendVipInvitation(cl.name, cl.phone)}
+                          className={`w-full text-center flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs shadow-sm transition cursor-pointer ${
                             !cl.isVip && eligibleVipClientsMap[cl.uid]?.qualifyingBatches.length > 0
                               ? "bg-indigo-600 hover:bg-indigo-700 text-white animate-pulse"
                               : "bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200"
                           }`}
+                          title="Copia automaticamente o texto formatado para evitar erros de emoji no computador"
                         >
                           <Sparkles className="w-4 h-4 shrink-0" />
                           <span>Convidar para Grupo VIP</span>
-                        </a>
+                        </button>
                       )}
                       <button
                         type="button"
@@ -7810,6 +7915,35 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
               >
                 Fechar Pré-visualização
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* WhatsApp Toast Helper */}
+      {whatsappToast && (
+        <div className="fixed bottom-6 right-6 z-50 max-w-sm w-full bg-white rounded-2xl shadow-2xl border border-emerald-100 p-4 animate-fadeIn">
+          <div className="flex gap-3">
+            <div className="w-10 h-10 rounded-full bg-emerald-500 text-white flex items-center justify-center text-lg shrink-0 shadow-md">
+              💬
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between">
+                <h5 className="font-extrabold text-xs text-slate-800">Mensagem Copiada! 📋✨</h5>
+                <button
+                  type="button"
+                  onClick={() => setWhatsappToast(null)}
+                  className="text-slate-400 hover:text-slate-600 transition text-[10px] font-bold"
+                >
+                  ✕
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-600 mt-1 leading-normal">
+                Abrimos o WhatsApp para enviar o convite de <span className="font-bold text-emerald-700">{whatsappToast.name}</span>.
+              </p>
+              <div className="mt-2.5 bg-emerald-50 border border-emerald-100 p-2 rounded-xl text-[10.5px] text-emerald-800 leading-normal font-medium">
+                💡 <strong className="font-extrabold">Dica para Computador:</strong> Como o aplicativo do WhatsApp às vezes buga os emojis de links externos no PC, nós já copiamos o texto completo! Se os emojis sumirem, basta usar <kbd className="bg-white px-1 py-0.5 rounded shadow-xs font-mono font-bold text-xs">Ctrl + V</kbd> (Colar) no chat para enviar com formatação perfeita!
+              </div>
             </div>
           </div>
         </div>
