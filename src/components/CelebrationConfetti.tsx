@@ -86,7 +86,7 @@ function generateConfetti(count = 120): Piece[] {
   return pieces;
 }
 
-export default function CelebrationConfetti() {
+function CelebrationConfetti() {
   const [pieces, setPieces] = useState<Piece[]>([]);
 
   useEffect(() => {
@@ -211,3 +211,5 @@ export default function CelebrationConfetti() {
     </div>
   );
 }
+
+export default React.memo(CelebrationConfetti);

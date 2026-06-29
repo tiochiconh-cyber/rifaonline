@@ -118,6 +118,20 @@ export function getCampaignRevenueStats(campaign: Campaign, tickets: Ticket[], c
   return { confirmedRevenue, reservedRevenue, expenses, realProfit };
 }
 
+export function getVipInvitationMessage(buyerName: string, vipWhatsAppUrl: string, customMessage?: string) {
+  const firstName = buyerName ? (buyerName.split(" ")[0] || "") : "";
+  const groupUrl = vipWhatsAppUrl || "https://chat.whatsapp.com/Fc7S4ayw2KrAGru9t76eH8";
+
+  if (customMessage && customMessage.trim() !== "") {
+    return customMessage
+      .replace(/{nome}/g, firstName)
+      .replace(/{nome_completo}/g, buyerName)
+      .replace(/{link}/g, groupUrl);
+  }
+
+  return `Olá, ${firstName}! Tudo bem? Aqui é o Chiquinho. 🎓✨\n\nPassando para te dar uma dica de ouro! 💡🌟\n\nSe você quer economizar e garantir as melhores chances nas minhas rifas, você precisa estar no meu *Grupo VIP*! 👑\n\nOlha só o que te espera lá dentro:\n🤑💰 *Descontos e promoções especiais* liberados apenas para o grupo.\n⚡🏃‍♂️ *Acesso antecipado* aos sorteios relâmpago mais disputados.\n\n💬 O grupo é gratuito e focado apenas nas novidades das rifas. Garanta seu acesso exclusivo no link abaixo:\n👉 ${groupUrl}\n\nTe vejo lá dentro! Grande abraço, *Chiquinho*! 🎓💪`;
+}
+
 interface AdminPanelProps {
   onLogout: () => void;
 }
@@ -153,7 +167,8 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
     logoBase64: "",
     vipAdvanceHours: 24,
     vipDiscountPercentage: 10,
-    vipWhatsAppUrl: "",
+    vipWhatsAppUrl: "https://chat.whatsapp.com/Fc7S4ayw2KrAGru9t76eH8",
+    vipInvitationMessage: "",
     vipEnabled: true,
     salesSuspensionBlocked: false
   });
@@ -278,6 +293,10 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
   const [issueSuccess, setIssueSuccess] = useState<string | null>(null);
   const [issueLoading, setIssueLoading] = useState(false);
 
+  // States for VIP Invitation Preview Modal
+  const [showVipPreviewModal, setShowVipPreviewModal] = useState(false);
+  const [testPreviewName, setTestPreviewName] = useState("Maria Silva");
+
   // States for Receipt / Comprovante
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [receiptCampaign, setReceiptCampaign] = useState<Campaign | null>(null);
@@ -379,7 +398,8 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
     
     y += 20;
     ctx.fillText(`CPF: ${receiptClientCpf || "Não informado"}`, 35, y);
-    ctx.fillText(`E-mail: ${receiptClientEmail || "Não informado"}`, 320, y);
+    const isQuickEmail = receiptClientEmail?.toLowerCase().includes("@quicklogin.com");
+    ctx.fillText(`E-mail: ${isQuickEmail ? "Não informado" : (receiptClientEmail || "Não informado")}`, 320, y);
 
     y += 20;
     // Find the date & time of reservation
@@ -1312,7 +1332,13 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
   useEffect(() => {
     const unsub = onSnapshot(doc(db, "settings", "global"), (d) => {
       if (d.exists()) {
-        setSettings(d.data() as any);
+        const data = d.data();
+        setSettings(prev => ({
+          ...prev,
+          ...data,
+          vipWhatsAppUrl: data.vipWhatsAppUrl || "https://chat.whatsapp.com/Fc7S4ayw2KrAGru9t76eH8",
+          vipInvitationMessage: data.vipInvitationMessage || ""
+        }));
       }
     });
     return () => unsub();
@@ -1338,7 +1364,70 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
       snapshot.forEach((d) => {
         uList.push(d.data() as UserProfile);
       });
-      setClients(uList);
+
+      // Unify duplicate clients dynamically by CPF or Phone number
+      const unified: { [key: string]: UserProfile } = {};
+      uList.forEach((cl) => {
+        const cleanCpf = cl.cpf ? cl.cpf.replace(/\D/g, "") : "";
+        const cleanPhone = cl.phone ? cl.phone.replace(/\D/g, "") : "";
+        
+        let key = "";
+        if (cleanCpf) {
+          key = `cpf_${cleanCpf}`;
+        } else if (cleanPhone) {
+          key = `phone_${cleanPhone}`;
+        } else {
+          key = `uid_${cl.uid}`;
+        }
+
+        const existing = unified[key];
+        if (!existing) {
+          unified[key] = { ...cl };
+        } else {
+          // Merge details prioritizing real/more complete information
+          const isQuickLoginEmail = (email: string) => email && email.includes("@quicklogin.com");
+          
+          if (isQuickLoginEmail(existing.email) && !isQuickLoginEmail(cl.email)) {
+            existing.email = cl.email;
+          }
+          
+          if (existing.name.toLowerCase().startsWith("cliente") && cl.name && !cl.name.toLowerCase().startsWith("cliente")) {
+            existing.name = cl.name;
+          } else if (cl.name && cl.name.length > existing.name.length) {
+            existing.name = cl.name;
+          }
+
+          if (cl.isVip) {
+            existing.isVip = true;
+          }
+
+          if (cl.isBlocked) {
+            existing.isBlocked = true;
+          }
+
+          if (cl.createdAt && existing.createdAt) {
+            if (new Date(cl.createdAt) < new Date(existing.createdAt)) {
+              existing.createdAt = cl.createdAt;
+            }
+          } else if (cl.createdAt) {
+            existing.createdAt = cl.createdAt;
+          }
+
+          if (!existing.city && cl.city) {
+            existing.city = cl.city;
+          }
+
+          if (!existing.phone && cl.phone) {
+            existing.phone = cl.phone;
+          }
+          
+          if (!existing.cpf && cl.cpf) {
+            existing.cpf = cl.cpf;
+          }
+        }
+      });
+
+      setClients(Object.values(unified));
     });
     return () => unsub();
   }, []);
@@ -3146,6 +3235,31 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                     <span className="text-[10.5px] text-slate-450 block leading-normal">
                       Link de convite do WhatsApp liberado automaticamente para quem reservar/comprar 10 ou mais cotas de uma única vez.
                     </span>
+                  </div>
+
+                  <div className="space-y-1.5 md:col-span-3 border-t border-slate-100 pt-3 mt-1">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-1">
+                      <label className="block font-extrabold text-slate-700 text-xs text-emerald-700">Mensagem de Convite VIP no WhatsApp 🟢💬</label>
+                      <button
+                        type="button"
+                        onClick={() => setShowVipPreviewModal(true)}
+                        className="self-start sm:self-auto px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 hover:text-emerald-850 rounded-lg text-[10px] font-black uppercase tracking-wider border border-emerald-200 transition flex items-center gap-1.5 shadow-sm"
+                      >
+                        <span>Pré-visualizar Mensagem 👁️</span>
+                      </button>
+                    </div>
+                    <textarea
+                      disabled={settings.vipEnabled === false}
+                      rows={5}
+                      value={settings.vipInvitationMessage || ""}
+                      onChange={(e) => setSettings({ ...settings, vipInvitationMessage: e.target.value })}
+                      className="w-full bg-white p-2.5 border border-emerald-300 focus:border-emerald-500 rounded-lg text-xs font-bold text-emerald-800 placeholder-emerald-350 disabled:bg-slate-50 disabled:border-slate-200"
+                      placeholder="Olá, {nome}! Tudo bem?..."
+                    />
+                    <div className="text-[10.5px] text-slate-500 leading-normal space-y-1">
+                      <p>Personalize a mensagem enviada aos clientes elegíveis. Se deixada em branco, usará o texto padrão do Chiquinho.</p>
+                      <p className="font-semibold text-slate-600">Marcadores disponíveis: <code className="bg-slate-100 px-1 py-0.5 rounded text-[10px] text-indigo-600">{`{nome}`}</code> (primeiro nome), <code className="bg-slate-100 px-1 py-0.5 rounded text-[10px] text-indigo-600">{`{nome_completo}`}</code> (nome completo), <code className="bg-slate-100 px-1 py-0.5 rounded text-[10px] text-indigo-600">{`{link}`}</code> (link do grupo).</p>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -5198,6 +5312,23 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                       <td className="py-4 px-4 text-slate-400">{new Date(cl.createdAt).toLocaleDateString("pt-BR")}</td>
                       <td className="py-4 px-4 text-right">
                         <div className="flex justify-end gap-1.5">
+                          {cl.phone && (
+                            <a
+                              href={`https://wa.me/55${cl.phone.replace(/\D/g, "")}?text=${encodeURIComponent(
+                                getVipInvitationMessage(cl.name, settings.vipWhatsAppUrl || "", settings.vipInvitationMessage)
+                              )}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className={`p-1.5 rounded-lg transition flex items-center justify-center ${
+                                !cl.isVip && eligibleVipClientsMap[cl.uid]?.qualifyingBatches.length > 0
+                                  ? "text-indigo-600 hover:text-indigo-850 hover:bg-indigo-50 bg-indigo-50/70 animate-pulse border border-indigo-200"
+                                  : "text-slate-400 hover:text-indigo-650 hover:bg-slate-100"
+                              }`}
+                              title="Convidar para o Grupo VIP via WhatsApp"
+                            >
+                              <Sparkles className="w-4 h-4" />
+                            </a>
+                          )}
                           <button
                             type="button"
                             onClick={() => {
@@ -5356,6 +5487,23 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                         </svg>
                         <span>WhatsApp Quick Chat</span>
                       </a>
+                      {cl.phone && (
+                        <a
+                          href={`https://wa.me/55${cl.phone.replace(/\D/g, "")}?text=${encodeURIComponent(
+                            getVipInvitationMessage(cl.name, settings.vipWhatsAppUrl || "", settings.vipInvitationMessage)
+                          )}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className={`w-full text-center flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs shadow-sm transition ${
+                            !cl.isVip && eligibleVipClientsMap[cl.uid]?.qualifyingBatches.length > 0
+                              ? "bg-indigo-600 hover:bg-indigo-700 text-white animate-pulse"
+                              : "bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200"
+                          }`}
+                        >
+                          <Sparkles className="w-4 h-4 shrink-0" />
+                          <span>Convidar para Grupo VIP</span>
+                        </a>
+                      )}
                       <button
                         type="button"
                         onClick={() => {
@@ -7522,6 +7670,147 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
               </div>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* WhatsApp VIP Message Preview Modal */}
+      {showVipPreviewModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto animate-fadeIn">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 max-w-lg w-full overflow-hidden flex flex-col my-8">
+            {/* Modal Header */}
+            <div className="bg-emerald-600 text-white px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">🟢</span>
+                <div>
+                  <h3 className="font-extrabold text-sm">Visualização do Convite VIP</h3>
+                  <p className="text-[10px] text-emerald-100">Simulador de formatação do WhatsApp</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowVipPreviewModal(false)}
+                className="text-white hover:text-emerald-100 bg-emerald-700/50 hover:bg-emerald-700 p-1.5 rounded-full transition text-xs font-black w-6 h-6 flex items-center justify-center"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-4">
+              {/* Test controls */}
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-3">
+                <h4 className="font-bold text-xs text-slate-700 uppercase tracking-wider">Variáveis de Teste 🛠️</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[10.5px] font-bold text-slate-500">Nome do Comprador</label>
+                    <input
+                      type="text"
+                      value={testPreviewName}
+                      onChange={(e) => setTestPreviewName(e.target.value)}
+                      placeholder="Ex: Maria Silva"
+                      className="w-full bg-white p-2 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 focus:border-emerald-500"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10.5px] font-bold text-slate-500">Link do Grupo VIP</label>
+                    <input
+                      type="text"
+                      value={settings.vipWhatsAppUrl || ""}
+                      onChange={(e) => setSettings({ ...settings, vipWhatsAppUrl: e.target.value })}
+                      placeholder="https://chat.whatsapp.com/..."
+                      className="w-full bg-white p-2 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 focus:border-emerald-500"
+                    />
+                  </div>
+                </div>
+                <p className="text-[10px] text-slate-450">
+                  Os marcadores <code className="bg-slate-200 px-1 py-0.5 rounded text-indigo-600">{`{nome}`}</code>, <code className="bg-slate-200 px-1 py-0.5 rounded text-indigo-600">{`{nome_completo}`}</code> e <code className="bg-slate-200 px-1 py-0.5 rounded text-indigo-600">{`{link}`}</code> serão preenchidos automaticamente com os dados reais de cada cliente.
+                </p>
+              </div>
+
+              {/* WhatsApp Simulated interface */}
+              <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-inner bg-[#efeae2]">
+                {/* WhatsApp Chat Header */}
+                <div className="bg-[#075e54] text-white px-4 py-2.5 flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-[#128c7e] flex items-center justify-center text-xs font-black border border-[#25d366]/30">
+                    {settings.logoBase64 || settings.logoUrl ? (
+                      <img
+                        src={settings.logoBase64 || settings.logoUrl}
+                        alt="Logo"
+                        referrerPolicy="no-referrer"
+                        className="w-full h-full rounded-full object-cover"
+                      />
+                    ) : (
+                      "🎓"
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h5 className="font-extrabold text-xs leading-tight truncate">Chiquinho 🎓✨</h5>
+                    <span className="text-[9px] text-[#25d366] font-bold">online</span>
+                  </div>
+                  <div className="flex gap-3 text-white/80 font-bold text-sm">
+                    <span>📞</span>
+                    <span>⋮</span>
+                  </div>
+                </div>
+
+                {/* WhatsApp Message Body Area */}
+                <div className="p-4 flex flex-col gap-2 min-h-[220px] max-h-[300px] overflow-y-auto">
+                  <div className="self-center bg-[#e1f3fc] text-[#536371] text-[10px] py-1 px-2.5 rounded-md shadow-xs font-semibold mb-2">
+                    Hoje
+                  </div>
+
+                  {/* Message Bubble */}
+                  <div className="self-start bg-white text-[#111b21] p-3 rounded-lg rounded-tl-none shadow-sm text-xs relative max-w-[85%] border border-slate-150/40">
+                    <div 
+                      className="whitespace-pre-wrap leading-relaxed select-text"
+                      dangerouslySetInnerHTML={{
+                        __html: (() => {
+                          const rawText = getVipInvitationMessage(
+                            testPreviewName, 
+                            settings.vipWhatsAppUrl || "", 
+                            settings.vipInvitationMessage
+                          );
+                          if (!rawText) return "";
+                          let escaped = rawText
+                            .replace(/&/g, "&amp;")
+                            .replace(/</g, "&lt;")
+                            .replace(/>/g, "&gt;");
+
+                          // Bold *text*
+                          escaped = escaped.replace(/\*([^\*]+)\*/g, "<strong class='font-extrabold'>$1</strong>");
+
+                          // Italic _text_
+                          escaped = escaped.replace(/_([^_]+)_/g, "<em class='italic'>$1</em>");
+
+                          // Strikethrough ~text~
+                          escaped = escaped.replace(/~([^~]+)~/g, "<span class='line-through'>$1</span>");
+
+                          // Convert newlines to break tags
+                          escaped = escaped.replace(/\n/g, "<br/>");
+
+                          return escaped;
+                        })()
+                      }}
+                    />
+                    <div className="text-right text-[9px] text-slate-400 mt-1">
+                      12:30 <span>✓✓</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="bg-slate-50 px-6 py-4 flex justify-end gap-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowVipPreviewModal(false)}
+                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-extrabold transition cursor-pointer"
+              >
+                Fechar Pré-visualização
+              </button>
+            </div>
           </div>
         </div>
       )}

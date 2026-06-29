@@ -146,7 +146,7 @@ export function getCampaignPlaceholderImage(title: string, id: string): string {
   return fallbacks[itemIndex];
 }
 
-export function CampaignCountdown({ campaign, tickets }: { campaign: Campaign; tickets: Ticket[] }) {
+export const CampaignCountdown = React.memo(function CampaignCountdown({ campaign, tickets }: { campaign: Campaign; tickets: Ticket[] }) {
   const [timeLeft, setTimeLeft] = useState<{
     days: number;
     hours: number;
@@ -232,7 +232,7 @@ export function CampaignCountdown({ campaign, tickets }: { campaign: Campaign; t
       </div>
     </div>
   );
-}
+});
 
 interface WinnerHighlightProps {
   campaigns: Campaign[];
@@ -243,7 +243,7 @@ interface WinnerHighlightProps {
   maskWinnerName: (name: string) => string;
 }
 
-export function WinnerHighlight({
+export const WinnerHighlight = React.memo(function WinnerHighlight({
   campaigns,
   allReservations,
   userProfile,
@@ -369,7 +369,7 @@ export function WinnerHighlight({
       </div>
     </div>
   );
-}
+});
 
 interface ClientDashboardProps {
   userProfile: UserProfile | null;
@@ -377,7 +377,7 @@ interface ClientDashboardProps {
   onPromptLogin?: () => void;
 }
 
-const UpcomingCampaignCountdown = ({ campaign, onTimeReached }: { campaign: Campaign; onTimeReached?: () => void }) => {
+const UpcomingCampaignCountdown = React.memo(({ campaign, onTimeReached }: { campaign: Campaign; onTimeReached?: () => void }) => {
   const [timeLeft, setTimeLeft] = useState<{ days: number; hours: number; minutes: number; seconds: number } | null>(null);
 
   useEffect(() => {
@@ -439,7 +439,7 @@ const UpcomingCampaignCountdown = ({ campaign, onTimeReached }: { campaign: Camp
       </div>
     </div>
   );
-};
+});
 
 export default function ClientDashboard({ userProfile, onLogout, onPromptLogin }: ClientDashboardProps) {
   // Dynamic settings state
@@ -455,7 +455,7 @@ export default function ClientDashboard({ userProfile, onLogout, onPromptLogin }
     autoWhatsAppRedirect: true,
     vipAdvanceHours: 24,
     vipDiscountPercentage: 10,
-    vipWhatsAppUrl: "",
+    vipWhatsAppUrl: "https://chat.whatsapp.com/Fc7S4ayw2KrAGru9t76eH8",
     vipEnabled: true,
   });
 
@@ -1014,7 +1014,12 @@ export default function ClientDashboard({ userProfile, onLogout, onPromptLogin }
   useEffect(() => {
     const unsub = onSnapshot(doc(db, "settings", "global"), (d) => {
       if (d.exists()) {
-        setSettings((prev) => ({ ...prev, ...d.data() }));
+        const data = d.data();
+        setSettings((prev) => ({
+          ...prev,
+          ...data,
+          vipWhatsAppUrl: data.vipWhatsAppUrl || "https://chat.whatsapp.com/Fc7S4ayw2KrAGru9t76eH8"
+        }));
       }
     });
     return () => unsub();
@@ -1068,7 +1073,7 @@ export default function ClientDashboard({ userProfile, onLogout, onPromptLogin }
   const handleWhatsAppRedirect = (targetTickets?: Ticket[], camp?: Campaign) => {
     const cleanPhone = settings.supportContact ? settings.supportContact.replace(/\D/g, "") : "";
     if (!cleanPhone) {
-      addToast("O contato da comissão de formatura não foi cadastrado pelo administrador.", "warning");
+      addToast("O contato do Chiquinho não foi cadastrado pelo administrador.", "warning");
       return;
     }
 
@@ -1107,7 +1112,7 @@ export default function ClientDashboard({ userProfile, onLogout, onPromptLogin }
         .join("\n\n");
     }
 
-    const message = `Olá Comissão de Formatura! 🎓✨
+    const message = `Olá Chiquinho! 🎓✨
 
 Gostaria de solicitar a validação manual do comprovante para a minha reserva.
 
@@ -1930,7 +1935,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                                     {camp.title}
                                   </h3>
                                   <p className="hidden md:block text-slate-450 text-[10px] md:text-xs line-clamp-2 leading-relaxed">
-                                    {camp.description ? stripHtml(camp.description) : "Participe desta rifa e garanta sua chance de ganhar prêmios incríveis enquanto apoia nossa comissão de formatura."}
+                                    {camp.description ? stripHtml(camp.description) : "Participe desta rifa e garanta sua chance de ganhar prêmios incríveis enquanto apoia o Chiquinho."}
                                   </p>
                                 </div>
 
@@ -3343,7 +3348,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                       {
                         num: 1,
                         title: "Cotas Reservadas com Sucesso 📝",
-                        desc: `Suas cotas foram separadas com segurança sob seu CPF no sistema da comissão de formatura.`,
+                        desc: `Suas cotas foram separadas com segurança sob seu CPF no sistema do Chiquinho.`,
                         status: "done",
                         sub: firstTicket?.reservedAt 
                           ? `Realizado em ${new Date(firstTicket.reservedAt).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}h`
@@ -3353,7 +3358,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                         num: 2,
                         title: "Pagamento via PIX 💵",
                         desc: isAllConfirmed 
-                          ? `Chave identificada, Pix recebido e aprovado pela comissão de formatura.`
+                          ? `Chave identificada, Pix recebido e aprovado pelo Chiquinho.`
                           : `Aguardando a transferência do valor de R$ ${totalVal.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} via PIX para o administrador.`,
                         status: isAllConfirmed ? "done" : "pending",
                         sub: isAllConfirmed && firstTicket?.confirmedAt
@@ -4265,7 +4270,7 @@ DATA CONFIRMAÇÃO: ${ticketModalConfig.tickets[0]?.confirmedAt ? new Date(ticke
 ----------------------------------------
 DADOS DO PARTICIPANTE:
 NOME: ${userProfile?.name || "N/A"}
-E-MAIL: ${userProfile?.email || "N/A"}
+E-MAIL: ${userProfile?.email && userProfile.email.toLowerCase().includes("@quicklogin.com") ? "Não informado" : (userProfile?.email || "N/A")}
 CPF: ${userProfile?.cpf || "Tratado"}
 ----------------------------------------
 CHAVES CRIPTOGRAFICAS DE VALIDAÇÃO:
@@ -4329,7 +4334,7 @@ Acompanhe os resultados no link de nossa plataforma.
                 </span>
                 <h2 className="text-2xl md:text-4xl font-extrabold tracking-tight">Galeria de Ganhadores</h2>
                 <p className="text-slate-300 text-xs md:text-sm max-w-xl leading-relaxed">
-                  Confira os grandes ganhadores de cada edição das rifas da Comissão de Formatura homologados com transparência através dos resultados oficiais da Loteria Federal.
+                  Confira os grandes ganhadores de cada edição das rifas do Chiquinho homologados com transparência através dos resultados oficiais da Loteria Federal.
                 </p>
               </div>
 

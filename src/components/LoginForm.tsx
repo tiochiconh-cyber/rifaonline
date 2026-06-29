@@ -104,7 +104,12 @@ export default function LoginForm({ onLoginSuccess, initialUser = null }: LoginF
   React.useEffect(() => {
     const unsub = onSnapshot(doc(db, "settings", "global"), (d) => {
       if (d.exists()) {
-        setSettings(d.data());
+        const data = d.data();
+        setSettings((prev: any) => ({
+          ...prev,
+          ...data,
+          vipWhatsAppUrl: data.vipWhatsAppUrl || "https://chat.whatsapp.com/Fc7S4ayw2KrAGru9t76eH8"
+        }));
       }
     });
     return () => unsub();

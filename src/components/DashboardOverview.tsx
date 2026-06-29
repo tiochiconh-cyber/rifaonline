@@ -14,7 +14,7 @@ interface DashboardOverviewProps {
   vipDiscountPct?: number;
 }
 
-export default function DashboardOverview({ campaigns, allReservations, clientsCount, clients = [], vipDiscountPct }: DashboardOverviewProps) {
+function DashboardOverview({ campaigns, allReservations, clientsCount, clients = [], vipDiscountPct }: DashboardOverviewProps) {
   // Stats summary calculation
   const stats = useMemo(() => {
     let totalTickets = 0;
@@ -789,3 +789,6 @@ function GroupedBarChartComponent({ data }: { data: CampaignFin[] }) {
     </div>
   );
 }
+
+export default React.memo(DashboardOverview);
+

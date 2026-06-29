@@ -6,7 +6,7 @@ interface PricingDashboardProps {
   campaigns: Campaign[];
 }
 
-export default function PricingDashboard({ campaigns }: PricingDashboardProps) {
+function PricingDashboard({ campaigns }: PricingDashboardProps) {
   // Simulation raw states
   const [prizeCost, setPrizeCost] = useState<number>(1500);
   const [marketingCost, setMarketingCost] = useState<number>(300);
@@ -630,3 +630,6 @@ export default function PricingDashboard({ campaigns }: PricingDashboardProps) {
     </div>
   );
 }
+
+export default React.memo(PricingDashboard);
+

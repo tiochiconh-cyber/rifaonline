@@ -21,7 +21,7 @@ interface BuyerStats {
   campaignsCount: number;
 }
 
-export default function RankingView({ campaigns, allReservations, loading, isAdmin = false }: RankingViewProps) {
+function RankingView({ campaigns, allReservations, loading, isAdmin = false }: RankingViewProps) {
   const [rankingType, setRankingType] = useState<"global" | "campaign">("global");
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -473,3 +473,5 @@ export default function RankingView({ campaigns, allReservations, loading, isAdm
     </div>
   );
 }
+
+export default React.memo(RankingView);

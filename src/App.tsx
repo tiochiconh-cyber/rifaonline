@@ -55,7 +55,12 @@ export default function App() {
   useEffect(() => {
     const unsub = onSnapshot(doc(db, "settings", "global"), (d) => {
       if (d.exists()) {
-        setSettings(d.data() as any);
+        const data = d.data();
+        setSettings(prev => ({
+          ...prev,
+          ...data,
+          vipWhatsAppUrl: data.vipWhatsAppUrl || "https://chat.whatsapp.com/Fc7S4ayw2KrAGru9t76eH8"
+        }));
       }
     });
     return () => unsub();

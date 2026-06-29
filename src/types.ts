@@ -71,4 +71,10 @@ export interface GlobalSettings {
   vipDiscountPercentage?: number;
   vipEnabled?: boolean;
   salesSuspensionBlocked?: boolean;
+  vipWhatsAppUrl?: string;
+  vipInvitationMessage?: string;
+  logoUrl?: string;
+  logoBase64?: string;
+  autoWhatsAppRedirect?: boolean;
+  supportEmail?: string;
 }

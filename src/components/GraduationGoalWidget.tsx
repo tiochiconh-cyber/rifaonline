@@ -9,7 +9,7 @@ interface GraduationGoalWidgetProps {
   allReservations: { [campaignId: string]: Ticket[] };
 }
 
-export default function GraduationGoalWidget({ campaigns, allReservations }: GraduationGoalWidgetProps) {
+function GraduationGoalWidget({ campaigns, allReservations }: GraduationGoalWidgetProps) {
   const [goalAmount, setGoalAmount] = useState<number>(30000);
   const [isEditing, setIsEditing] = useState(false);
   const [inputVal, setInputVal] = useState("");
@@ -290,7 +290,7 @@ export default function GraduationGoalWidget({ campaigns, allReservations }: Gra
               </div>
               <div>
                 <strong className="text-emerald-800 text-xs block font-extrabold">Parabéns! 100% Arrecadado!</strong>
-                <p className="text-[10px] text-emerald-600 font-medium">A comissão atingiu a meta estipulada para a formatura. Todos os pagamentos foram devidamente validados!</p>
+                <p className="text-[10px] text-emerald-600 font-medium">O Chiquinho atingiu a meta estipulada para a formatura. Todos os pagamentos foram devidamente validados!</p>
               </div>
             </div>
           ) : paidPercent + pendingPercent >= 100 ? (
@@ -309,3 +309,6 @@ export default function GraduationGoalWidget({ campaigns, allReservations }: Gra
     </div>
   );
 }
+
+export default React.memo(GraduationGoalWidget);
+

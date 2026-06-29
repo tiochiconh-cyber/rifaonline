@@ -9,7 +9,7 @@ interface AppLogoProps {
   size?: "sm" | "md" | "lg" | "xl";
 }
 
-export default function AppLogo({ settings, className = "", size = "md" }: AppLogoProps) {
+function AppLogo({ settings, className = "", size = "md" }: AppLogoProps) {
   // If the admin uploaded a custom logo, we render it
   if (settings?.logoBase64 || settings?.logoUrl) {
     const src = settings.logoBase64 || settings.logoUrl;
@@ -144,3 +144,5 @@ export default function AppLogo({ settings, className = "", size = "md" }: AppLo
     </div>
   );
 }
+
+export default React.memo(AppLogo);
