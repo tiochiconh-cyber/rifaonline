@@ -858,7 +858,8 @@ export default function ClientDashboard({ userProfile, onLogout, onPromptLogin }
     if (campaigns.length > 0) {
       setSelectedCampaign((prev) => {
         if (!prev) {
-          const active = campaigns.find(c => c.status === "active") || campaigns[0];
+          const liveC = campaigns.find(c => c.status === "active" && !isCampaignUpcoming(c));
+          const active = liveC || campaigns.find(c => c.status === "active") || campaigns[0];
           return active;
         }
         // Keep selected campaign details in sync with the live list database updates
@@ -1790,9 +1791,21 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                 <p className="text-slate-400 text-xs mt-1">Nenhum prêmio ou rifa ativa no momento.</p>
               </div>
             ) : (() => {
-              const liveCampaigns = campaigns.filter(c => c.status === "active" && !isCampaignUpcoming(c));
+              const liveCampaigns = campaigns.filter(c => {
+                if (c.status === "drawn") return false;
+                if (c.status === "paused") return false;
+                const upcoming = isCampaignUpcoming(c);
+                const isVipEarly = isVipAdvanceActive && isCurrentlyInVipEarlyAccess(c);
+                return !upcoming || isVipEarly;
+              });
               const closedCampaigns = campaigns.filter(c => c.status === "drawn");
-              const upcomingCampaigns = campaigns.filter(c => c.status === "paused" || isCampaignUpcoming(c));
+              const upcomingCampaigns = campaigns.filter(c => {
+                if (c.status === "drawn") return false;
+                if (c.status === "paused") return true;
+                const upcoming = isCampaignUpcoming(c);
+                const isVipEarly = isVipAdvanceActive && isCurrentlyInVipEarlyAccess(c);
+                return upcoming && !isVipEarly;
+              });
 
               return (
                 <div className="space-y-6">
