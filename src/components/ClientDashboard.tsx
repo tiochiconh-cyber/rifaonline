@@ -377,14 +377,57 @@ interface ClientDashboardProps {
   onPromptLogin?: () => void;
 }
 
-const UpcomingCampaignCountdown = React.memo(({ campaign, onTimeReached }: { campaign: Campaign; onTimeReached?: () => void }) => {
+const parseCampaignDateTime = (dateStr?: string, timeStr?: string): number => {
+  if (!dateStr) return NaN;
+  try {
+    const dateParts = dateStr.split("-");
+    if (dateParts.length !== 3) return NaN;
+    const year = parseInt(dateParts[0], 10);
+    const month = parseInt(dateParts[1], 10) - 1;
+    const day = parseInt(dateParts[2], 10);
+
+    let hour = 0;
+    let minute = 0;
+    let second = 0;
+
+    if (timeStr) {
+      const timeParts = timeStr.split(":");
+      hour = parseInt(timeParts[0], 10) || 0;
+      minute = parseInt(timeParts[1], 10) || 0;
+      second = parseInt(timeParts[2], 10) || 0;
+    }
+
+    const localDate = new Date(year, month, day, hour, minute, second);
+    return localDate.getTime();
+  } catch (err) {
+    console.error("Error parsing campaign date time:", err);
+    return NaN;
+  }
+};
+
+const UpcomingCampaignCountdown = React.memo(({ 
+  campaign, 
+  isVipAdvanceActive = false, 
+  vipAdvanceHours = 24, 
+  compact = false,
+  onTimeReached 
+}: { 
+  campaign: Campaign; 
+  isVipAdvanceActive?: boolean; 
+  vipAdvanceHours?: number; 
+  compact?: boolean;
+  onTimeReached?: () => void 
+}) => {
   const [timeLeft, setTimeLeft] = useState<{ days: number; hours: number; minutes: number; seconds: number } | null>(null);
 
   useEffect(() => {
     if (!campaign.startDate) return;
-    const startStr = campaign.startTime ? `${campaign.startDate}T${campaign.startTime}` : `${campaign.startDate}T00:00:00`;
-    const targetMs = Date.parse(startStr);
+    let targetMs = parseCampaignDateTime(campaign.startDate, campaign.startTime);
     if (isNaN(targetMs)) return;
+
+    if (isVipAdvanceActive) {
+      targetMs = targetMs - (vipAdvanceHours * 60 * 60 * 1000);
+    }
 
     const calcTime = () => {
       const now = Date.now();
@@ -406,13 +449,29 @@ const UpcomingCampaignCountdown = React.memo(({ campaign, onTimeReached }: { cam
     calcTime();
     const interval = setInterval(calcTime, 1000);
     return () => clearInterval(interval);
-  }, [campaign, onTimeReached]);
+  }, [campaign, isVipAdvanceActive, vipAdvanceHours, onTimeReached]);
 
   if (!timeLeft) {
     return (
-      <span className="text-emerald-600 font-extrabold text-xs animate-pulse bg-emerald-50 border border-emerald-100 rounded-full px-3 py-1">
-        🚀 Lançamento em andamento! Atualize a página.
+      <span className={compact 
+        ? "text-emerald-600 font-black text-[10px] animate-pulse bg-emerald-50 border border-emerald-100 rounded-full px-2 py-0.5" 
+        : "text-emerald-600 font-extrabold text-xs animate-pulse bg-emerald-50 border border-emerald-100 rounded-full px-3 py-1"
+      }>
+        🚀 Lançamento liberado! Atualize a página.
       </span>
+    );
+  }
+
+  if (compact) {
+    return (
+      <div className="flex items-center gap-1.5 text-[10.5px] font-black text-rose-600 font-mono select-none bg-rose-50/80 border border-rose-100/70 rounded-full px-2.5 py-1">
+        <Clock className="w-3.5 h-3.5 text-rose-500 animate-pulse shrink-0" />
+        {isVipAdvanceActive && <Crown className="w-3.5 h-3.5 text-amber-500 fill-amber-500 shrink-0" />}
+        <span>
+          {timeLeft.days > 0 ? `${timeLeft.days}d ` : ""}
+          {String(timeLeft.hours).padStart(2, "0")}h {String(timeLeft.minutes).padStart(2, "0")}m {String(timeLeft.seconds).padStart(2, "0")}s
+        </span>
+      </div>
     );
   }
 
@@ -473,19 +532,14 @@ export default function ClientDashboard({ userProfile, onLogout, onPromptLogin }
     if (camp.status === "drawn") return false;
     if (camp.status === "paused") return true;
     if (camp.status === "active" && camp.startDate) {
-      const startStr = camp.startTime ? `${camp.startDate}T${camp.startTime}` : `${camp.startDate}T00:00:00`;
-      try {
-        const startMs = Date.parse(startStr);
-        if (!isNaN(startMs)) {
-          let targetMs = startMs;
-          if (isVipAdvanceActive) {
-            const advanceHours = settings?.vipAdvanceHours || 24;
-            targetMs = startMs - (advanceHours * 60 * 60 * 1000);
-          }
-          return Date.now() < targetMs;
+      const startMs = parseCampaignDateTime(camp.startDate, camp.startTime);
+      if (!isNaN(startMs)) {
+        let targetMs = startMs;
+        if (isVipAdvanceActive) {
+          const advanceHours = settings?.vipAdvanceHours || 24;
+          targetMs = startMs - (advanceHours * 60 * 60 * 1000);
         }
-      } catch (err) {
-        console.error("Error parsing campaign launch time:", err);
+        return Date.now() < targetMs;
       }
     }
     return false;
@@ -494,18 +548,15 @@ export default function ClientDashboard({ userProfile, onLogout, onPromptLogin }
   const isCurrentlyInVipEarlyAccess = (camp: Campaign): boolean => {
     if (settings?.vipEnabled === false || settings?.vipAdvanceEnabled === false) return false;
     if (camp.status !== "active" || !camp.startDate) return false;
-    const startStr = camp.startTime ? `${camp.startDate}T${camp.startTime}` : `${camp.startDate}T00:00:00`;
-    try {
-      const startMs = Date.parse(startStr);
-      if (!isNaN(startMs)) {
-        const now = Date.now();
-        if (now < startMs) {
-          const advanceHours = settings?.vipAdvanceHours || 24;
-          const vipStartMs = startMs - (advanceHours * 60 * 60 * 1000);
-          return now >= vipStartMs;
-        }
+    const startMs = parseCampaignDateTime(camp.startDate, camp.startTime);
+    if (!isNaN(startMs)) {
+      const now = Date.now();
+      if (now < startMs) {
+        const advanceHours = settings?.vipAdvanceHours || 24;
+        const vipStartMs = startMs - (advanceHours * 60 * 60 * 1000);
+        return now >= vipStartMs;
       }
-    } catch (_) {}
+    }
     return false;
   };
 
@@ -867,7 +918,7 @@ export default function ClientDashboard({ userProfile, onLogout, onPromptLogin }
         return updated || prev;
       });
     }
-  }, [campaigns]);
+  }, [campaigns, isVipAdvanceActive, settings, userProfile]);
 
   // Load tickets for selected campaign (only updates when actual selectedCampaign identity changes)
   const selectedCampaignId = selectedCampaign?.id || "";
@@ -1025,6 +1076,7 @@ export default function ClientDashboard({ userProfile, onLogout, onPromptLogin }
         setSettings((prev) => ({
           ...prev,
           ...data,
+          vipEnabled: data.vipEnabled !== false,
           vipWhatsAppUrl: data.vipWhatsAppUrl || "https://chat.whatsapp.com/Fc7S4ayw2KrAGru9t76eH8",
           vipAdvanceEnabled: data.vipAdvanceEnabled !== false,
           vipDiscountEnabled: data.vipDiscountEnabled !== false,
@@ -2267,7 +2319,16 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
 
                                 {/* Countdown below the image, above the title */}
                                 <div className="mt-2.5 mb-1 flex justify-center w-full">
-                                  <CampaignCountdown campaign={camp} tickets={campTickets} />
+                                  {camp.startDate ? (
+                                    <UpcomingCampaignCountdown 
+                                      campaign={camp} 
+                                      isVipAdvanceActive={isVipAdvanceActive}
+                                      vipAdvanceHours={settings?.vipAdvanceHours}
+                                      compact={true}
+                                    />
+                                  ) : (
+                                    <CampaignCountdown campaign={camp} tickets={campTickets} />
+                                  )}
                                 </div>
 
                                 {/* Title and Description */}
@@ -2488,12 +2549,31 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                       <p className="text-indigo-200/85 text-[11px] md:text-xs mt-1.5 max-w-sm leading-relaxed mb-6 font-semibold">
                         As vendas ainda não começaram, mas você já pode conhecer os prêmios e acompanhar o lançamento. Fique atento ao cronômetro abaixo!
                       </p>
+
+                      {!userProfile && settings?.vipEnabled !== false && settings?.vipAdvanceEnabled !== false && (
+                        <div className="mb-6 bg-amber-500/10 border border-amber-500/25 rounded-2xl p-4 max-w-sm text-center animate-fadeIn">
+                          <span className="text-[11px] text-amber-300 font-extrabold block uppercase tracking-wider">👑 É Cliente VIP?</span>
+                          <span className="text-[10px] text-slate-300 font-medium block mt-1.5 leading-relaxed">
+                            Faça login na sua conta para ter acesso ao seu <strong>acesso antecipado de {settings?.vipAdvanceHours || 24}h</strong> e garantir suas cotas agora mesmo!
+                          </span>
+                          <button
+                            onClick={onPromptLogin}
+                            className="mt-3 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-[10px] uppercase tracking-wider px-4 py-1.5 rounded-xl cursor-pointer transition-colors active:scale-95 shadow-lg shadow-amber-500/5"
+                          >
+                            Entrar como VIP
+                          </button>
+                        </div>
+                      )}
                       
                       <div className="bg-slate-950/80 border border-indigo-950 rounded-3xl p-6 shadow-md max-w-md w-full flex flex-col items-center gap-3">
-                        <span className="text-indigo-400 text-[10px] font-black uppercase tracking-widest">Tempo restante para o início:</span>
+                        <span className="text-indigo-400 text-[10px] font-black uppercase tracking-widest">
+                          {isVipAdvanceActive ? "Seu Acesso VIP inicia em:" : "Tempo restante para o início:"}
+                        </span>
                         {selectedCampaign.startDate && (
                           <UpcomingCampaignCountdown 
                             campaign={selectedCampaign} 
+                            isVipAdvanceActive={isVipAdvanceActive}
+                            vipAdvanceHours={settings?.vipAdvanceHours}
                             onTimeReached={() => {
                               window.location.reload();
                             }} 

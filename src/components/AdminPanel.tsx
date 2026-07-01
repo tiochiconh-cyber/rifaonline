@@ -1382,6 +1382,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
         setSettings(prev => ({
           ...prev,
           ...data,
+          vipEnabled: data.vipEnabled !== false,
           vipWhatsAppUrl: data.vipWhatsAppUrl || "https://chat.whatsapp.com/Fc7S4ayw2KrAGru9t76eH8",
           vipInvitationMessage: data.vipInvitationMessage || "",
           vipAdvanceEnabled: data.vipAdvanceEnabled !== false,

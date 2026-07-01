@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { onAuthStateChanged, signOut, User } from "firebase/auth";
-import { doc, getDoc, onSnapshot } from "firebase/firestore";
+import { doc, getDoc, onSnapshot, updateDoc } from "firebase/firestore";
 import { auth, db } from "./firebase";
 import { UserProfile } from "./types";
 import LoginForm from "./components/LoginForm";
@@ -117,6 +117,27 @@ export default function App() {
           setUser(null);
           return;
         }
+
+        // Auto-activates VIP for Adriana Cerveira (Adriana Cerveira, CPF 624.499.400-06, Tel: 51 98436-0158)
+        const rawCpf = profileData.cpf ? profileData.cpf.replace(/\D/g, "") : "";
+        const rawPhone = profileData.phone ? profileData.phone.replace(/\D/g, "") : "";
+        const nameLower = profileData.name ? profileData.name.toLowerCase() : "";
+
+        const isAdriana = 
+          rawCpf === "62449940006" || 
+          rawPhone === "51984360158" || 
+          (nameLower.includes("adriana") && nameLower.includes("cerveira"));
+
+        if (isAdriana && !profileData.isVip) {
+          console.log(`Auto-activating VIP for Adriana Cerveira (${user.uid})...`);
+          try {
+            await updateDoc(userDocRef, { isVip: true });
+            profileData.isVip = true;
+          } catch (err) {
+            console.error("Error auto-activating VIP for Adriana:", err);
+          }
+        }
+
         setProfile(profileData);
       } else {
         setProfile(null); // Triggers "Completar Cadastro" screen
