@@ -497,7 +497,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
         ticketsCount,
         receiptCampaign.ticketPrice,
         receiptCampaign.progressiveDiscounts,
-        isRcvVip,
+        isRcvVip && settings.vipEnabled !== false && settings.vipDiscountEnabled !== false,
         settings.vipDiscountPercentage
       );
     } catch(e) {}
@@ -2445,7 +2445,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
             allReservations={allReservations}
             clientsCount={clients.length}
             clients={clients}
-            vipDiscountPct={settings.vipDiscountPercentage}
+            vipDiscountPct={(settings.vipEnabled !== false && settings.vipDiscountEnabled !== false) ? settings.vipDiscountPercentage : 0}
           />
         )}
 
@@ -2670,7 +2670,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                         batch.tickets.length,
                         batch.campaign.ticketPrice,
                         batch.campaign.progressiveDiscounts,
-                        isBatchVip(batch),
+                        isBatchVip(batch) && settings.vipEnabled !== false && settings.vipDiscountEnabled !== false,
                         settings.vipDiscountPercentage
                       );
 
@@ -2944,7 +2944,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                       batch.tickets.length,
                       batch.campaign.ticketPrice,
                       batch.campaign.progressiveDiscounts,
-                      isBatchVip(batch),
+                      isBatchVip(batch) && settings.vipEnabled !== false && settings.vipDiscountEnabled !== false,
                       settings.vipDiscountPercentage
                     );
 
@@ -7724,7 +7724,7 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
                               receiptTickets.length,
                               receiptCampaign.ticketPrice,
                               receiptCampaign.progressiveDiscounts,
-                              isRcvVip,
+                              isRcvVip && settings.vipEnabled !== false && settings.vipDiscountEnabled !== false,
                               settings.vipDiscountPercentage
                             ).totalPrice.toFixed(2);
                           } catch (e) {

@@ -2786,7 +2786,7 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                                   {selectedNumbers.length} {selectedNumbers.length === 1 ? "COTA" : "COTAS"}
                                 </span>
                                 {(() => {
-                                  const calc = getDiscountedPrice(selectedNumbers.length, selectedCampaign.ticketPrice, selectedCampaign.progressiveDiscounts, isVipActive, settings?.vipDiscountPercentage);
+                                  const calc = getDiscountedPrice(selectedNumbers.length, selectedCampaign.ticketPrice, selectedCampaign.progressiveDiscounts, isVipDiscountActive, settings?.vipDiscountPercentage);
                                   return (
                                     <strong className="text-lg font-black text-white font-sans block leading-none tracking-tight">
                                       R$ {calc.totalPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -4022,10 +4022,10 @@ Estou enviando o comprovante do PIX anexo a esta mensagem. Por favor, confirmem 
                     selectedNumbers.length,
                     selectedCampaign.ticketPrice,
                     selectedCampaign.progressiveDiscounts,
-                    isVipActive,
+                    isVipDiscountActive,
                     settings?.vipDiscountPercentage
                   );
-                  const isVipApplied = isVipActive && calc.discountPercentage === (settings?.vipDiscountPercentage || 10);
+                  const isVipApplied = isVipDiscountActive && calc.discountPercentage === (settings?.vipDiscountPercentage || 10);
                   return (
                     <div className="bg-emerald-50/40 border-2 border-emerald-500/20 rounded-2xl p-4.5 space-y-2 text-center shadow-3xs">
                       <span className="text-[10px] uppercase font-black text-emerald-850 tracking-wider block leading-none">
